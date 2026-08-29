@@ -15,16 +15,6 @@ services:
       - .:/var/www/html
     depends_on:
       - db
-    networks:
-      - default
-      - traefik-net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.econstructionsite.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.econstructionsite.entrypoints=websecure"
-      - "traefik.http.routers.econstructionsite.tls=true"
-      - "traefik.http.routers.econstructionsite.tls.certresolver=myresolver"
-      - "traefik.http.services.econstructionsite.loadbalancer.server.port=80"
 
   db:
     container_name: econstructionsite-db
@@ -39,13 +29,6 @@ services:
       - pgdata_const:/var/lib/postgresql/data
       - ./DATABASE FILE/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: always
-    networks:
-      - default
-
-networks:
-  default:
-  traefik-net:
-    external: true
 
 volumes:
   pgdata_const:
