@@ -1,0 +1,19 @@
+# Environment configuration files
+.env
+
+# Composer dependencies (if any added later)
+/vendor/
+
+# IDE and Editor directories
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Docker data/logs (if created locally)
+caddy_data/
+caddy_config/
+*.log
