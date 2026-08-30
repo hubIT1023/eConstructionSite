@@ -34,8 +34,8 @@ services:
     image: dpage/pgadmin4
     container_name: econstructionsite-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@ecom.com
-      PGADMIN_DEFAULT_PASSWORD: password123
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
       - "5051:80"
     depends_on:
