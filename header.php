@@ -248,7 +248,7 @@ foreach ($result as $row) {
 			<div class="col-md-6 col-sm-6 col-xs-12">
 				<div class="left">
 					<ul>
-						<li><i class="fa fa-phone"></i> <?php echo $contact_phone; ?></li>
+						<!--li><i class="fa fa-phone"></i> <?php //echo $contact_phone; ?></li-->
 						<li><i class="fa fa-envelope-o"></i> <?php echo $contact_email; ?></li>
 					</ul>
 				</div>
@@ -300,7 +300,7 @@ foreach ($result as $row) {
 					}
 					?>
 
-					<li><a href="cart.php"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_18; ?> (<?php echo LANG_VALUE_1; ?><?php
+					<li><a href="cart.php"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_18; ?> (<?php  echo LANG_VALUE_1; ?><?php /*
 					if(isset($_SESSION['cart_p_id'])) {
 						$table_total_price = 0;
 						$i=0;
@@ -322,7 +322,7 @@ foreach ($result as $row) {
 					} else {
 						echo '0.00';
 					}
-					?>)</a></li>
+					*/?>)</a></li>
 				</ul>
 			</div>
 			<div class="col-md-3 search-area">
