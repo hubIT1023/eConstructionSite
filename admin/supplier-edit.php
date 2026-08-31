@@ -85,9 +85,9 @@ if (!$supplier) {
                             <label for="supplier_plan" class="col-sm-3 control-label">SaaS Subscription Plan *</label>
                             <div class="col-sm-8">
                                 <select class="form-control" name="supplier_plan" required>
-                                    <option value="Starter" <?php if($supplier['supplier_plan'] == 'Starter') echo 'selected'; ?>>Starter Plan ($49/mo - 50 products)</option>
-                                    <option value="Professional" <?php if($supplier['supplier_plan'] == 'Professional') echo 'selected'; ?>>Professional Plan ($99/mo - 500 products)</option>
-                                    <option value="Enterprise" <?php if($supplier['supplier_plan'] == 'Enterprise') echo 'selected'; ?>>Enterprise Plan ($249/mo - Unlimited)</option>
+                                    <option value="Starter" <?php if($supplier['supplier_plan'] == 'Starter') echo 'selected'; ?>>Starter Plan (₱49/mo - 50 products)</option>
+                                    <option value="Professional" <?php if($supplier['supplier_plan'] == 'Professional') echo 'selected'; ?>>Professional Plan (₱99/mo - 500 products)</option>
+                                    <option value="Enterprise" <?php if($supplier['supplier_plan'] == 'Enterprise') echo 'selected'; ?>>Enterprise Plan (₱249/mo - Unlimited)</option>
                                 </select>
                             </div>
                         </div>

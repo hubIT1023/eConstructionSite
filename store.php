@@ -83,8 +83,8 @@ $supplier_id = $supplier['supplier_id'];
                                             <a href="product.php?id=<?php echo $row['p_id']; ?>" style="color: #1F2937;"><?php echo htmlspecialchars($row['p_name']); ?></a>
                                         </h5>
                                         <p style="margin: 0; font-size: 15px; color: #1F2937; font-weight: bold;">
-                                            $<?php echo htmlspecialchars($row['p_current_price']); ?>
-                                            <span style="font-size: 12px; font-weight: normal; color: #777; text-decoration: line-through;">$<?php echo htmlspecialchars($row['p_old_price']); ?></span>
+                                            ₱<?php echo htmlspecialchars($row['p_current_price']); ?>
+                                            <span style="font-size: 12px; font-weight: normal; color: #777; text-decoration: line-through;">₱<?php echo htmlspecialchars($row['p_old_price']); ?></span>
                                         </p>
                                         <p style="font-size: 11px; color: #666; margin: 5px 0 0 0;">
                                             <strong>MOQ:</strong> <?php echo htmlspecialchars($row['p_moq']); ?> units | <strong>Est. Delivery:</strong> <?php echo htmlspecialchars($row['p_delivery_estimate']); ?>
