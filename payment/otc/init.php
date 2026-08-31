@@ -197,12 +197,7 @@ if( !isset($_REQUEST['msg']) ) {
         </body>
         </html>';
 
-        $headers = "From: noreply@" . $_SERVER['SERVER_NAME'] . "\r\n" .
-                   "Reply-To: noreply@" . $_SERVER['SERVER_NAME'] . "\r\n" .
-                   "MIME-Version: 1.0\r\n" . 
-                   "Content-Type: text/html; charset=UTF-8\r\n";
-
-        mail($to_customer, $subject_customer, $message_customer, $headers);
+        send_system_email($to_customer, $subject_customer, $message_customer);
 
         // Send Email to Supplier
         $to_supplier = $supplier['supplier_email'];
@@ -226,7 +221,7 @@ if( !isset($_REQUEST['msg']) ) {
         </body>
         </html>';
 
-        mail($to_supplier, $subject_supplier, $message_supplier, $headers);
+        send_system_email($to_supplier, $subject_supplier, $message_supplier);
     }
 
     // Clear Cart Sessions
