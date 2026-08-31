@@ -52,16 +52,6 @@ if (isset($_POST['form1'])) {
         $error_message .= LANG_VALUE_126."<br>";
     }
 
-    if(empty($_POST['cust_city'])) {
-        $valid = 0;
-        $error_message .= LANG_VALUE_127."<br>";
-    }
-
-    if(empty($_POST['cust_state'])) {
-        $valid = 0;
-        $error_message .= LANG_VALUE_128."<br>";
-    }
-
     if(empty($_POST['cust_zip'])) {
         $valid = 0;
         $error_message .= LANG_VALUE_129."<br>";
@@ -125,8 +115,8 @@ if (isset($_POST['form1'])) {
                                         strip_tags($_POST['cust_phone']),
                                         strip_tags($_POST['cust_country']),
                                         strip_tags($_POST['cust_address']),
-                                        strip_tags($_POST['cust_city']),
-                                        strip_tags($_POST['cust_state']),
+                                        '',
+                                        '',
                                         strip_tags($_POST['cust_zip']),
                                         '',
                                         '',
@@ -247,16 +237,7 @@ if (isset($_POST['form1'])) {
                                         <?php
                                     }
                                     ?>    
-                                    </select>                                    
-                                </div>
-                                
-                                <div class="col-md-6 form-group">
-                                    <label for=""><?php echo LANG_VALUE_107; ?> *</label>
-                                    <input type="text" class="form-control" name="cust_city" value="<?php if(isset($_POST['cust_city'])){echo $_POST['cust_city'];} ?>">
-                                </div>
-                                <div class="col-md-6 form-group">
-                                    <label for=""><?php echo LANG_VALUE_108; ?> *</label>
-                                    <input type="text" class="form-control" name="cust_state" value="<?php if(isset($_POST['cust_state'])){echo $_POST['cust_state'];} ?>">
+                                    </select>
                                 </div>
                                 <div class="col-md-6 form-group">
                                     <label for=""><?php echo LANG_VALUE_109; ?> *</label>
