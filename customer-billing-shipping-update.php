@@ -117,7 +117,7 @@ if (isset($_POST['form1'])) {
                                     <input type="text" class="form-control" name="cust_b_phone" value="<?php echo $_SESSION['customer']['cust_b_phone']; ?>">
                                 </div>
                                 <div class="form-group">
-                                    <label for=""><?php echo LANG_VALUE_106; ?></label>
+                                    <label for="">Town/City</label>
                                     <select name="cust_b_country" class="form-control">
                                         <?php
                                         $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
@@ -163,7 +163,7 @@ if (isset($_POST['form1'])) {
                                     <input type="text" class="form-control" name="cust_s_phone" value="<?php echo $_SESSION['customer']['cust_s_phone']; ?>">
                                 </div>
                                 <div class="form-group">
-                                    <label for=""><?php echo LANG_VALUE_106; ?></label>
+                                    <label for="">Town/City</label>
                                     <select name="cust_s_country" class="form-control">
                                         <?php
                                         $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");

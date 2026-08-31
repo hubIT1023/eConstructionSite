@@ -131,6 +131,7 @@ if (isset($_POST['form1'])) {
                                         '',
                                         '',
                                         '',
+                                        0,
                                         '',
                                         '',
                                         '',
@@ -138,8 +139,7 @@ if (isset($_POST['form1'])) {
                                         '',
                                         '',
                                         '',
-                                        '',
-                                        '',
+                                        0,
                                         '',
                                         '',
                                         '',
@@ -234,9 +234,9 @@ if (isset($_POST['form1'])) {
                                     <textarea name="cust_address" class="form-control" cols="30" rows="10" style="height:70px;"><?php if(isset($_POST['cust_address'])){echo $_POST['cust_address'];} ?></textarea>
                                 </div>
                                 <div class="col-md-6 form-group">
-                                    <label for=""><?php echo LANG_VALUE_106; ?> *</label>
+                                    <label for="">Town/City *</label>
                                     <select name="cust_country" class="form-control select2">
-                                        <option value="">Select country</option>
+                                        <option value="">Select Town/City</option>
                                     <?php
                                     $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
                                     $statement->execute();

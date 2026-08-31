@@ -292,7 +292,7 @@ if(!isset($_SESSION['cart_p_id'])) {
 		                    ($_SESSION['customer']['cust_b_name']=='') ||
 		                    ($_SESSION['customer']['cust_b_cname']=='') ||
 		                    ($_SESSION['customer']['cust_b_phone']=='') ||
-		                    ($_SESSION['customer']['cust_b_country']=='') ||
+		                    ($_SESSION['customer']['cust_b_country']=='') || ($_SESSION['customer']['cust_b_country']=='0') ||
 		                    ($_SESSION['customer']['cust_b_address']=='') ||
 		                    ($_SESSION['customer']['cust_b_city']=='') ||
 		                    ($_SESSION['customer']['cust_b_state']=='') ||
@@ -300,7 +300,7 @@ if(!isset($_SESSION['cart_p_id'])) {
 		                    ($_SESSION['customer']['cust_s_name']=='') ||
 		                    ($_SESSION['customer']['cust_s_cname']=='') ||
 		                    ($_SESSION['customer']['cust_s_phone']=='') ||
-		                    ($_SESSION['customer']['cust_s_country']=='') ||
+		                    ($_SESSION['customer']['cust_s_country']=='') || ($_SESSION['customer']['cust_s_country']=='0') ||
 		                    ($_SESSION['customer']['cust_s_address']=='') ||
 		                    ($_SESSION['customer']['cust_s_city']=='') ||
 		                    ($_SESSION['customer']['cust_s_state']=='') ||
