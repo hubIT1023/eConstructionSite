@@ -61,7 +61,7 @@ foreach ($result as $row) {
                 $start = 0;
             
 
-            $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active=? AND p_name LIKE ? LIMIT $start, $limit");
+            $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active=? AND p_name LIKE ? LIMIT $limit OFFSET $start");
             $statement->execute(array(1,$search_text));
             $result = $statement->fetchAll(PDO::FETCH_ASSOC);
            

@@ -60,7 +60,7 @@ if(!isset($_SESSION['customer'])) {
                 $start = 0;
             
             
-            $statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE customer_email=? ORDER BY id DESC LIMIT $start, $limit");
+            $statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE customer_email=? ORDER BY id DESC LIMIT $limit OFFSET $start");
             $statement->execute(array($_SESSION['customer']['cust_email']));
             $result = $statement->fetchAll(PDO::FETCH_ASSOC);
            
