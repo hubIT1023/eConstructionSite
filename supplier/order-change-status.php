@@ -29,6 +29,20 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
 		$customer_email = $payment['customer_email'];
 		$payment_date = $payment['payment_date'];
 
+		// Fetch customer address details
+		$statement_c = $pdo->prepare("SELECT * FROM tbl_customer WHERE cust_id=?");
+		$statement_c->execute(array($payment['customer_id']));
+		$cust_data = $statement_c->fetch(PDO::FETCH_ASSOC);
+		$cust_address_text = 'Not Available';
+		if ($cust_data) {
+			$cust_country_id = $cust_data['cust_country'];
+			$statement_cnt = $pdo->prepare("SELECT * FROM tbl_country WHERE country_id=?");
+			$statement_cnt->execute(array($cust_country_id));
+			$cnt_data = $statement_cnt->fetch(PDO::FETCH_ASSOC);
+			$cust_city_town = $cnt_data ? $cnt_data['country_name'] : '';
+			$cust_address_text = htmlspecialchars($cust_data['cust_address']) . ', ' . htmlspecialchars($cust_city_town) . ', ' . htmlspecialchars($cust_data['cust_zip']);
+		}
+
 		// Fetch supplier info
 		$statement_sup = $pdo->prepare("SELECT supplier_name, supplier_email, supplier_address, supplier_phone FROM tbl_supplier WHERE supplier_id=?");
 		$statement_sup->execute(array($supplier_id));
@@ -40,9 +54,9 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
 		$items = $statement_ord->fetchAll(PDO::FETCH_ASSOC);
 
 		// Build invoice items HTML table
-        $order_list_html = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+        $order_list_html = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
                                 <thead>
-                                    <tr>
+                                    <tr style="background: #f9f9f9;">
                                         <th>Product Name</th>
                                         <th>Size</th>
                                         <th>Color</th>
@@ -53,8 +67,10 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
                                 </thead>
                                 <tbody>';
 
+		$subtotal_items = 0;
         foreach ($items as $item) {
             $item_subtotal = $item['unit_price'] * $item['quantity'];
+			$subtotal_items += $item_subtotal;
             $order_list_html .= '<tr>
                                     <td>' . htmlspecialchars($item['product_name']) . '</td>
                                     <td>' . htmlspecialchars($item['size']) . '</td>
@@ -65,7 +81,20 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
                                  </tr>';
         }
 
+		$delivery_cost = $paid_amount - $subtotal_items;
+		if ($delivery_cost < 0) {
+			$delivery_cost = 0;
+		}
+
         $order_list_html .= '<tr>
+                                <th colspan="5" align="right">Subtotal:</th>
+                                <th>₱' . number_format($subtotal_items, 2) . '</th>
+                             </tr>
+                             <tr>
+                                <th colspan="5" align="right">Delivery:</th>
+                                <th>₱' . number_format($delivery_cost, 2) . '</th>
+                             </tr>
+                             <tr style="background: #f5f5f5; color: #337ab7;">
                                 <th colspan="5" align="right">Total Paid:</th>
                                 <th>₱' . number_format($paid_amount, 2) . '</th>
                              </tr>
@@ -85,6 +114,10 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
             <p><strong>Payment Date:</strong> ' . htmlspecialchars($payment_date) . '<br>
             <strong>Payment Method:</strong> Over the Counter<br>
             <strong>Status:</strong> Paid</p>
+            <hr>
+            <p><strong>Customer:</strong> ' . htmlspecialchars($customer_name) . '<br>
+            <strong>Email:</strong> ' . htmlspecialchars($customer_email) . '<br>
+            <strong>Address:</strong> ' . $cust_address_text . '</p>
             <hr>
             <p><strong>Supplier:</strong> ' . htmlspecialchars($supplier['supplier_name']) . '<br>
             <strong>Address:</strong> ' . nl2br(htmlspecialchars($supplier['supplier_address'])) . '<br>
@@ -110,7 +143,8 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
             <p>Payment receipt has been generated and sent for order <strong>#' . htmlspecialchars($payment_id) . '</strong>.</p>
             <hr>
             <p><strong>Customer Name:</strong> ' . htmlspecialchars($customer_name) . '<br>
-            <strong>Customer Email:</strong> ' . htmlspecialchars($customer_email) . '</p>
+            <strong>Customer Email:</strong> ' . htmlspecialchars($customer_email) . '<br>
+            <strong>Customer Address:</strong> ' . $cust_address_text . '</p>
             <hr>
             <h4>Receipt Summary:</h4>
             ' . $order_list_html . '

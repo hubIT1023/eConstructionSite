@@ -316,6 +316,21 @@ if($success_message != '') {
                                                              <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Billed To (Customer):</h5>
                                                              <p style="margin: 0; font-size: 13px; font-weight: bold;"><?php echo htmlspecialchars($row['customer_name']); ?></p>
                                                              <p style="margin: 3px 0 0 0; font-size: 12px; color: #555;">Email: <?php echo htmlspecialchars($row['customer_email']); ?></p>
+                                                             <?php
+                                                             $statement_c = $pdo->prepare("SELECT * FROM tbl_customer WHERE cust_id=?");
+                                                             $statement_c->execute(array($row['customer_id']));
+                                                             $cust_data = $statement_c->fetch(PDO::FETCH_ASSOC);
+                                                             if ($cust_data) {
+                                                                 $cust_country_id = $cust_data['cust_country'];
+                                                                 $statement_cnt = $pdo->prepare("SELECT * FROM tbl_country WHERE country_id=?");
+                                                                 $statement_cnt->execute(array($cust_country_id));
+                                                                 $cnt_data = $statement_cnt->fetch(PDO::FETCH_ASSOC);
+                                                                 $cust_city_town = $cnt_data ? $cnt_data['country_name'] : '';
+                                                                 ?>
+                                                                 <p style="margin: 3px 0 0 0; font-size: 12px; color: #555;">Address: <?php echo htmlspecialchars($cust_data['cust_address']); ?>, <?php echo htmlspecialchars($cust_city_town); ?>, <?php echo htmlspecialchars($cust_data['cust_zip']); ?></p>
+                                                                 <?php
+                                                             }
+                                                             ?>
                                                          </div>
 
                                                          <!-- Items Table -->
@@ -333,8 +348,10 @@ if($success_message != '') {
                                                                  $statement_o = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
                                                                  $statement_o->execute(array($row['payment_id']));
                                                                  $order_items = $statement_o->fetchAll(PDO::FETCH_ASSOC);
+                                                                 $subtotal_items = 0;
                                                                  foreach ($order_items as $item):
                                                                      $item_subtotal = $item['unit_price'] * $item['quantity'];
+                                                                     $subtotal_items += $item_subtotal;
                                                                  ?>
                                                                  <tr>
                                                                      <td style="border-top: 1px solid #eee; padding: 8px 5px; text-align: left;">
@@ -349,16 +366,22 @@ if($success_message != '') {
                                                                  </tr>
                                                                  <?php endforeach; ?>
                                                                  
+                                                                 <?php
+                                                                 $delivery_cost = $row['paid_amount'] - $subtotal_items;
+                                                                 if ($delivery_cost < 0) {
+                                                                     $delivery_cost = 0;
+                                                                 }
+                                                                 ?>
                                                                  <!-- Totals -->
                                                                  <tr>
                                                                      <td colspan="2" style="border-top: 2px solid #ddd;"></td>
                                                                      <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">Subtotal:</td>
-                                                                     <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">&#8369;<?php echo number_format($row['paid_amount'], 2); ?></td>
+                                                                     <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">&#8369;<?php echo number_format($subtotal_items, 2); ?></td>
                                                                  </tr>
                                                                  <tr>
                                                                      <td colspan="2" style="border: none;"></td>
-                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">Shipping:</td>
-                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">&#8369;0.00</td>
+                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">Delivery:</td>
+                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">&#8369;<?php echo number_format($delivery_cost, 2); ?></td>
                                                                  </tr>
                                                                  <tr style="font-size: 15px; background: #f5f5f5;">
                                                                      <td colspan="2" style="border-top: 1px solid #ddd;"></td>
