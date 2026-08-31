@@ -247,26 +247,30 @@ if($success_message != '') {
                         <td>
                             <?php echo $row['payment_status']; ?>
                             <br><br>
-                            <?php
-                                if($row['payment_status']=='Pending'){
-                                    ?>
-                                    <a href="order-change-status.php?id=<?php echo $row['id']; ?>&task=Completed" class="btn btn-success btn-xs" style="width:100%;margin-bottom:4px;">Mark Complete</a>
-                                    <?php
-                                }
-                            ?>
-                        </td>
-                        <td>
-                            <?php echo $row['shipping_status']; ?>
-                            <br><br>
-                            <?php
-                            if($row['payment_status']=='Completed') {
-                                if($row['shipping_status']=='Pending'){
-                                    ?>
-                                    <a href="shipping-change-status.php?id=<?php echo $row['id']; ?>&task=Completed" class="btn btn-warning btn-xs" style="width:100%;margin-bottom:4px;">Mark Complete</a>
-                                    <?php
-                                }
-                            }
-                            ?>
+                             <?php
+                                 if($row['payment_status']=='Pending'){
+                                     ?>
+                                     <a href="order-change-status.php?id=<?php echo $row['id']; ?>&task=Completed" class="btn btn-success btn-xs" style="width:100%;margin-bottom:4px;">Mark Complete</a>
+                                     <?php
+                                 } elseif($row['payment_status']=='Awaiting for Payment'){
+                                     ?>
+                                     <a href="order-change-status.php?id=<?php echo $row['id']; ?>&task=Paid" class="btn btn-success btn-xs" style="width:100%;margin-bottom:4px;">Paid</a>
+                                     <?php
+                                 }
+                             ?>
+                         </td>
+                         <td>
+                             <?php echo $row['shipping_status']; ?>
+                             <br><br>
+                             <?php
+                             if($row['payment_status']=='Completed' || $row['payment_status']=='Paid') {
+                                 if($row['shipping_status']=='Pending'){
+                                     ?>
+                                     <a href="shipping-change-status.php?id=<?php echo $row['id']; ?>&task=Completed" class="btn btn-warning btn-xs" style="width:100%;margin-bottom:4px;">Mark Complete</a>
+                                     <?php
+                                 }
+                             }
+                             ?>
                         </td>
 	                    <td>
                             <a href="#" class="btn btn-danger btn-xs" data-href="order-delete.php?id=<?php echo $row['id']; ?>" data-toggle="modal" data-target="#confirm-delete" style="width:100%;">Delete</a>
