@@ -1,4 +1,4 @@
-﻿<?php require_once('header.php'); ?>
+<?php require_once('header.php'); ?>
 
 <!-- Hero Search Banner -->
 <div class="hero-section" style="background-image: linear-gradient(rgba(31, 41, 55, 0.85), rgba(31, 41, 55, 0.85)), url('assets/uploads/about-banner.jpg'); background-size: cover; background-position: center; padding: 80px 0; text-align: center; color: white;">

@@ -1,4 +1,4 @@
-﻿<?php require_once('header.php'); ?>
+<?php require_once('header.php'); ?>
 
 <div class="page-banner" style="background-image: url(assets/uploads/about-banner.jpg);">
     <div class="inner">
