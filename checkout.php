@@ -298,6 +298,28 @@ if(!isset($_SESSION['cart_p_id'])) {
 	                	<?php else: ?>
 		                	<div class="col-md-4">
 		                		
+                                <?php
+                                $cart_supplier_ids = [];
+                                for($m=1; $m<=count($arr_cart_p_id); $m++) {
+                                    $p_id = $arr_cart_p_id[$m];
+                                    $statement_sup = $pdo->prepare("SELECT supplier_id FROM tbl_product WHERE p_id=?");
+                                    $statement_sup->execute(array($p_id));
+                                    $p_row = $statement_sup->fetch(PDO::FETCH_ASSOC);
+                                    if ($p_row && !in_array($p_row['supplier_id'], $cart_supplier_ids)) {
+                                        $cart_supplier_ids[] = $p_row['supplier_id'];
+                                    }
+                                }
+
+                                $cart_suppliers = [];
+                                foreach ($cart_supplier_ids as $sup_id) {
+                                    $statement_sup2 = $pdo->prepare("SELECT supplier_name, supplier_address, supplier_phone FROM tbl_supplier WHERE supplier_id=?");
+                                    $statement_sup2->execute(array($sup_id));
+                                    $sup_row = $statement_sup2->fetch(PDO::FETCH_ASSOC);
+                                    if ($sup_row) {
+                                        $cart_suppliers[] = $sup_row;
+                                    }
+                                }
+                                ?>
 	                            <div class="row">
 
 	                                <div class="col-md-12 form-group">
@@ -306,45 +328,64 @@ if(!isset($_SESSION['cart_p_id'])) {
 	                                        <option value=""><?php echo LANG_VALUE_35; ?></option>
 	                                        <option value="PayPal"><?php echo LANG_VALUE_36; ?></option>
 	                                        <option value="Bank Deposit"><?php echo LANG_VALUE_38; ?></option>
+	                                        <option value="Over the Counter">Over the Counter</option>
 	                                    </select>
 	                                </div>
 
-                                    <form class="paypal" action="<?php echo BASE_URL; ?>payment/paypal/payment_process.php" method="post" id="paypal_form" target="_blank">
-                                        <input type="hidden" name="cmd" value="_xclick" />
-                                        <input type="hidden" name="no_note" value="1" />
-                                        <input type="hidden" name="lc" value="UK" />
-                                        <input type="hidden" name="currency_code" value="USD" />
-                                        <input type="hidden" name="bn" value="PP-BuyNowBF:btn_buynow_LG.gif:NonHostedGuest" />
+                                     <form class="paypal" action="<?php echo BASE_URL; ?>payment/paypal/payment_process.php" method="post" id="paypal_form" target="_blank">
+                                         <input type="hidden" name="cmd" value="_xclick" />
+                                         <input type="hidden" name="no_note" value="1" />
+                                         <input type="hidden" name="lc" value="UK" />
+                                         <input type="hidden" name="currency_code" value="USD" />
+                                         <input type="hidden" name="bn" value="PP-BuyNowBF:btn_buynow_LG.gif:NonHostedGuest" />
 
-                                        <input type="hidden" name="final_total" value="<?php echo $final_total; ?>">
-                                        <div class="col-md-12 form-group">
-                                            <input type="submit" class="btn btn-primary" value="<?php echo LANG_VALUE_46; ?>" name="form1">
-                                        </div>
-                                    </form>
+                                         <input type="hidden" name="final_total" value="<?php echo $final_total; ?>">
+                                         <div class="col-md-12 form-group">
+                                             <input type="submit" class="btn btn-primary" value="<?php echo LANG_VALUE_46; ?>" name="form1">
+                                         </div>
+                                     </form>
 
 
 
-                                    <form action="payment/bank/init.php" method="post" id="bank_form">
-                                        <input type="hidden" name="amount" value="<?php echo $final_total; ?>">
-                                        <div class="col-md-12 form-group">
-                                            <label for=""><?php echo LANG_VALUE_43; ?></span></label><br>
-                                            <?php
-                                            $statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
-                                            $statement->execute();
-                                            $result = $statement->fetchAll(PDO::FETCH_ASSOC);
-                                            foreach ($result as $row) {
-                                                echo nl2br($row['bank_detail']);
-                                            }
-                                            ?>
-                                        </div>
-                                        <div class="col-md-12 form-group">
-                                            <label for=""><?php echo LANG_VALUE_44; ?> <br><span style="font-size:12px;font-weight:normal;">(<?php echo LANG_VALUE_45; ?>)</span></label>
-                                            <textarea name="transaction_info" class="form-control" cols="30" rows="10"></textarea>
-                                        </div>
-                                        <div class="col-md-12 form-group">
-                                            <input type="submit" class="btn btn-primary" value="<?php echo LANG_VALUE_46; ?>" name="form3">
-                                        </div>
-                                    </form>
+                                     <form action="payment/bank/init.php" method="post" id="bank_form">
+                                         <input type="hidden" name="amount" value="<?php echo $final_total; ?>">
+                                         <div class="col-md-12 form-group">
+                                             <label for=""><?php echo LANG_VALUE_43; ?></span></label><br>
+                                             <?php
+                                             $statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
+                                             $statement->execute();
+                                             $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                                             foreach ($result as $row) {
+                                                 echo nl2br($row['bank_detail']);
+                                             }
+                                             ?>
+                                         </div>
+                                         <div class="col-md-12 form-group">
+                                             <label for=""><?php echo LANG_VALUE_44; ?> <br><span style="font-size:12px;font-weight:normal;">(<?php echo LANG_VALUE_45; ?>)</span></label>
+                                             <textarea name="transaction_info" class="form-control" cols="30" rows="10"></textarea>
+                                         </div>
+                                         <div class="col-md-12 form-group">
+                                             <input type="submit" class="btn btn-primary" value="<?php echo LANG_VALUE_46; ?>" name="form3">
+                                         </div>
+                                     </form>
+
+                                     <form action="payment/otc/init.php" method="post" id="otc_form">
+                                         <input type="hidden" name="amount" value="<?php echo $final_total; ?>">
+                                         <div class="col-md-12 form-group" style="padding-top: 10px;">
+                                             <label for=""><strong>Over the Counter Payment:</strong></label><br>
+                                             <p style="margin-top: 5px; color: #555;">Please pay over the counter at the supplier's address:</p>
+                                             <?php foreach ($cart_suppliers as $sup): ?>
+                                                 <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #fafafa;">
+                                                     <strong>Store / Supplier:</strong> <?php echo htmlspecialchars($sup['supplier_name']); ?><br>
+                                                     <strong>Address:</strong> <?php echo nl2br(htmlspecialchars($sup['supplier_address'])); ?><br>
+                                                     <strong>Phone:</strong> <?php echo htmlspecialchars($sup['supplier_phone']); ?>
+                                                 </div>
+                                             <?php endforeach; ?>
+                                         </div>
+                                         <div class="col-md-12 form-group">
+                                             <input type="submit" class="btn btn-primary" value="<?php echo LANG_VALUE_46; ?>" name="form_otc">
+                                         </div>
+                                     </form>
 	                                
 	                            </div>
 		                            
