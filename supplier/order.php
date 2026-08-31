@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+﻿<?php require_once('header.php'); ?>
 
 <?php
 $error_message = '';
@@ -243,7 +243,7 @@ if($success_message != '') {
                         		<b>Transaction Information:</b> <br><?php echo $row['bank_transaction_info']; ?><br>
                         	<?php endif; ?>
                         </td>
-                        <td>₱<?php echo $row['paid_amount']; ?></td>
+                        <td>&#8369;<?php echo $row['paid_amount']; ?></td>
                         <td>
                             <?php echo $row['payment_status']; ?>
                             <br><br>

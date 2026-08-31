@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+﻿<?php require_once('header.php'); ?>
 
 <?php
 if(!isset($_GET['id'])) {
@@ -42,7 +42,7 @@ if (isset($_POST['form_reply'])) {
     }
 
     // Auto notify about bid price update
-    $bid_notification = "Bid price updated to ₱" . $bid_price . " per unit. Status: " . $status;
+    $bid_notification = "Bid price updated to &#8369;" . $bid_price . " per unit. Status: " . $status;
     $statement = $pdo->prepare("INSERT INTO tbl_message (sender_type, sender_id, recipient_type, recipient_id, message_content) VALUES (?, ?, ?, ?, ?)");
     $statement->execute(array('Supplier', $supplier_id, 'Customer', $quote['cust_id'], $bid_notification));
 
@@ -126,7 +126,7 @@ if (isset($_POST['form_reply'])) {
                     
                     <form action="" method="post">
                         <div class="form-group">
-                            <label for="bid_price">Proposed Unit Price Bid (₱ PHP) *</label>
+                            <label for="bid_price">Proposed Unit Price Bid (&#8369; PHP) *</label>
                             <input type="text" class="form-control" name="bid_price" value="<?php echo htmlspecialchars($quote['unit_price']); ?>" required>
                         </div>
                         <div class="form-group">

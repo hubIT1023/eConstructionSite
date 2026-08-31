@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+﻿<?php require_once('header.php'); ?>
 
 <div class="page-banner" style="background-image: url(assets/uploads/about-banner.jpg);">
     <div class="inner">
@@ -118,9 +118,9 @@
                         <div class="form-group">
                             <label for="plan">Choose B2B SaaS Plan *</label>
                             <select class="form-control" name="plan" required>
-                                <option value="Starter">Starter Plan (₱49/mo - Up to 50 Products)</option>
-                                <option value="Professional" selected>Professional Plan (₱99/mo - Up to 500 Products)</option>
-                                <option value="Enterprise">Enterprise Plan (₱249/mo - Unlimited Products)</option>
+                                <option value="Starter">Starter Plan (&#8369;49/mo - Up to 50 Products)</option>
+                                <option value="Professional" selected>Professional Plan (&#8369;99/mo - Up to 500 Products)</option>
+                                <option value="Enterprise">Enterprise Plan (&#8369;249/mo - Unlimited Products)</option>
                             </select>
                         </div>
 

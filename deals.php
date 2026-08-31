@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+﻿<?php require_once('header.php'); ?>
 
 <div class="page-banner" style="background-image: url(assets/uploads/about-banner.jpg);">
     <div class="inner">
@@ -39,8 +39,8 @@
                                             <a href="product.php?id=<?php echo $row['p_id']; ?>" style="color: #1F2937;"><?php echo htmlspecialchars($row['p_name']); ?></a>
                                         </h5>
                                         <p style="margin: 0; font-size: 15px; color: #1F2937; font-weight: bold;">
-                                            ₱<?php echo htmlspecialchars($row['p_current_price']); ?>
-                                            <span style="font-size: 12px; font-weight: normal; color: #777; text-decoration: line-through;">₱<?php echo htmlspecialchars($row['p_old_price']); ?></span>
+                                            &#8369;<?php echo htmlspecialchars($row['p_current_price']); ?>
+                                            <span style="font-size: 12px; font-weight: normal; color: #777; text-decoration: line-through;">&#8369;<?php echo htmlspecialchars($row['p_old_price']); ?></span>
                                         </p>
                                         <p style="font-size: 11px; color: #666; margin: 5px 0 0 0;">
                                             <strong>MOQ:</strong> <?php echo htmlspecialchars($row['p_moq']); ?> units

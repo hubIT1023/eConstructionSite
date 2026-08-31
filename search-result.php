@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+﻿<?php require_once('header.php'); ?>
 
 <?php
 if(!isset($_REQUEST['search_text'])) {
@@ -159,10 +159,10 @@ foreach ($result as $row) {
                                         <div class="text">
                                             <h3><a href="product.php?id=<?php echo $row['p_id']; ?>"><?php echo $row['p_name']; ?></a></h3>
                                             <h4>
-                                                ₱<?php echo $row['p_current_price']; ?> 
+                                                &#8369;<?php echo $row['p_current_price']; ?> 
                                                 <?php if($row['p_old_price'] != ''): ?>
                                                 <del>
-                                                    ₱<?php echo $row['p_old_price']; ?>
+                                                    &#8369;<?php echo $row['p_old_price']; ?>
                                                 </del>
                                                 <?php endif; ?>
                                             </h4>
