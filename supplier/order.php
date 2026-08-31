@@ -259,9 +259,132 @@ if($success_message != '') {
                                      ?>
                                      <a href="order-change-status.php?id=<?php echo $row['id']; ?>&task=Paid" class="btn btn-success btn-xs" style="width:100%;margin-bottom:4px;">Paid</a>
                                      <?php
+                                 } elseif($row['payment_status']=='Paid'){
+                                     ?>
+                                     <a href="#" data-toggle="modal" data-target="#receipt-modal-<?php echo $row['id']; ?>" class="btn btn-primary btn-xs" style="width:100%;margin-bottom:4px;">View Receipt</a>
+                                     
+                                     <!-- Modal for View Receipt -->
+                                     <div id="receipt-modal-<?php echo $row['id']; ?>" class="modal fade" role="dialog">
+                                         <div class="modal-dialog modal-md">
+                                             <div class="modal-content">
+                                                 <div class="modal-header" style="text-align: left;">
+                                                     <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                                     <h4 class="modal-title" style="font-weight: bold;">Official Receipt</h4>
+                                                 </div>
+                                                 <div class="modal-body" id="receipt-print-area-<?php echo $row['id']; ?>" style="text-align: left;">
+                                                     <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; background: #fff; border: 1px solid #eee;">
+                                                         <!-- Header -->
+                                                         <div style="text-align: center; margin-bottom: 20px;">
+                                                             <h2 style="margin: 0; color: #337ab7; font-weight: bold; letter-spacing: 1px;">E-CONSTRUCTION SUPPLY</h2>
+                                                             <p style="margin: 5px 0 0 0; font-size: 14px; color: #777;">Online B2B Marketplace</p>
+                                                             <hr style="margin: 15px 0; border: 0; border-top: 2px dashed #ddd;">
+                                                             <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #555; text-transform: uppercase;">Official Sales Receipt</h3>
+                                                         </div>
+
+                                                         <!-- Details Box -->
+                                                         <table style="width: 100%; margin-bottom: 20px;">
+                                                             <tr>
+                                                                 <td style="width: 50%; vertical-align: top; text-align: left;">
+                                                                     <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Supplier / Store:</h5>
+                                                                     <p style="margin: 0; font-size: 13px; font-weight: bold;">
+                                                                         <?php
+                                                                         $statement_s = $pdo->prepare("SELECT * FROM tbl_supplier WHERE supplier_id=?");
+                                                                         $statement_s->execute(array($row['supplier_id']));
+                                                                         $sup_data = $statement_s->fetch(PDO::FETCH_ASSOC);
+                                                                         echo htmlspecialchars($sup_data['supplier_name']);
+                                                                         ?>
+                                                                     </p>
+                                                                     <p style="margin: 3px 0 0 0; font-size: 12px; color: #555; line-height: 1.4;">
+                                                                         <?php echo nl2br(htmlspecialchars($sup_data['supplier_address'])); ?><br>
+                                                                         Phone: <?php echo htmlspecialchars($sup_data['supplier_phone']); ?>
+                                                                     </p>
+                                                                 </td>
+                                                                 <td style="width: 50%; vertical-align: top; text-align: right;">
+                                                                     <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Receipt Info:</h5>
+                                                                     <p style="margin: 0; font-size: 12px;"><strong>Receipt #:</strong> <?php echo htmlspecialchars($row['payment_id']); ?></p>
+                                                                     <p style="margin: 3px 0 0 0; font-size: 12px;"><strong>Date:</strong> <?php echo htmlspecialchars($row['payment_date']); ?></p>
+                                                                     <p style="margin: 3px 0 0 0; font-size: 12px;"><strong>Payment:</strong> Over the Counter</p>
+                                                                     <p style="margin: 3px 0 0 0; font-size: 12px;"><strong>Status:</strong> <span class="label label-success" style="font-size: 10px; padding: 2px 6px;">PAID</span></p>
+                                                                 </td>
+                                                             </tr>
+                                                         </table>
+
+                                                         <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
+
+                                                         <!-- Bill To Box -->
+                                                         <div style="margin-bottom: 20px; text-align: left;">
+                                                             <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Billed To (Customer):</h5>
+                                                             <p style="margin: 0; font-size: 13px; font-weight: bold;"><?php echo htmlspecialchars($row['customer_name']); ?></p>
+                                                             <p style="margin: 3px 0 0 0; font-size: 12px; color: #555;">Email: <?php echo htmlspecialchars($row['customer_email']); ?></p>
+                                                         </div>
+
+                                                         <!-- Items Table -->
+                                                         <table class="table table-condensed" style="margin-bottom: 20px; font-size: 13px; width: 100%;">
+                                                             <thead>
+                                                                 <tr style="background: #f9f9f9;">
+                                                                     <th style="border-bottom: 2px solid #ddd; font-weight: bold; text-align: left;">Product Description</th>
+                                                                     <th style="border-bottom: 2px solid #ddd; text-align: center; font-weight: bold;">Qty</th>
+                                                                     <th style="border-bottom: 2px solid #ddd; text-align: right; font-weight: bold;">Unit Price</th>
+                                                                     <th style="border-bottom: 2px solid #ddd; text-align: right; font-weight: bold;">Amount</th>
+                                                                 </tr>
+                                                             </thead>
+                                                             <tbody>
+                                                                 <?php
+                                                                 $statement_o = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
+                                                                 $statement_o->execute(array($row['payment_id']));
+                                                                 $order_items = $statement_o->fetchAll(PDO::FETCH_ASSOC);
+                                                                 foreach ($order_items as $item):
+                                                                     $item_subtotal = $item['unit_price'] * $item['quantity'];
+                                                                 ?>
+                                                                 <tr>
+                                                                     <td style="border-top: 1px solid #eee; padding: 8px 5px; text-align: left;">
+                                                                         <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
+                                                                         <?php if(!empty($item['size']) || !empty($item['color'])): ?>
+                                                                             <br><span style="font-size: 11px; color: #777;">(Size: <?php echo htmlspecialchars($item['size']); ?>, Color: <?php echo htmlspecialchars($item['color']); ?>)</span>
+                                                                         <?php endif; ?>
+                                                                     </td>
+                                                                     <td style="border-top: 1px solid #eee; text-align: center; padding: 8px 5px;"><?php echo htmlspecialchars($item['quantity']); ?></td>
+                                                                     <td style="border-top: 1px solid #eee; text-align: right; padding: 8px 5px;">&#8369;<?php echo number_format($item['unit_price'], 2); ?></td>
+                                                                     <td style="border-top: 1px solid #eee; text-align: right; padding: 8px 5px;">&#8369;<?php echo number_format($item_subtotal, 2); ?></td>
+                                                                 </tr>
+                                                                 <?php endforeach; ?>
+                                                                 
+                                                                 <!-- Totals -->
+                                                                 <tr>
+                                                                     <td colspan="2" style="border-top: 2px solid #ddd;"></td>
+                                                                     <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">Subtotal:</td>
+                                                                     <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">&#8369;<?php echo number_format($row['paid_amount'], 2); ?></td>
+                                                                 </tr>
+                                                                 <tr>
+                                                                     <td colspan="2" style="border: none;"></td>
+                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">Shipping:</td>
+                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">&#8369;0.00</td>
+                                                                 </tr>
+                                                                 <tr style="font-size: 15px; background: #f5f5f5;">
+                                                                     <td colspan="2" style="border-top: 1px solid #ddd;"></td>
+                                                                     <td style="border-top: 1px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px; color: #337ab7;">Total Paid:</td>
+                                                                     <td style="border-top: 1px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px; color: #337ab7;">&#8369;<?php echo number_format($row['paid_amount'], 2); ?></td>
+                                                                 </tr>
+                                                             </tbody>
+                                                         </table>
+
+                                                         <!-- Footer Message -->
+                                                         <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #999;">
+                                                             <p style="margin: 0; font-weight: bold;">Thank you for your business!</p>
+                                                             <p style="margin: 5px 0 0 0;">This is a system-generated official sales receipt.</p>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                                 <div class="modal-footer">
+                                                     <button type="button" class="btn btn-primary" onclick="printReceipt('receipt-print-area-<?php echo $row['id']; ?>')"><i class="fa fa-print"></i> Print Receipt</button>
+                                                     <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     </div>
+                                     <?php
                                  }
                              ?>
-                         </td>
                          <td>
                              <?php echo $row['shipping_status']; ?>
                              <br><br>
@@ -309,5 +432,16 @@ if($success_message != '') {
     </div>
 </div>
 
+
+<script>
+function printReceipt(divId) {
+    var printContents = document.getElementById(divId).innerHTML;
+    var originalContents = document.body.innerHTML;
+    document.body.innerHTML = printContents;
+    window.print();
+    document.body.innerHTML = originalContents;
+    window.location.reload();
+}
+</script>
 
 <?php require_once('footer.php'); ?>
