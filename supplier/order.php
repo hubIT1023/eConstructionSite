@@ -276,7 +276,7 @@ if($success_message != '') {
                                                          <!-- Header -->
                                                          <div style="text-align: center; margin-bottom: 20px;">
                                                              <h2 style="margin: 0; color: #337ab7; font-weight: bold; letter-spacing: 1px;">E-CONSTRUCTION SUPPLY</h2>
-                                                             <p style="margin: 5px 0 0 0; font-size: 14px; color: #777;">Online B2B Marketplace</p>
+                                                             <p style="margin: 5px 0 0 0; font-size: 14px; color: #777;">Online Construction Supply</p>
                                                              <hr style="margin: 15px 0; border: 0; border-top: 2px dashed #ddd;">
                                                              <h3 style="margin: 0; font-size: 18px; font-weight: bold; color: #555; text-transform: uppercase;">Official Sales Receipt</h3>
                                                          </div>
@@ -393,7 +393,8 @@ if($success_message != '') {
 
                                                          <!-- Footer Message -->
                                                          <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #999;">
-                                                             <p style="margin: 0; font-weight: bold;">Thank you for your business!</p>
+                                                             <p style="margin: 0; font-weight: bold;">Thank you for your order!</p>
+                                                             <p style="margin: 5px 0 0 0; font-size: 11px; color: #aaa;">We appreciate your trust in us for your construction needs.</p>
                                                              <p style="margin: 5px 0 0 0;">This is a system-generated official sales receipt.</p>
                                                          </div>
                                                      </div>
