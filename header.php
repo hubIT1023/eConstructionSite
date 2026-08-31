@@ -13,7 +13,7 @@ $success_message1 = '';
 
 // Getting all language variables into array as global variable
 $i=1;
-$statement = $pdo->prepare("SELECT * FROM tbl_language");
+$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id ASC");
 $statement->execute();
 $result = $statement->fetchAll(PDO::FETCH_ASSOC);							
 foreach ($result as $row) {
@@ -300,7 +300,7 @@ foreach ($result as $row) {
 					}
 					?>
 
-					<li><a href="cart.php"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_18; ?> (<?php  echo LANG_VALUE_1; ?><?php /*
+					<li><a href="cart.php"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_18; ?> (<?php  echo LANG_VALUE_1; ?><?php 
 					if(isset($_SESSION['cart_p_id'])) {
 						$table_total_price = 0;
 						$i=0;
@@ -322,7 +322,7 @@ foreach ($result as $row) {
 					} else {
 						echo '0.00';
 					}
-					*/?>)</a></li>
+					?>)</a></li>
 				</ul>
 			</div>
 			<div class="col-md-3 search-area">

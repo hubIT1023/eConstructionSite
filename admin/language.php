@@ -16,7 +16,7 @@ if(isset($_POST['form1'])) {
 }
 
 $i=0;
-$statement = $pdo->prepare("SELECT * FROM tbl_language");
+$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id ASC");
 $statement->execute();
 $result = $statement->fetchAll(PDO::FETCH_ASSOC);							
 foreach ($result as $row) {
@@ -33,7 +33,7 @@ foreach ($result as $row) {
 
 
 <?php
-$statement = $pdo->prepare("SELECT * FROM tbl_language");
+$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id ASC");
 $statement->execute();
 $result = $statement->fetchAll(PDO::FETCH_ASSOC);                            
 foreach ($result as $row) {

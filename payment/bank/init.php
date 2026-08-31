@@ -5,7 +5,7 @@ include("../../admin/inc/config.php");
 include("../../admin/inc/functions.php");
 // Getting all language variables into array as global variable
 $i=1;
-$statement = $pdo->prepare("SELECT * FROM tbl_language");
+$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id ASC");
 $statement->execute();
 $result = $statement->fetchAll(PDO::FETCH_ASSOC);							
 foreach ($result as $row) {
