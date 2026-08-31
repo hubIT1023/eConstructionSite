@@ -38,7 +38,7 @@ if(isset($_POST['form1'])) {
         $statement->execute(array($_POST['payment_id']));
         $result = $statement->fetchAll(PDO::FETCH_ASSOC);                            
         foreach ($result as $row) {
-        	
+        	$payment_details = '';
         	if($row['payment_method'] == 'PayPal'):
         		$payment_details = '
 Transaction Id: '.$row['txnid'].'<br>
@@ -54,6 +54,9 @@ Card Year: '.$row['card_year'].'<br>
         	elseif($row['payment_method'] == 'Bank Deposit'):
 				$payment_details = '
 Transaction Details: <br>'.$row['bank_transaction_info'];
+        	elseif($row['payment_method'] == 'Over the Counter'):
+				$payment_details = '
+Transaction Details: Over the Counter Payment';
         	endif;
 
             $order_detail .= '
