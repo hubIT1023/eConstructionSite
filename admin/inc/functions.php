@@ -121,7 +121,7 @@ function send_system_email($to, $subject, $message_html) {
     $smtp_pass = getenv('SMTP_PASS') ?: (isset($_ENV['SMTP_PASS']) ? $_ENV['SMTP_PASS'] : '');
 
     // Log email to local file for backup and offline verification/testing
-    $log_dir = dirname(__DIR__, 1) . '/uploads';
+    $log_dir = dirname(__DIR__, 2) . '/assets/uploads';
     if (is_writable($log_dir)) {
         $log_file = $log_dir . '/emails.log';
         $log_entry = "[" . date('Y-m-d H:i:s') . "] TO: $to | SUBJECT: $subject\n" . strip_tags($message_html) . "\n-------------------------------------\n";
