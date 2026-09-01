@@ -28,6 +28,26 @@ $total_quotes = $statement->rowCount();
 ?>
 
 <section class="content">
+<div class="row" style="margin-bottom: 20px;">
+    <div class="col-md-12">
+        <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: #fff; padding: 22px 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <h3 style="margin: 0 0 6px 0; font-weight: 700; color: #fff; font-size: 22px;">
+                    <i class="fa fa-calculator" style="margin-right: 8px;"></i> Supplier Point of Sale (POS) Terminal
+                </h3>
+                <p style="margin: 0; color: #bfdbfe; font-size: 14px;">
+                    Fast cashier billing, over-the-counter sales, real-time inventory deduction, and instant receipt printing.
+                </p>
+            </div>
+            <div style="margin-top: 10px;">
+                <a href="pos.php" class="btn btn-warning btn-lg" style="background-color: #f59e0b; border-color: #f59e0b; color: #111827; font-weight: 700; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); padding: 10px 22px;">
+                    <i class="fa fa-shopping-cart"></i> Launch POS Register
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
             <div class="col-lg-3 col-xs-6">
               <!-- small box -->

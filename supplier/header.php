@@ -98,6 +98,12 @@ $supplier_id = $_SESSION['supplier_user']['supplier_id'];
 			          </a>
 			        </li>
 
+                    <li class="treeview <?php if($cur_page == 'pos.php') {echo 'active';} ?>">
+                        <a href="pos.php">
+                            <i class="fa fa-calculator" style="color: #60a5fa;"></i> <span style="font-weight: bold; color: #93c5fd;">Point of Sale (POS)</span>
+                        </a>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'product.php') || ($cur_page == 'product-add.php') || ($cur_page == 'product-edit.php') ) {echo 'active';} ?>">
                         <a href="product.php">
                             <i class="fa fa-shopping-bag"></i> <span>Manage Products</span>
