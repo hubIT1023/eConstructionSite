@@ -63,3 +63,31 @@
 		padding-right: 0;
 	}
 }
+
+@media only screen and (max-width: 991px) {
+	.product .item .thumb .photo {
+		height: 250px;
+	}
+	ul.prod-slider li {
+		height: 380px;
+	}
+}
+
+@media only screen and (max-width: 767px) {
+	.product .item .thumb .photo {
+		height: 240px;
+	}
+	ul.prod-slider li {
+		height: 320px;
+	}
+}
+
+@media only screen and (max-width: 480px) {
+	.product .item .thumb .photo {
+		height: 220px;
+	}
+	ul.prod-slider li {
+		height: 260px;
+	}
+}
+

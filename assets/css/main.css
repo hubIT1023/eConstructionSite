@@ -634,10 +634,11 @@ Mobile style's
 .product .item .thumb .photo {
   width: 100%;
   height: 280px;
-  -webkit-background-size: cover;
-  background-size: cover;
+  -webkit-background-size: contain;
+  background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
+  background-color: #ffffff;
 }
 
 .product .item .thumb .overlay {
@@ -1028,9 +1029,10 @@ Mobile style's
 ul.prod-slider li {
   height: 450px;
   background-repeat: no-repeat;
-  -webkit-background-size: cover;
-  background-size: cover;
-  background-position: top center;
+  -webkit-background-size: contain;
+  background-size: contain;
+  background-position: center center;
+  background-color: #ffffff;
   position: relative;
 }
 ul.prod-slider li a {
@@ -1049,9 +1051,11 @@ ul.prod-slider li a {
   width: 80px;
   height: 80px;
   background-repeat: no-repeat;
-  -webkit-background-size: cover;
-  background-size: cover;
-  background-position: top center;
+  -webkit-background-size: contain;
+  background-size: contain;
+  background-position: center center;
+  background-color: #ffffff;
+  border: 1px solid #e5e5e5;
 }
 #prod-pager {
   margin-top: 20px;
@@ -1232,6 +1236,8 @@ ul.nav-tabs {
 
 .cart table img {
   width: 100px;
+  height: 80px;
+  object-fit: contain;
 }
 
 .cart table tr td {
