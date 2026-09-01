@@ -18,8 +18,18 @@ if (!$supplier) {
 $supplier_id = $supplier['supplier_id'];
 ?>
 
+<?php 
+$store_banner = (!empty($supplier['supplier_banner']) && file_exists('assets/uploads/'.$supplier['supplier_banner'])) 
+    ? 'assets/uploads/'.$supplier['supplier_banner'] 
+    : 'assets/uploads/about-banner.jpg';
+
+$store_logo = (!empty($supplier['supplier_logo']) && file_exists('assets/uploads/'.$supplier['supplier_logo'])) 
+    ? 'assets/uploads/'.$supplier['supplier_logo'] 
+    : '';
+?>
+
 <!-- Storefront Banner -->
-<div class="page-banner" style="background-image: url(assets/uploads/about-banner.jpg); background-color: #1F2937;">
+<div class="page-banner" style="background-image: url('<?php echo $store_banner; ?>'); background-color: #1F2937;">
     <div class="inner">
         <h1><?php echo htmlspecialchars($supplier['supplier_name']); ?> Storefront</h1>
         <p style="color: #fff; font-size: 16px;"><i class="fa fa-envelope"></i> <?php echo htmlspecialchars($supplier['supplier_email']); ?> | <i class="fa fa-phone"></i> <?php echo htmlspecialchars($supplier['supplier_phone']); ?></p>
@@ -34,8 +44,16 @@ $supplier_id = $supplier['supplier_id'];
             <div class="col-md-3">
                 <div style="background: #f8f9fa; border: 1px solid #ddd; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
                     <div style="text-align: center; margin-bottom: 15px;">
-                        <i class="fa fa-industry fa-4x" style="color: #1F2937;"></i>
-                        <h4 style="font-weight: bold; margin-top: 15px;"><?php echo htmlspecialchars($supplier['supplier_name']); ?></h4>
+                        <?php if ($store_logo): ?>
+                            <div style="width: 90px; height: 90px; margin: 0 auto 12px; border-radius: 50%; overflow: hidden; border: 2px solid #ddd; background: #fff; display: flex; align-items: center; justify-content: center;">
+                                <img src="<?php echo $store_logo; ?>" alt="<?php echo htmlspecialchars($supplier['supplier_name']); ?>" style="max-width: 90%; max-height: 90%; object-fit: contain;">
+                            </div>
+                        <?php else: ?>
+                            <div style="width: 80px; height: 80px; margin: 0 auto 12px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center;">
+                                <i class="fa fa-industry fa-3x" style="color: #1F2937;"></i>
+                            </div>
+                        <?php endif; ?>
+                        <h4 style="font-weight: bold; margin-top: 10px;"><?php echo htmlspecialchars($supplier['supplier_name']); ?></h4>
                         <span class="label label-warning" style="background-color: #F59E0B;">Verified Supplier</span>
                     </div>
                     
@@ -74,25 +92,33 @@ $supplier_id = $supplier['supplier_id'];
                         foreach ($products as $row) {
                             ?>
                             <div class="col-md-4 col-sm-6">
-                                <div class="thumbnail" style="padding: 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 25px;">
-                                    <div style="height: 150px; display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 3px; overflow: hidden; margin-bottom: 10px;">
-                                        <i class="fa fa-cubes fa-3x" style="color: #ccc;"></i>
-                                    </div>
+                                <div class="thumbnail" style="padding: 12px; border-radius: 6px; border: 1px solid #e5e5e5; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.05); margin-bottom: 25px;">
+                                    <a href="product.php?id=<?php echo $row['p_id']; ?>" style="display: block; text-decoration: none;">
+                                        <div style="height: 180px; width: 100%; display: flex; align-items: center; justify-content: center; background: #fff; border-radius: 4px; overflow: hidden; margin-bottom: 12px; position: relative; border: 1px solid #f0f0f0;">
+                                            <?php if (!empty($row['p_featured_photo'])): ?>
+                                                <div style="width: 100%; height: 100%; background-image: url('assets/uploads/<?php echo htmlspecialchars($row['p_featured_photo']); ?>'); background-size: contain; background-repeat: no-repeat; background-position: center;"></div>
+                                            <?php else: ?>
+                                                <i class="fa fa-cubes fa-3x" style="color: #ccc;"></i>
+                                            <?php endif; ?>
+                                        </div>
+                                    </a>
                                     <div class="caption" style="padding: 0;">
-                                        <h5 style="font-weight: bold; margin: 0 0 5px 0; height: 36px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2;">
-                                            <a href="product.php?id=<?php echo $row['p_id']; ?>" style="color: #1F2937;"><?php echo htmlspecialchars($row['p_name']); ?></a>
+                                        <h5 style="font-weight: bold; margin: 0 0 8px 0; height: 36px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2;">
+                                            <a href="product.php?id=<?php echo $row['p_id']; ?>" style="color: #1F2937; text-decoration: none;"><?php echo htmlspecialchars($row['p_name']); ?></a>
                                         </h5>
-                                        <p style="margin: 0; font-size: 15px; color: #1F2937; font-weight: bold;">
+                                        <p style="margin: 0 0 6px 0; font-size: 16px; color: #1F2937; font-weight: bold;">
                                             &#8369;<?php echo htmlspecialchars($row['p_current_price']); ?>
-                                            <span style="font-size: 12px; font-weight: normal; color: #777; text-decoration: line-through;">&#8369;<?php echo htmlspecialchars($row['p_old_price']); ?></span>
+                                            <?php if (!empty($row['p_old_price']) && floatval($row['p_old_price']) > floatval($row['p_current_price'])): ?>
+                                                <span style="font-size: 12px; font-weight: normal; color: #888; text-decoration: line-through; margin-left: 5px;">&#8369;<?php echo htmlspecialchars($row['p_old_price']); ?></span>
+                                            <?php endif; ?>
                                         </p>
-                                        <p style="font-size: 11px; color: #666; margin: 5px 0 0 0;">
-                                            <strong>MOQ:</strong> <?php echo htmlspecialchars($row['p_moq']); ?> units | <strong>Est. Delivery:</strong> <?php echo htmlspecialchars($row['p_delivery_estimate']); ?>
+                                        <p style="font-size: 11px; color: #666; margin: 0 0 10px 0;">
+                                            <strong>MOQ:</strong> <?php echo htmlspecialchars($row['p_moq'] ?: '1'); ?> units | <strong>Est. Delivery:</strong> <?php echo htmlspecialchars($row['p_delivery_estimate'] ?: '1-3 days'); ?>
                                         </p>
                                         <hr style="margin: 10px 0;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <span style="font-size: 11px; font-weight: bold; color: #F59E0B; text-transform: uppercase;"><i class="fa fa-tag"></i> <?php echo htmlspecialchars($row['p_brand']); ?></span>
-                                            <a href="product.php?id=<?php echo $row['p_id']; ?>" class="btn btn-warning btn-xs" style="background-color: #F59E0B; border-color: #F59E0B;">Details</a>
+                                            <span style="font-size: 11px; font-weight: bold; color: #F59E0B; text-transform: uppercase;"><i class="fa fa-tag"></i> <?php echo htmlspecialchars($row['p_brand'] ?: 'Product'); ?></span>
+                                            <a href="product.php?id=<?php echo $row['p_id']; ?>" class="btn btn-warning btn-xs" style="background-color: #F59E0B; border-color: #F59E0B; font-weight: 600; padding: 4px 10px;"><i class="fa fa-shopping-cart"></i> Details</a>
                                         </div>
                                     </div>
                                 </div>

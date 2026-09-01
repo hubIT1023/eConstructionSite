@@ -21,12 +21,16 @@
                     $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                     if(count($result) > 0) {
                         foreach ($result as $row) {
-                            $logo = $row['supplier_logo'] ? 'assets/uploads/'.$row['supplier_logo'] : 'assets/uploads/default_logo.png';
+                            $has_logo = (!empty($row['supplier_logo']) && file_exists('assets/uploads/'.$row['supplier_logo']));
                             ?>
                             <div class="col-md-4 col-sm-6">
                                 <div class="thumbnail" style="padding: 15px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 30px;">
-                                    <div style="height: 100px; display: flex; align-items: center; justify-content: center; margin-bottom: 15px; background: #f9f9f9; border-radius: 4px;">
-                                        <i class="fa fa-industry fa-3x" style="color: #1F2937;"></i>
+                                    <div style="height: 100px; display: flex; align-items: center; justify-content: center; margin-bottom: 15px; background: #f9f9f9; border-radius: 4px; overflow: hidden;">
+                                        <?php if ($has_logo): ?>
+                                            <img src="assets/uploads/<?php echo htmlspecialchars($row['supplier_logo']); ?>" alt="<?php echo htmlspecialchars($row['supplier_name']); ?>" style="max-height: 80px; max-width: 90%; object-fit: contain;">
+                                        <?php else: ?>
+                                            <i class="fa fa-industry fa-3x" style="color: #1F2937;"></i>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="caption" style="padding: 0;">
                                         <h4 style="font-weight: bold; margin-top: 0; color: #1F2937;">
