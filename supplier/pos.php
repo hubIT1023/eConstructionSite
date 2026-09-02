@@ -261,16 +261,45 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 .pos-wrapper {
     margin-top: 10px;
 }
+#posProductGrid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 12px !important;
+    max-height: 650px;
+    overflow-y: auto;
+    padding: 6px;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+@media (max-width: 991px) {
+    #posProductGrid {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+}
+@media (max-width: 600px) {
+    #posProductGrid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+.pos-product-item {
+    width: 100% !important;
+    padding: 0 !important;
+    float: none !important;
+}
 .pos-product-card {
     background: #fff;
     border: 1.5px solid #e2e8f0;
     border-radius: 8px;
     padding: 8px 10px;
-    margin-bottom: 14px;
+    margin-bottom: 0 !important;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     position: relative;
     box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 .pos-product-card:hover {
     transform: translateY(-2px);
@@ -480,7 +509,7 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                     <?php endif; ?>
 
                     <!-- Products Grid -->
-                    <div class="row" id="posProductGrid" style="max-height: 620px; overflow-y: auto; padding: 4px;">
+                    <div id="posProductGrid">
                         <?php if (count($product_list) > 0): ?>
                             <?php foreach ($product_list as $prod): 
                                 $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
@@ -505,7 +534,7 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                     'photo' => $img_src
                                 );
                             ?>
-                            <div class="col-xs-6 col-sm-4 col-md-4 col-lg-3 pos-product-item" 
+                            <div class="pos-product-item" 
                                  data-name="<?php echo strtolower(htmlspecialchars($prod['p_name'] . ' ' . $prod['p_brand'])); ?>"
                                  data-category="<?php echo htmlspecialchars($prod['ecat_name']); ?>"
                                  data-product='<?php echo htmlspecialchars(json_encode($prod_data), ENT_QUOTES, 'UTF-8'); ?>'
