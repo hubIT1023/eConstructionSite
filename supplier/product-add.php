@@ -163,8 +163,9 @@ if(isset($_POST['form1'])) {
                                         p_specs,
                                         p_delivery_estimate,
                                         p_pdf,
-                                        p_sku
-									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                                        p_sku,
+                                        p_new_price
+									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 		$statement->execute(array(
                                         $ai_id,
 										$_POST['p_name'],
@@ -187,7 +188,8 @@ if(isset($_POST['form1'])) {
                                         $_POST['p_specs'],
                                         $_POST['p_delivery_estimate'],
                                         $_POST['p_pdf'],
-                                        $_POST['p_sku']
+                                        $_POST['p_sku'],
+                                        (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price']
 									));
 
         if(isset($_POST['size'])) {
@@ -327,9 +329,15 @@ if(isset($_POST['form1'])) {
 							</div>
 						</div>
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Current Price <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<label for="" class="col-sm-3 control-label">(C) Price (Commercial) <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
 							<div class="col-sm-4">
 								<input type="text" name="p_current_price" class="form-control" required>
+							</div>
+						</div>	
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(N)Price (Net Price)<br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<div class="col-sm-4">
+								<input type="text" name="p_new_price" class="form-control" placeholder="Optional (defaults to (C) Price)">
 							</div>
 						</div>	
 						<div class="form-group">

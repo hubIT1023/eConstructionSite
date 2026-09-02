@@ -22,6 +22,7 @@
 								<th width="160">Product Name</th>
 								<th width="60">Old Price</th>
 								<th width="60">(C) Price</th>
+								<th width="60">(N)Price</th>
 								<th width="60">Quantity</th>
 								<th>Featured?</th>
 								<th>Active?</th>
@@ -38,6 +39,7 @@
 														t1.p_name,
 														t1.p_old_price,
 														t1.p_current_price,
+														t1.p_new_price,
 														t1.p_qty,
 														t1.p_featured_photo,
 														t1.p_is_featured,
@@ -74,6 +76,7 @@
 									<td><?php echo $row['p_name']; ?></td>
 									<td>&#8369;<?php echo $row['p_old_price']; ?></td>
 									<td>&#8369;<?php echo $row['p_current_price']; ?></td>
+									<td>&#8369;<?php echo !empty($row['p_new_price']) ? $row['p_new_price'] : $row['p_current_price']; ?></td>
 									<td><?php echo $row['p_qty']; ?></td>
 									<td>
 										<?php if($row['p_is_featured'] == 1) {echo '<span class="badge badge-success" style="background-color:green;">Yes</span>';} else {echo '<span class="badge badge-success" style="background-color:red;">No</span>';} ?>

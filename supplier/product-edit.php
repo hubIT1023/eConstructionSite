@@ -143,7 +143,8 @@ if(isset($_POST['form1'])) {
                                     p_specs=?,
                                     p_delivery_estimate=?,
                                     p_pdf=?,
-                                    p_sku=?
+                                    p_sku=?,
+                                    p_new_price=?
 
         							WHERE p_id=?");
         	$statement->execute(array(
@@ -165,6 +166,7 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_delivery_estimate'],
                                     $_POST['p_pdf'],
                                     $_POST['p_sku'],
+                                    (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
         							$_REQUEST['id']
         						));
         } else {
@@ -193,7 +195,8 @@ if(isset($_POST['form1'])) {
                                     p_specs=?,
                                     p_delivery_estimate=?,
                                     p_pdf=?,
-                                    p_sku=?
+                                    p_sku=?,
+                                    p_new_price=?
 
         							WHERE p_id=?");
         	$statement->execute(array(
@@ -216,6 +219,7 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_delivery_estimate'],
                                     $_POST['p_pdf'],
                                     $_POST['p_sku'],
+                                    (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
         							$_REQUEST['id']
         						));
         }
@@ -258,6 +262,7 @@ if(isset($_POST['form1'])) {
 $p_name = $product['p_name'];
 $p_old_price = $product['p_old_price'];
 $p_current_price = $product['p_current_price'];
+$p_new_price = isset($product['p_new_price']) ? $product['p_new_price'] : '';
 $p_qty = $product['p_qty'];
 $p_featured_photo = $product['p_featured_photo'];
 $p_description = $product['p_description'];
@@ -433,9 +438,15 @@ foreach ($result as $row) {
 							</div>
 						</div>
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Current Price <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<label for="" class="col-sm-3 control-label">(C) Price (Commercial) <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
 							<div class="col-sm-4">
 								<input type="text" name="p_current_price" class="form-control" value="<?php echo htmlspecialchars($p_current_price); ?>" required>
+							</div>
+						</div>	
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(N)Price (Net Price)<br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<div class="col-sm-4">
+								<input type="text" name="p_new_price" class="form-control" value="<?php echo htmlspecialchars($p_new_price); ?>" placeholder="Optional (defaults to (C) Price)">
 							</div>
 						</div>	
 						<div class="form-group">
