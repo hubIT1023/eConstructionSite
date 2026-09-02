@@ -72,6 +72,20 @@
 							$result = $statement->fetchAll(PDO::FETCH_ASSOC);
 							foreach ($result as $row) {
 								$i++;
+								$clean_qty = intval(preg_replace('/[^0-9]/', '', strval($row['p_qty'])));
+								$clean_n_qty = (isset($row['p_new_qty']) && $row['p_new_qty'] !== null && $row['p_new_qty'] !== '') ? intval($row['p_new_qty']) : 0;
+								$clean_s_level = (isset($row['p_s_level']) && $row['p_s_level'] !== null && $row['p_s_level'] !== '') ? intval($row['p_s_level']) : 10;
+
+								$qty_style = '';
+								if ($clean_n_qty == 0) {
+									if ($clean_qty < ($clean_s_level * 0.5)) {
+										// Quantity < 50% of (S)Level AND (N)Quantity = 0 -> RED
+										$qty_style = 'background-color: #ef4444 !important; color: #ffffff !important; font-weight: 800; text-align: center;';
+									} elseif ($clean_qty < $clean_s_level) {
+										// Quantity < (S)Level AND (N)Quantity = 0 -> YELLOW
+										$qty_style = 'background-color: #fef08a !important; color: #854d0e !important; font-weight: 800; text-align: center;';
+									}
+								}
 								?>
 								<tr>
 									<td><?php echo $i; ?></td>
@@ -80,9 +94,9 @@
 									<td>&#8369;<?php echo $row['p_old_price']; ?></td>
 									<td>&#8369;<?php echo $row['p_current_price']; ?></td>
 									<td>&#8369;<?php echo !empty($row['p_new_price']) ? $row['p_new_price'] : $row['p_current_price']; ?></td>
-									<td><?php echo $row['p_qty']; ?></td>
-									<td><?php echo (isset($row['p_new_qty']) && $row['p_new_qty'] !== null && $row['p_new_qty'] !== '') ? $row['p_new_qty'] : 0; ?></td>
-									<td><?php echo (isset($row['p_s_level']) && $row['p_s_level'] !== null && $row['p_s_level'] !== '') ? $row['p_s_level'] : 10; ?></td>
+									<td style="<?php echo $qty_style; ?>"><?php echo $row['p_qty']; ?></td>
+									<td><?php echo $clean_n_qty; ?></td>
+									<td><?php echo $clean_s_level; ?></td>
 									<td>
 										<?php if($row['p_is_featured'] == 1) {echo '<span class="badge badge-success" style="background-color:green;">Yes</span>';} else {echo '<span class="badge badge-success" style="background-color:red;">No</span>';} ?>
 									</td>
