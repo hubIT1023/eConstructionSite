@@ -144,7 +144,8 @@ if(isset($_POST['form1'])) {
                                     p_delivery_estimate=?,
                                     p_pdf=?,
                                     p_sku=?,
-                                    p_new_price=?
+                                    p_new_price=?,
+                                    p_new_qty=?
 
         							WHERE p_id=?");
         	$statement->execute(array(
@@ -167,6 +168,7 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_pdf'],
                                     $_POST['p_sku'],
                                     (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
+                                    (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
         							$_REQUEST['id']
         						));
         } else {
@@ -196,7 +198,8 @@ if(isset($_POST['form1'])) {
                                     p_delivery_estimate=?,
                                     p_pdf=?,
                                     p_sku=?,
-                                    p_new_price=?
+                                    p_new_price=?,
+                                    p_new_qty=?
 
         							WHERE p_id=?");
         	$statement->execute(array(
@@ -220,6 +223,7 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_pdf'],
                                     $_POST['p_sku'],
                                     (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
+                                    (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
         							$_REQUEST['id']
         						));
         }
@@ -264,6 +268,7 @@ $p_old_price = $product['p_old_price'];
 $p_current_price = $product['p_current_price'];
 $p_new_price = isset($product['p_new_price']) ? $product['p_new_price'] : '';
 $p_qty = $product['p_qty'];
+$p_new_qty = isset($product['p_new_qty']) ? $product['p_new_qty'] : 0;
 $p_featured_photo = $product['p_featured_photo'];
 $p_description = $product['p_description'];
 $p_short_description = $product['p_short_description'];
@@ -450,9 +455,15 @@ foreach ($result as $row) {
 							</div>
 						</div>	
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Quantity in Stock <span>*</span></label>
+							<label for="" class="col-sm-3 control-label">Quantity in Stock (Current) <span>*</span></label>
 							<div class="col-sm-4">
 								<input type="text" name="p_qty" class="form-control" value="<?php echo htmlspecialchars($p_qty); ?>" required>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(N)Quantity (New Quantity)</label>
+							<div class="col-sm-4">
+								<input type="number" name="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>">
 							</div>
 						</div>
 						<div class="form-group">

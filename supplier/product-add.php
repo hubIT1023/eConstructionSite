@@ -164,8 +164,9 @@ if(isset($_POST['form1'])) {
                                         p_delivery_estimate,
                                         p_pdf,
                                         p_sku,
-                                        p_new_price
-									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                                        p_new_price,
+                                        p_new_qty
+									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 		$statement->execute(array(
                                         $ai_id,
 										$_POST['p_name'],
@@ -189,7 +190,8 @@ if(isset($_POST['form1'])) {
                                         $_POST['p_delivery_estimate'],
                                         $_POST['p_pdf'],
                                         $_POST['p_sku'],
-                                        (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price']
+                                        (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
+                                        (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0
 									));
 
         if(isset($_POST['size'])) {
@@ -341,9 +343,15 @@ if(isset($_POST['form1'])) {
 							</div>
 						</div>	
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Quantity in Stock <span>*</span></label>
+							<label for="" class="col-sm-3 control-label">Quantity in Stock (Current) <span>*</span></label>
 							<div class="col-sm-4">
 								<input type="text" name="p_qty" class="form-control" required>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(N)Quantity (New Quantity)</label>
+							<div class="col-sm-4">
+								<input type="number" name="p_new_qty" class="form-control" value="0">
 							</div>
 						</div>
 						<div class="form-group">
