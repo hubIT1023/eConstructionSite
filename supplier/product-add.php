@@ -165,8 +165,9 @@ if(isset($_POST['form1'])) {
                                         p_pdf,
                                         p_sku,
                                         p_new_price,
-                                        p_new_qty
-									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                                        p_new_qty,
+                                        p_s_level
+									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 		$statement->execute(array(
                                         $ai_id,
 										$_POST['p_name'],
@@ -191,7 +192,8 @@ if(isset($_POST['form1'])) {
                                         $_POST['p_pdf'],
                                         $_POST['p_sku'],
                                         (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
-                                        (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0
+                                        (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
+                                        (isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '') ? intval($_POST['p_s_level']) : 10
 									));
 
         if(isset($_POST['size'])) {
@@ -352,6 +354,12 @@ if(isset($_POST['form1'])) {
 							<label for="" class="col-sm-3 control-label">(N)Quantity (New Quantity)</label>
 							<div class="col-sm-4">
 								<input type="number" name="p_new_qty" class="form-control" value="0">
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(S)Level (Safety Stock Level)</label>
+							<div class="col-sm-4">
+								<input type="number" name="p_s_level" class="form-control" value="10">
 							</div>
 						</div>
 						<div class="form-group">

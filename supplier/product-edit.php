@@ -145,7 +145,8 @@ if(isset($_POST['form1'])) {
                                     p_pdf=?,
                                     p_sku=?,
                                     p_new_price=?,
-                                    p_new_qty=?
+                                    p_new_qty=?,
+                                    p_s_level=?
 
         							WHERE p_id=?");
         	$statement->execute(array(
@@ -169,6 +170,7 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_sku'],
                                     (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
                                     (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
+                                    (isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '') ? intval($_POST['p_s_level']) : 10,
         							$_REQUEST['id']
         						));
         } else {
@@ -199,7 +201,8 @@ if(isset($_POST['form1'])) {
                                     p_pdf=?,
                                     p_sku=?,
                                     p_new_price=?,
-                                    p_new_qty=?
+                                    p_new_qty=?,
+                                    p_s_level=?
 
         							WHERE p_id=?");
         	$statement->execute(array(
@@ -224,6 +227,7 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_sku'],
                                     (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'],
                                     (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
+                                    (isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '') ? intval($_POST['p_s_level']) : 10,
         							$_REQUEST['id']
         						));
         }
@@ -269,6 +273,7 @@ $p_current_price = $product['p_current_price'];
 $p_new_price = isset($product['p_new_price']) ? $product['p_new_price'] : '';
 $p_qty = $product['p_qty'];
 $p_new_qty = isset($product['p_new_qty']) ? $product['p_new_qty'] : 0;
+$p_s_level = isset($product['p_s_level']) ? $product['p_s_level'] : 10;
 $p_featured_photo = $product['p_featured_photo'];
 $p_description = $product['p_description'];
 $p_short_description = $product['p_short_description'];
@@ -464,6 +469,12 @@ foreach ($result as $row) {
 							<label for="" class="col-sm-3 control-label">(N)Quantity (New Quantity)</label>
 							<div class="col-sm-4">
 								<input type="number" name="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>">
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(S)Level (Safety Stock Level)</label>
+							<div class="col-sm-4">
+								<input type="number" name="p_s_level" class="form-control" value="<?php echo htmlspecialchars($p_s_level); ?>">
 							</div>
 						</div>
 						<div class="form-group">
