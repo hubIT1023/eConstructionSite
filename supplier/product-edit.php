@@ -438,13 +438,13 @@ foreach ($result as $row) {
 							</div>
 						</div>
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">(C) Price (Commercial) <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<label for="" class="col-sm-3 control-label">(C) Price (Current Price) <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
 							<div class="col-sm-4">
 								<input type="text" name="p_current_price" class="form-control" value="<?php echo htmlspecialchars($p_current_price); ?>" required>
 							</div>
 						</div>	
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">(N)Price (Net Price)<br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<label for="" class="col-sm-3 control-label">(N) Price (New Price)<br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
 							<div class="col-sm-4">
 								<input type="text" name="p_new_price" class="form-control" value="<?php echo htmlspecialchars($p_new_price); ?>" placeholder="Optional (defaults to (C) Price)">
 							</div>
