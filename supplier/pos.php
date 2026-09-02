@@ -212,13 +212,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
             $statement_stock = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
             $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
 
-            // Automatic inventory & price rollover if stock reached 0 and (N)Quantity > 10% of (S)Level:
+            // Automatic inventory & price rollover if stock reached 0 or 1 and (N)Quantity > 10% of (S)Level:
             $statement_rollover = $pdo->prepare("UPDATE tbl_product 
-                SET p_qty = p_new_qty,
+                SET p_qty = p_qty + p_new_qty,
                     p_current_price = CASE WHEN (p_new_price IS NOT NULL AND p_new_price != '') THEN p_new_price ELSE p_current_price END,
                     p_new_qty = 0
                 WHERE p_id = ? 
-                  AND p_qty = 0 
+                  AND (p_qty = 0 OR p_qty = 1) 
                   AND p_new_qty > (COALESCE(p_s_level, 10) * 0.1)");
             $statement_rollover->execute(array($p_id));
         }
