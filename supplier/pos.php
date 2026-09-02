@@ -343,32 +343,37 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                     <div class="row" id="posProductGrid" style="max-height: 620px; overflow-y: auto; padding: 4px;">
                         <?php if (count($product_list) > 0): ?>
                             <?php foreach ($product_list as $prod): 
-                                $is_out_of_stock = ($prod['p_qty'] <= 0);
+                                $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
+                                $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
+                                $is_out_of_stock = ($clean_stock <= 0);
                                 $img_src = (!empty($prod['p_featured_photo']) && file_exists('../assets/uploads/'.$prod['p_featured_photo'])) 
                                     ? '../assets/uploads/'.$prod['p_featured_photo'] 
                                     : '../assets/uploads/photo-6.jpg';
+
+                                $prod_data = array(
+                                    'id' => intval($prod['p_id']),
+                                    'name' => $prod['p_name'],
+                                    'price' => $clean_price,
+                                    'stock' => $clean_stock,
+                                    'photo' => $img_src
+                                );
                             ?>
                             <div class="col-xs-6 col-sm-4 col-md-4 col-lg-3 pos-product-item" 
                                  data-name="<?php echo strtolower(htmlspecialchars($prod['p_name'] . ' ' . $prod['p_brand'])); ?>"
                                  data-category="<?php echo htmlspecialchars($prod['ecat_name']); ?>"
-                                 onclick="<?php echo $is_out_of_stock ? 'void(0);' : "addToCart(" . htmlspecialchars(json_encode(array(
-                                     'id' => $prod['p_id'],
-                                     'name' => $prod['p_name'],
-                                     'price' => floatval($prod['p_current_price']),
-                                     'stock' => intval($prod['p_qty']),
-                                     'photo' => $img_src
-                                 ))) . ")"; ?>">
+                                 data-product='<?php echo htmlspecialchars(json_encode($prod_data), ENT_QUOTES, 'UTF-8'); ?>'
+                                 onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleProductCardClick(this);'; ?>">
                                 
                                 <div class="pos-product-card <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>">
-                                    <span class="label pos-stock-badge <?php echo $is_out_of_stock ? 'label-danger' : ($prod['p_qty'] < 10 ? 'label-warning' : 'label-success'); ?>">
-                                        <?php echo $is_out_of_stock ? 'Out of Stock' : $prod['p_qty'] . ' in stock'; ?>
+                                    <span class="label pos-stock-badge <?php echo $is_out_of_stock ? 'label-danger' : ($clean_stock < 10 ? 'label-warning' : 'label-success'); ?>">
+                                        <?php echo $is_out_of_stock ? 'Out of Stock' : $clean_stock . ' in stock'; ?>
                                     </span>
                                     <div class="pos-product-img" style="background-image: url('<?php echo $img_src; ?>');"></div>
                                     <div class="pos-product-title" title="<?php echo htmlspecialchars($prod['p_name']); ?>">
                                         <?php echo htmlspecialchars($prod['p_name']); ?>
                                     </div>
                                     <div class="pos-product-price">
-                                        &#8369;<?php echo number_format($prod['p_current_price'], 2); ?>
+                                        &#8369;<?php echo number_format($clean_price, 2); ?>
                                     </div>
                                 </div>
                             </div>
@@ -662,6 +667,18 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 
 <script>
 let cart = [];
+
+function handleProductCardClick(element) {
+    const rawData = element.getAttribute('data-product');
+    if (rawData) {
+        try {
+            const product = JSON.parse(rawData);
+            addToCart(product);
+        } catch (e) {
+            console.error('Failed to parse product data', e);
+        }
+    }
+}
 
 function addToCart(product) {
     const existingIndex = cart.findIndex(item => item.id === product.id);
