@@ -34,6 +34,15 @@
 						</thead>
 						<tbody>
 							<?php
+							// Automatic inventory & price rollover:
+							// If "Quantity = 0" AND "(N)Quantity > 10% of (S)Level", "Quantity = (N)Quantity" THEN "(C)Price = (N)Price"
+							$pdo->query("UPDATE tbl_product 
+								SET p_qty = p_new_qty,
+								    p_current_price = CASE WHEN (p_new_price IS NOT NULL AND p_new_price != '') THEN p_new_price ELSE p_current_price END,
+								    p_new_qty = 0
+								WHERE p_qty = 0 
+								  AND p_new_qty > (COALESCE(p_s_level, 10) * 0.1)");
+
 							$i=0;
 							$statement = $pdo->prepare("SELECT
 														
