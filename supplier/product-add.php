@@ -34,9 +34,34 @@ if(isset($_POST['form1'])) {
         $error_message .= "You must select a mid level category<br>";
     }
 
+    $final_ecat_id = 0;
     if(empty($_POST['ecat_id'])) {
         $valid = 0;
         $error_message .= "You must select an end level category<br>";
+    } elseif($_POST['ecat_id'] == 'other_new') {
+        if(empty(trim($_POST['new_ecat_name']))) {
+            $valid = 0;
+            $error_message .= "Please enter the new end level category name<br>";
+        } else {
+            $new_ecat_name = trim($_POST['new_ecat_name']);
+            $mcat_id = intval($_POST['mcat_id']);
+            
+            // Check if it already exists
+            $statement_ecat_check = $pdo->prepare("SELECT ecat_id FROM tbl_end_category WHERE LOWER(ecat_name) = LOWER(?) AND mcat_id = ?");
+            $statement_ecat_check->execute(array($new_ecat_name, $mcat_id));
+            $existing_ecat = $statement_ecat_check->fetch(PDO::FETCH_ASSOC);
+            
+            if($existing_ecat) {
+                $final_ecat_id = $existing_ecat['ecat_id'];
+            } else {
+                $statement_new_ecat = $pdo->prepare("INSERT INTO tbl_end_category (ecat_name, mcat_id) VALUES (?, ?) RETURNING ecat_id");
+                $statement_new_ecat->execute(array($new_ecat_name, $mcat_id));
+                $new_row = $statement_new_ecat->fetch(PDO::FETCH_ASSOC);
+                $final_ecat_id = $new_row['ecat_id'];
+            }
+        }
+    } else {
+        $final_ecat_id = intval($_POST['ecat_id']);
     }
 
     if(empty($_POST['p_name'])) {
@@ -155,7 +180,7 @@ if(isset($_POST['form1'])) {
 										0,
 										$_POST['p_is_featured'],
 										$_POST['p_is_active'],
-										$_POST['ecat_id'],
+										$final_ecat_id,
                                         $supplier_id,
                                         intval($_POST['p_moq']),
                                         $_POST['p_brand'],
@@ -241,9 +266,22 @@ if(isset($_POST['form1'])) {
 						<div class="form-group">
 							<label for="" class="col-sm-3 control-label">End Level Category Name <span>*</span></label>
 							<div class="col-sm-4">
-								<select name="ecat_id" class="form-control select2 end-cat" required>
+								<select name="ecat_id" id="ecat_id" class="form-control select2 end-cat" required>
 									<option value="">Select End Level Category</option>
 								</select>
+							</div>
+							<div class="col-sm-4" style="padding-top: 4px;">
+								<button type="button" class="btn btn-info btn-sm" onclick="enableNewCategoryInput()"><i class="fa fa-plus"></i> New Category</button>
+							</div>
+						</div>
+						<div class="form-group" id="newCategoryWrapper" style="display: none; background: #f0f7ff; padding: 12px 0; border: 1px dashed #3b82f6; border-radius: 6px; margin-bottom: 15px;">
+							<label for="" class="col-sm-3 control-label" style="color: #1d4ed8;">New End Category Name <span>*</span></label>
+							<div class="col-sm-4">
+								<input type="text" name="new_ecat_name" id="new_ecat_name" class="form-control" placeholder="Enter new category name (e.g. Deformed Rebars)">
+								<small class="text-muted">Will automatically create and link this new category under the selected Mid Level Category.</small>
+							</div>
+							<div class="col-sm-4" style="padding-top: 4px;">
+								<button type="button" class="btn btn-default btn-sm" onclick="cancelNewCategoryInput()"><i class="fa fa-times"></i> Cancel</button>
 							</div>
 						</div>
 						<div class="form-group">
@@ -425,6 +463,46 @@ if(isset($_POST['form1'])) {
 			</form>
 		</div>
 	</div>
-</section>
+<script>
+function checkNewCategoryOption(val) {
+    if (val === 'other_new') {
+        $('#newCategoryWrapper').slideDown(200);
+        $('#new_ecat_name').focus();
+    } else {
+        $('#newCategoryWrapper').slideUp(200);
+        $('#new_ecat_name').val('');
+    }
+}
+
+function enableNewCategoryInput() {
+    var midCatVal = $('.mid-cat').val();
+    if (!midCatVal) {
+        alert('Please select a Top Level Category and Mid Level Category first.');
+        $('.top-cat').focus();
+        return;
+    }
+    
+    // Add option if not present
+    if ($('.end-cat option[value="other_new"]').length === 0) {
+        $('.end-cat').append('<option value="other_new">+ Add New Category (Not Found in List)</option>');
+    }
+    
+    $('.end-cat').val('other_new').trigger('change');
+    $('#newCategoryWrapper').slideDown(200);
+    $('#new_ecat_name').focus();
+}
+
+function cancelNewCategoryInput() {
+    $('.end-cat').val('').trigger('change');
+    $('#newCategoryWrapper').slideUp(200);
+    $('#new_ecat_name').val('');
+}
+
+$(document).ready(function() {
+    $(document).on('change', '.end-cat', function() {
+        checkNewCategoryOption($(this).val());
+    });
+});
+</script>
 
 <?php require_once('footer.php'); ?>
