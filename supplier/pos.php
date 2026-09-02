@@ -7,6 +7,7 @@ function parseConstructionProductDetails($raw_name) {
     $name = trim($raw_name);
     $color = "";
     $thickness = "";
+    $diameter = "";
     $size = "";
     $base_name = $name;
 
@@ -20,8 +21,16 @@ function parseConstructionProductDetails($raw_name) {
         }
     }
 
-    // 2. Detect Thickness/Diameter in parentheses (e.g., ( t = 1/4 " ), (t = 1.2), (t = 3/16), (D = 16 mm))
-    if (preg_match('/\(\s*([tTdD]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
+    // 2. Detect Diameter (e.g. (D = 10 mm), (D = 16 mm), (D = 1.7 mm))
+    if (preg_match('/\(\s*([dD]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
+        $diameter = trim($matches[1]);
+        if (empty($color) && !empty($matches[2])) {
+            $color = trim($matches[2]);
+        }
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+    // 3. Detect Thickness (e.g., ( t = 1/4 " ), (t = 1.2), (t = 3/16))
+    elseif (preg_match('/\(\s*([tT]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
         $thickness = trim($matches[1]);
         if (empty($color) && !empty($matches[2])) {
             $color = trim($matches[2]);
@@ -34,7 +43,7 @@ function parseConstructionProductDetails($raw_name) {
         $name = trim(str_replace($matches[0], '', $name));
     }
 
-    // 3. Detect Size from remaining string if not yet found
+    // 4. Detect Size from remaining string if not yet found
     if (empty($size)) {
         // Pattern A: Hyphen followed by dimensions (e.g. - 1 1/2" x 1 1/2" or - 2" x 2" or - 2 x 3)
         if (preg_match('/-\s*([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
@@ -62,6 +71,7 @@ function parseConstructionProductDetails($raw_name) {
         'base_name' => $base_name,
         'size' => $size,
         'thickness' => $thickness,
+        'diameter' => $diameter,
         'color' => $color
     ];
 }
@@ -488,6 +498,7 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                     'base_name' => $parsed_spec['base_name'],
                                     'size' => $parsed_spec['size'],
                                     'thickness' => $parsed_spec['thickness'],
+                                    'diameter' => $parsed_spec['diameter'],
                                     'color' => $parsed_spec['color'],
                                     'price' => $clean_price,
                                     'stock' => $clean_stock,
@@ -521,6 +532,12 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                         <div class="pos-spec-row">
                                             <span class="pos-spec-label">Thickness:</span>
                                             <span class="pos-spec-val pos-spec-thick"><?php echo htmlspecialchars($parsed_spec['thickness']); ?></span>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($parsed_spec['diameter'])): ?>
+                                        <div class="pos-spec-row">
+                                            <span class="pos-spec-label">Diameter:</span>
+                                            <span class="pos-spec-val pos-spec-thick"><?php echo htmlspecialchars($parsed_spec['diameter']); ?></span>
                                         </div>
                                         <?php endif; ?>
                                         <?php if (!empty($parsed_spec['color'])): ?>
@@ -864,6 +881,7 @@ function addToCart(product) {
             base_name: product.base_name || product.name,
             size: product.size || '',
             thickness: product.thickness || '',
+            diameter: product.diameter || '',
             color: product.color || '',
             price: product.price,
             stock: product.stock,
@@ -925,6 +943,7 @@ function renderCart() {
             let specsArr = [];
             if (item.size) specsArr.push(`<span style="color: #0369a1; font-weight: 700;">${escapeHtml(item.size)}</span>`);
             if (item.thickness) specsArr.push(`<span style="color: #047857; font-weight: 700;">${escapeHtml(item.thickness)}</span>`);
+            if (item.diameter) specsArr.push(`<span style="color: #047857; font-weight: 700;">Diameter: ${escapeHtml(item.diameter)}</span>`);
             if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
             let specsHtml = specsArr.length > 0 ? `<div style="font-size: 12px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
 
