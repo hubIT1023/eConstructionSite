@@ -192,17 +192,18 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 15px;
+    padding: 12px;
+    margin-bottom: 18px;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     position: relative;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    border: 2px solid #e2e8f0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 .pos-product-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-    border-color: #3b82f6;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.18);
+    border-color: #2563eb;
 }
 .pos-product-card.out-of-stock {
     opacity: 0.6;
@@ -210,77 +211,87 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
     background: #f8fafc;
 }
 .pos-product-img {
-    height: 110px;
+    height: 130px;
     width: 100%;
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
     background-color: #fff;
-    border-radius: 4px;
-    margin-bottom: 8px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    border: 1px solid #f1f5f9;
 }
 .pos-product-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1f2937;
-    height: 34px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    min-height: 44px;
     overflow: hidden;
-    line-height: 1.3;
+    line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
 }
 .pos-product-price {
-    font-size: 14px;
-    font-weight: 700;
-    color: #2563eb;
-    margin-top: 4px;
+    font-size: 20px;
+    font-weight: 800;
+    color: #1d4ed8;
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 .pos-stock-badge {
     position: absolute;
-    top: 6px;
-    right: 6px;
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 4px;
+    top: 8px;
+    right: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
 .pos-cart-panel {
     background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    padding: 15px;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    padding: 18px;
     position: sticky;
     top: 15px;
 }
 .pos-cart-table th {
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 700;
     text-transform: uppercase;
-    color: #64748b;
-    border-bottom: 2px solid #f1f5f9;
+    color: #475569;
+    border-bottom: 2px solid #e2e8f0;
+    padding: 8px 4px;
 }
 .pos-cart-table td {
     vertical-align: middle !important;
-    font-size: 13px;
+    font-size: 14px;
 }
 .pos-qty-btn {
-    padding: 2px 7px;
-    font-size: 11px;
-    font-weight: bold;
+    padding: 4px 10px;
+    font-size: 14px;
+    font-weight: 800;
+    min-width: 30px;
 }
 .pos-preset-btn {
-    margin-right: 4px;
-    margin-bottom: 4px;
-    padding: 4px 8px;
-    font-size: 12px;
-}
-.pos-cat-pill {
     margin-right: 5px;
     margin-bottom: 5px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.pos-cat-pill {
+    margin-right: 6px;
+    margin-bottom: 6px;
     border-radius: 20px;
-    padding: 4px 12px;
-    font-size: 12px;
-    font-weight: 500;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
 }
 .pos-cat-pill.active {
@@ -315,10 +326,10 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                     <div class="row" style="margin-bottom: 12px;">
                         <div class="col-sm-7">
                             <div class="input-group">
-                                <span class="input-group-addon"><i class="fa fa-search"></i></span>
-                                <input type="text" id="posSearchInput" class="form-control" placeholder="Search product by name, brand, or SKU..." onkeyup="filterPOSProducts()">
+                                <span class="input-group-addon" style="font-size: 16px;"><i class="fa fa-search"></i></span>
+                                <input type="text" id="posSearchInput" class="form-control input-lg" style="height: 42px; font-size: 15px;" placeholder="Search product by name, brand, or SKU..." onkeyup="filterPOSProducts()">
                                 <span class="input-group-btn">
-                                    <button class="btn btn-default" type="button" onclick="clearPOSSearch()"><i class="fa fa-times"></i></button>
+                                    <button class="btn btn-default input-lg" type="button" onclick="clearPOSSearch()" style="height: 42px;"><i class="fa fa-times"></i></button>
                                 </span>
                             </div>
                         </div>
@@ -358,7 +369,7 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                     'photo' => $img_src
                                 );
                             ?>
-                            <div class="col-xs-6 col-sm-4 col-md-4 col-lg-3 pos-product-item" 
+                            <div class="col-xs-12 col-sm-6 col-md-6 col-lg-4 pos-product-item" 
                                  data-name="<?php echo strtolower(htmlspecialchars($prod['p_name'] . ' ' . $prod['p_brand'])); ?>"
                                  data-category="<?php echo htmlspecialchars($prod['ecat_name']); ?>"
                                  data-product='<?php echo htmlspecialchars(json_encode($prod_data), ENT_QUOTES, 'UTF-8'); ?>'
@@ -466,41 +477,39 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                     </div>
 
                     <!-- Pricing & Fulfillment Summary -->
-                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                    <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 600; margin-bottom: 8px;">
                             <span class="text-muted">Subtotal:</span>
-                            <span style="font-weight: 600;">&#8369;<span id="posSubtotal">0.00</span></span>
+                            <span style="color: #1e293b;">&#8369;<span id="posSubtotal">0.00</span></span>
                         </div>
 
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 6px;">
-                            <span class="text-muted">Fulfillment:</span>
-                            <select name="delivery_type" id="posDeliveryType" class="form-control input-sm" style="width: 140px; height: 26px; padding: 2px 6px; font-size: 12px;" onchange="updatePOSCalculations()">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
+                            <span class="text-muted" style="font-weight: 600;">Fulfillment:</span>
+                            <select name="delivery_type" id="posDeliveryType" class="form-control input-sm" style="width: 160px; height: 32px; padding: 4px 8px; font-size: 13px; font-weight: 600;" onchange="updatePOSCalculations()">
                                 <option value="pickup">Store Pickup (₱0)</option>
                                 <option value="delivery">Delivery</option>
                             </select>
                         </div>
 
-                        <div id="deliveryFeeRow" style="display: none; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 6px;">
-                            <span class="text-muted">Delivery Fee:</span>
-                            <div class="input-group" style="width: 110px;">
-                                <span class="input-group-addon" style="padding: 2px 6px; font-size: 11px;">&#8369;</span>
-                                <input type="number" step="any" name="delivery_cost" id="posDeliveryCost" class="form-control input-sm" value="0.00" style="height: 26px; padding: 2px 6px; font-size: 12px; text-align: right;" onkeyup="updatePOSCalculations()">
+                        <div id="deliveryFeeRow" style="display: none; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
+                            <span class="text-muted" style="font-weight: 600;">Delivery Fee:</span>
+                            <div class="input-group" style="width: 130px;">
+                                <span class="input-group-addon" style="padding: 4px 8px; font-size: 13px; font-weight: bold;">&#8369;</span>
+                                <input type="number" step="any" name="delivery_cost" id="posDeliveryCost" class="form-control input-sm" value="0.00" style="height: 32px; padding: 4px 8px; font-size: 14px; font-weight: bold; text-align: right;" onkeyup="updatePOSCalculations()">
                             </div>
                         </div>
 
-                        <hr style="margin: 8px 0; border-top: 1px dashed #cbd5e1;">
-
-                        <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 700; color: #1e293b;">
-                            <span>Grand Total:</span>
-                            <span style="color: #2563eb;">&#8369;<span id="posGrandTotal">0.00</span></span>
+                        <div style="background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 18px; font-weight: 800; color: #1e3a8a;">Grand Total:</span>
+                            <span style="font-size: 24px; font-weight: 900; color: #1d4ed8;">&#8369;<span id="posGrandTotal">0.00</span></span>
                         </div>
                     </div>
 
                     <!-- Payment Method & Tendered Calculator -->
-                    <div style="margin-bottom: 15px;">
-                        <div class="form-group" style="margin-bottom: 8px;">
-                            <label style="font-size: 12px; margin-bottom: 4px;">Payment Method:</label>
-                            <select name="payment_method" id="posPaymentMethod" class="form-control input-sm" onchange="handlePaymentMethodChange()">
+                    <div style="margin-bottom: 18px;">
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Payment Method:</label>
+                            <select name="payment_method" id="posPaymentMethod" class="form-control input-lg" style="height: 42px; font-size: 15px; font-weight: 600;" onchange="handlePaymentMethodChange()">
                                 <option value="Cash (OTC)">💵 Cash (Over the Counter)</option>
                                 <option value="GCash / Maya">📱 GCash / Maya E-Wallet</option>
                                 <option value="Debit/Credit Card">💳 Debit / Credit Card</option>
@@ -510,32 +519,32 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                         </div>
 
                         <div id="cashCalculatorSection">
-                            <div class="form-group" style="margin-bottom: 6px;">
-                                <label style="font-size: 12px; margin-bottom: 4px;">Amount Tendered:</label>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Amount Tendered (Cash Received):</label>
                                 <div class="input-group">
-                                    <span class="input-group-addon">&#8369;</span>
-                                    <input type="number" step="any" id="posAmountTendered" name="amount_tendered" class="form-control" placeholder="0.00" onkeyup="updatePOSCalculations()" style="font-size: 16px; font-weight: bold;">
+                                    <span class="input-group-addon" style="font-size: 20px; font-weight: bold;">&#8369;</span>
+                                    <input type="number" step="any" id="posAmountTendered" name="amount_tendered" class="form-control input-lg" placeholder="0.00" onkeyup="updatePOSCalculations()" style="font-size: 22px; font-weight: 900; height: 48px; color: #0f172a;">
                                 </div>
                             </div>
 
                             <!-- Quick Cash Presets -->
-                            <div style="margin-bottom: 8px;">
-                                <button type="button" class="btn btn-default btn-xs pos-preset-btn" onclick="setExactAmount()">Exact</button>
-                                <button type="button" class="btn btn-default btn-xs pos-preset-btn" onclick="setCashPreset(100)">₱100</button>
-                                <button type="button" class="btn btn-default btn-xs pos-preset-btn" onclick="setCashPreset(500)">₱500</button>
-                                <button type="button" class="btn btn-default btn-xs pos-preset-btn" onclick="setCashPreset(1000)">₱1,000</button>
-                                <button type="button" class="btn btn-default btn-xs pos-preset-btn" onclick="setCashPreset(5000)">₱5,000</button>
+                            <div style="margin-bottom: 12px;">
+                                <button type="button" class="btn btn-default pos-preset-btn" onclick="setExactAmount()">Exact</button>
+                                <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(100)">₱100</button>
+                                <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(500)">₱500</button>
+                                <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(1000)">₱1,000</button>
+                                <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(5000)">₱5,000</button>
                             </div>
 
-                            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 13px; font-weight: 600; color: #065f46;">Change Due:</span>
-                                <span style="font-size: 16px; font-weight: 700; color: #047857;">&#8369;<span id="posChangeAmount">0.00</span></span>
+                            <div style="background: #ecfdf5; border: 2px solid #6ee7b7; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 17px; font-weight: 800; color: #065f46;">Change Due:</span>
+                                <span style="font-size: 24px; font-weight: 900; color: #047857;">&#8369;<span id="posChangeAmount">0.00</span></span>
                             </div>
                         </div>
                     </div>
 
                     <!-- Submit Button -->
-                    <button type="submit" id="posCompleteBtn" class="btn btn-success btn-block btn-lg" style="font-weight: bold; border-radius: 6px;" disabled>
+                    <button type="submit" id="posCompleteBtn" class="btn btn-success btn-block btn-lg" style="font-size: 18px; font-weight: 800; border-radius: 8px; padding: 14px 20px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);" disabled>
                         <i class="fa fa-check-circle"></i> Complete Sale & Print Receipt
                     </button>
 
@@ -756,20 +765,20 @@ function renderCart() {
             const lineTotal = (item.price * item.qty).toFixed(2);
             html += `
                 <tr>
-                    <td style="padding: 6px 4px;">
-                        <strong style="color: #1e293b; font-size: 12px;">${escapeHtml(item.name)}</strong>
-                        <div class="text-muted" style="font-size: 11px;">₱${item.price.toFixed(2)}</div>
+                    <td style="padding: 8px 4px;">
+                        <strong style="color: #0f172a; font-size: 14px; display: block; line-height: 1.3;">${escapeHtml(item.name)}</strong>
+                        <div style="font-size: 13px; font-weight: 600; color: #64748b; margin-top: 2px;">&#8369;${item.price.toFixed(2)} each</div>
                     </td>
-                    <td style="padding: 6px 4px; text-align: center;">
-                        <div class="btn-group btn-group-xs" style="display: inline-flex; align-items: center;">
+                    <td style="padding: 8px 4px; text-align: center;">
+                        <div class="btn-group" style="display: inline-flex; align-items: center;">
                             <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${item.id}, ${item.qty - 1})">-</button>
-                            <span style="display: inline-block; width: 26px; text-align: center; font-weight: 600; font-size: 12px;">${item.qty}</span>
+                            <span style="display: inline-block; width: 30px; text-align: center; font-weight: 800; font-size: 15px; color: #0f172a;">${item.qty}</span>
                             <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${item.id}, ${item.qty + 1})">+</button>
                         </div>
                     </td>
-                    <td style="padding: 6px 4px; text-align: right; font-weight: 600;">₱${lineTotal}</td>
-                    <td style="padding: 6px 2px; text-align: center;">
-                        <button type="button" class="btn btn-link btn-xs text-danger" onclick="removeFromCart(${item.id})" style="padding: 0;"><i class="fa fa-times"></i></button>
+                    <td style="padding: 8px 4px; text-align: right; font-weight: 800; font-size: 16px; color: #1e40af;">&#8369;${lineTotal}</td>
+                    <td style="padding: 8px 2px; text-align: center;">
+                        <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(${item.id})" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
                     </td>
                 </tr>`;
         });
