@@ -253,19 +253,18 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 }
 .pos-product-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1.5px solid #e2e8f0;
     border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 18px;
+    padding: 8px 10px;
+    margin-bottom: 14px;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     position: relative;
-    border: 2px solid #e2e8f0;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
 .pos-product-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.18);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
     border-color: #2563eb;
 }
 .pos-product-card.out-of-stock {
@@ -274,23 +273,23 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
     background: #f8fafc;
 }
 .pos-product-img {
-    height: 130px;
+    height: 95px;
     width: 100%;
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
     background-color: #fff;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    border-radius: 5px;
+    margin-bottom: 8px;
     border: 1px solid #f1f5f9;
 }
 .pos-product-details-box {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-bottom: 10px;
-    min-height: 105px;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    min-height: 85px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -298,29 +297,29 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 .pos-spec-row {
     display: flex;
     align-items: baseline;
-    margin-bottom: 4px;
-    line-height: 1.35;
+    margin-bottom: 2px;
+    line-height: 1.3;
 }
 .pos-spec-row:last-child {
     margin-bottom: 0;
 }
 .pos-spec-label {
-    width: 82px;
+    width: 68px;
     flex-shrink: 0;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 700;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.3px;
 }
 .pos-spec-val {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
     color: #1e293b;
     word-break: break-word;
 }
 .pos-spec-name {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 800;
     color: #0f172a;
 }
@@ -334,9 +333,9 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 }
 .pos-color-badge {
     display: inline-block;
-    padding: 2px 9px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
     font-weight: 800;
     border: 1px solid #cbd5e1;
     background: #fff;
@@ -353,23 +352,23 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 .pos-color-stainless { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
 .pos-color-galvanized { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
 .pos-product-price {
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 800;
     color: #1d4ed8;
-    margin-top: 4px;
+    margin-top: 2px;
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 .pos-stock-badge {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    font-size: 12px;
+    top: 6px;
+    right: 6px;
+    font-size: 11px;
     font-weight: 700;
-    padding: 4px 8px;
-    border-radius: 6px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    padding: 3px 6px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 .pos-cart-panel {
     background: #fff;
@@ -495,7 +494,7 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                     'photo' => $img_src
                                 );
                             ?>
-                            <div class="col-xs-12 col-sm-6 col-md-6 col-lg-4 pos-product-item" 
+                            <div class="col-xs-6 col-sm-4 col-md-4 col-lg-3 pos-product-item" 
                                  data-name="<?php echo strtolower(htmlspecialchars($prod['p_name'] . ' ' . $prod['p_brand'])); ?>"
                                  data-category="<?php echo htmlspecialchars($prod['ecat_name']); ?>"
                                  data-product='<?php echo htmlspecialchars(json_encode($prod_data), ENT_QUOTES, 'UTF-8'); ?>'
