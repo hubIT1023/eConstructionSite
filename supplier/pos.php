@@ -3,6 +3,69 @@
 <?php
 $supplier_id = $_SESSION['supplier_user']['supplier_id'];
 
+function parseConstructionProductDetails($raw_name) {
+    $name = trim($raw_name);
+    $color = "";
+    $thickness = "";
+    $size = "";
+    $base_name = $name;
+
+    // 1. Detect Color / Material keyword
+    $colors = ["Orange", "Green", "Blue", "Yellow", "Red", "Black", "White", "Brown", "Tan", "Pink", "Stainless", "Galvanized", "GI", "BI"];
+    foreach ($colors as $c) {
+        if (preg_match('/\b' . preg_quote($c, '/') . '\b/i', $name)) {
+            $color = $c;
+            $name = trim(preg_replace('/\b' . preg_quote($c, '/') . '\b/i', '', $name));
+            break;
+        }
+    }
+
+    // 2. Detect Thickness/Diameter in parentheses (e.g., ( t = 1/4 " ), (t = 1.2), (t = 3/16), (D = 16 mm))
+    if (preg_match('/\(\s*([tTdD]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
+        $thickness = trim($matches[1]);
+        if (empty($color) && !empty($matches[2])) {
+            $color = trim($matches[2]);
+        }
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+    // Check if there is other content in parentheses (e.g. (3-inch x 10ft) or (HEB 200))
+    elseif (preg_match('/\(\s*([^\)]+)\s*\)/i', $name, $matches)) {
+        $size = trim($matches[1]);
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+
+    // 3. Detect Size from remaining string if not yet found
+    if (empty($size)) {
+        // Pattern A: Hyphen followed by dimensions (e.g. - 1 1/2" x 1 1/2" or - 2" x 2" or - 2 x 3)
+        if (preg_match('/-\s*([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
+            $size = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+        // Pattern B: Dimensions with x (e.g. 1 1/2" x 1 1/2" or 2 x 3)
+        elseif (preg_match('/([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
+            $size = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+        // Pattern C: Common Nail 4", Finishing Nail 2", Square Bar 16mm, Round Bar 12mm
+        elseif (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:mm|cm|m|inch|in|ft|\"|#\d+))\b/i', $name, $matches)) {
+            $size = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+    }
+
+    $base_name = trim(trim($name), "- \t\n\r\0\x0B");
+    if (empty($base_name)) {
+        $base_name = $raw_name;
+    }
+
+    return [
+        'base_name' => $base_name,
+        'size' => $size,
+        'thickness' => $thickness,
+        'color' => $color
+    ];
+}
+
 // Fetch Supplier Info
 $statement = $pdo->prepare("SELECT * FROM tbl_supplier WHERE supplier_id=?");
 $statement->execute(array($supplier_id));
@@ -221,22 +284,79 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
     margin-bottom: 10px;
     border: 1px solid #f1f5f9;
 }
-.pos-product-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: #0f172a;
-    min-height: 44px;
-    overflow: hidden;
-    line-height: 1.35;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+.pos-product-details-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    min-height: 105px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
+.pos-spec-row {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 4px;
+    line-height: 1.35;
+}
+.pos-spec-row:last-child {
+    margin-bottom: 0;
+}
+.pos-spec-label {
+    width: 82px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.pos-spec-val {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e293b;
+    word-break: break-word;
+}
+.pos-spec-name {
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+}
+.pos-spec-size {
+    font-weight: 700;
+    color: #0369a1;
+}
+.pos-spec-thick {
+    font-weight: 700;
+    color: #047857;
+}
+.pos-color-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 800;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    text-transform: uppercase;
+}
+.pos-color-orange { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.pos-color-green { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.pos-color-blue { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.pos-color-yellow { background: #fefce8; color: #a16207; border-color: #fef08a; }
+.pos-color-red { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.pos-color-black { background: #1e293b; color: #f8fafc; border-color: #0f172a; }
+.pos-color-brown { background: #fdf8f6; color: #7c2d12; border-color: #fed7aa; }
+.pos-color-stainless { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+.pos-color-galvanized { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
 .pos-product-price {
     font-size: 20px;
     font-weight: 800;
     color: #1d4ed8;
-    margin-top: 6px;
+    margin-top: 4px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -361,9 +481,15 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                     ? '../assets/uploads/'.$prod['p_featured_photo'] 
                                     : '../assets/uploads/photo-6.jpg';
 
+                                $parsed_spec = parseConstructionProductDetails($prod['p_name']);
+
                                 $prod_data = array(
                                     'id' => intval($prod['p_id']),
                                     'name' => $prod['p_name'],
+                                    'base_name' => $parsed_spec['base_name'],
+                                    'size' => $parsed_spec['size'],
+                                    'thickness' => $parsed_spec['thickness'],
+                                    'color' => $parsed_spec['color'],
                                     'price' => $clean_price,
                                     'stock' => $clean_stock,
                                     'photo' => $img_src
@@ -380,11 +506,41 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                         <?php echo $is_out_of_stock ? 'Out of Stock' : $clean_stock . ' in stock'; ?>
                                     </span>
                                     <div class="pos-product-img" style="background-image: url('<?php echo $img_src; ?>');"></div>
-                                    <div class="pos-product-title" title="<?php echo htmlspecialchars($prod['p_name']); ?>">
-                                        <?php echo htmlspecialchars($prod['p_name']); ?>
+                                    
+                                    <div class="pos-product-details-box">
+                                        <div class="pos-spec-row">
+                                            <span class="pos-spec-label">Name:</span>
+                                            <span class="pos-spec-val pos-spec-name"><?php echo htmlspecialchars($parsed_spec['base_name']); ?></span>
+                                        </div>
+                                        <?php if (!empty($parsed_spec['size'])): ?>
+                                        <div class="pos-spec-row">
+                                            <span class="pos-spec-label">Size:</span>
+                                            <span class="pos-spec-val pos-spec-size"><?php echo htmlspecialchars($parsed_spec['size']); ?></span>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($parsed_spec['thickness'])): ?>
+                                        <div class="pos-spec-row">
+                                            <span class="pos-spec-label">Thickness:</span>
+                                            <span class="pos-spec-val pos-spec-thick"><?php echo htmlspecialchars($parsed_spec['thickness']); ?></span>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($parsed_spec['color'])): ?>
+                                        <div class="pos-spec-row">
+                                            <span class="pos-spec-label">Color:</span>
+                                            <span class="pos-spec-val">
+                                                <span class="pos-color-badge pos-color-<?php echo strtolower($parsed_spec['color']); ?>">
+                                                    <?php echo htmlspecialchars($parsed_spec['color']); ?>
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <?php endif; ?>
                                     </div>
+
                                     <div class="pos-product-price">
-                                        &#8369;<?php echo number_format($clean_price, 2); ?>
+                                        <span>&#8369;<?php echo number_format($clean_price, 2); ?></span>
+                                        <span class="text-primary" style="font-size: 13px; font-weight: 700;">
+                                            <i class="fa fa-plus-circle"></i> Add
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -706,6 +862,10 @@ function addToCart(product) {
         cart.push({
             id: product.id,
             name: product.name,
+            base_name: product.base_name || product.name,
+            size: product.size || '',
+            thickness: product.thickness || '',
+            color: product.color || '',
             price: product.price,
             stock: product.stock,
             qty: 1
@@ -763,10 +923,17 @@ function renderCart() {
         let html = '';
         cart.forEach(item => {
             const lineTotal = (item.price * item.qty).toFixed(2);
+            let specsArr = [];
+            if (item.size) specsArr.push(`<span style="color: #0369a1; font-weight: 700;">${escapeHtml(item.size)}</span>`);
+            if (item.thickness) specsArr.push(`<span style="color: #047857; font-weight: 700;">${escapeHtml(item.thickness)}</span>`);
+            if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
+            let specsHtml = specsArr.length > 0 ? `<div style="font-size: 12px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
+
             html += `
                 <tr>
                     <td style="padding: 8px 4px;">
-                        <strong style="color: #0f172a; font-size: 14px; display: block; line-height: 1.3;">${escapeHtml(item.name)}</strong>
+                        <strong style="color: #0f172a; font-size: 14px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
+                        ${specsHtml}
                         <div style="font-size: 13px; font-weight: 600; color: #64748b; margin-top: 2px;">&#8369;${item.price.toFixed(2)} each</div>
                     </td>
                     <td style="padding: 8px 4px; text-align: center;">
