@@ -58,7 +58,7 @@ if(isset($_POST['form2'])) {
 
 <section class="content-header">
     <div class="content-header-left">
-        <h1>Add Shipping Cost</h1>
+        <h1>Add Delivery Cost</h1>
     </div>
 </section>
 
@@ -140,7 +140,7 @@ if(isset($_POST['form2'])) {
 
 <section class="content-header">
 	<div class="content-header-left">
-		<h1>View Shipping Costs</h1>
+		<h1>View Delivery Costs</h1>
 	</div>
 </section>
 
@@ -159,7 +159,7 @@ if(isset($_POST['form2'])) {
 			    <tr>
 			        <th>#</th>
 			        <th>Location (Barangay)</th>
-                    <th>Shipping Amount</th>
+                    <th>Delivery Amount</th>
 			        <th>Action</th>
 			    </tr>
 			</thead>

@@ -54,7 +54,7 @@ if(!isset($_REQUEST['id'])) {
 
 <section class="content-header">
 	<div class="content-header-left">
-		<h1>Edit Shipping Cost</h1>
+		<h1>Edit Delivery Cost</h1>
 	</div>
 	<div class="content-header-right">
 		<a href="shipping-cost.php" class="btn btn-primary btn-sm">View All</a>
