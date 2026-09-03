@@ -122,6 +122,19 @@ $supplier_id = $_SESSION['supplier_user']['supplier_id'];
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'shipping-cost.php') || ($cur_page == 'shipping-cost-edit.php') ) {echo 'active';} ?>">
+                        <a href="#">
+                            <i class="fa fa-cogs"></i>
+                            <span>Shop Settings</span>
+                            <span class="pull-right-container">
+								<i class="fa fa-angle-left pull-right"></i>
+							</span>
+                        </a>
+                        <ul class="treeview-menu">
+                            <li><a href="shipping-cost.php"><i class="fa fa-circle-o"></i> Shipping Cost</a></li>
+                        </ul>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'store-settings.php') ) {echo 'active';} ?>">
                         <a href="store-settings.php">
                             <i class="fa fa-sliders"></i> <span>Store Settings</span>
