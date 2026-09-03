@@ -8,7 +8,7 @@ if(isset($_POST['form1'])) {
 
     if(empty($_POST['country_id'])) {
         $valid = 0;
-        $error_message .= 'You must have to select a country.<br>';
+        $error_message .= 'You must have to select a location.<br>';
     }
 
     if($_POST['amount'] == '') {
@@ -22,8 +22,8 @@ if(isset($_POST['form1'])) {
     }
 
     if($valid == 1) {
-        $statement = $pdo->prepare("INSERT INTO tbl_shipping_cost (country_id,amount) VALUES (?,?)");
-        $statement->execute(array($_POST['country_id'],$_POST['amount']));
+        $statement = $pdo->prepare("INSERT INTO tbl_shipping_cost (country_id,amount,supplier_id) VALUES (?,?,?)");
+        $statement->execute(array($_POST['country_id'],$_POST['amount'],$supplier_id));
 
         $success_message = 'Shipping cost is added successfully.';
     }
@@ -88,26 +88,25 @@ if(isset($_POST['form2'])) {
                 <div class="box box-info">
                     <div class="box-body">
                         <div class="form-group">
-                            <label for="" class="col-sm-2 control-label">Select Country <span>*</span></label>
+                            <label for="" class="col-sm-2 control-label">Select Location <span>*</span></label>
                             <div class="col-sm-4">
                                 <select name="country_id" class="form-control select2">
-                                    <option value="">Select a country</option>
+                                    <option value="">Select a location</option>
                                     <?php
-                                    $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
+                                    $statement = $pdo->prepare("SELECT * FROM tbl_brgy ORDER BY brgy_name ASC");
                                     $statement->execute();
                                     $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                                     foreach ($result as $row) {
 
-
-                                        $statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE country_id=?");
-                                        $statement->execute(array($row['country_id']));
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE country_id=? AND supplier_id=?");
+                                        $statement->execute(array($row['brgy_id'], $supplier_id));
                                         $total = $statement->rowCount();
                                         if($total) {
                                             continue;
                                         }
 
                                         ?>
-                                        <option value="<?php echo $row['country_id']; ?>"><?php echo $row['country_name']; ?></option>
+                                        <option value="<?php echo $row['brgy_id']; ?>"><?php echo $row['brgy_name']; ?></option>
                                         <?php
                                     }
                                     ?>
@@ -159,28 +158,31 @@ if(isset($_POST['form2'])) {
 			<thead>
 			    <tr>
 			        <th>#</th>
-			        <th>Country Name</th>
-                    <th>Country Amount</th>
+			        <th>Location (Barangay)</th>
+                    <th>Shipping Amount</th>
 			        <th>Action</th>
 			    </tr>
 			</thead>
             <tbody>
             	<?php
             	$i=0;
-            	$statement = $pdo->prepare("SELECT * 
+            	$statement = $pdo->prepare("SELECT t1.*, COALESCE(t2.brgy_name, t3.country_name, 'Location #' || t1.country_id) as location_name 
                                         FROM tbl_shipping_cost t1
-                                        JOIN tbl_country t2 
-                                        ON t1.country_id = t2.country_id 
-                                        ORDER BY t2.country_name ASC");
-            	$statement->execute();
+                                        LEFT JOIN tbl_brgy t2 
+                                        ON t1.country_id = t2.brgy_id 
+                                        LEFT JOIN tbl_country t3
+                                        ON t1.country_id = t3.country_id
+                                        WHERE t1.supplier_id = ?
+                                        ORDER BY location_name ASC");
+            	$statement->execute(array($supplier_id));
             	$result = $statement->fetchAll(PDO::FETCH_ASSOC);							
             	foreach ($result as $row) {
             		$i++;
             		?>
 					<tr>
 	                    <td><?php echo $i; ?></td>
-	                    <td><?php echo $row['country_name']; ?></td>
-                        <td><?php echo $row['amount']; ?></td>
+	                    <td><?php echo $row['location_name']; ?></td>
+                        <td>&#8369;<?php echo $row['amount']; ?></td>
 	                    <td>
 	                        <a href="shipping-cost-edit.php?id=<?php echo $row['shipping_cost_id']; ?>" class="btn btn-primary btn-xs">Edit</a>
 	                        <a href="#" class="btn btn-danger btn-xs" data-href="shipping-cost-delete.php?id=<?php echo $row['shipping_cost_id']; ?>" data-toggle="modal" data-target="#confirm-delete">Delete</a>
@@ -194,7 +196,7 @@ if(isset($_POST['form2'])) {
         </div>
       </div> 
 
-      <h4 style="background: #dd4b39;color:#fff;padding:10px 20px;">NB: If a country does not exist in the above list, the following "Rest of the World" shipping cost will be applied upon that.</h4>
+      <h4 style="background: #dd4b39;color:#fff;padding:10px 20px;">NB: If a location does not exist in the above list, the following "Default Location" shipping cost will be applied upon that.</h4>
 
 </section>
 

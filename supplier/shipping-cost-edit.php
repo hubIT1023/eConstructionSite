@@ -6,30 +6,29 @@ if(isset($_POST['form1'])) {
 
     if(empty($_POST['country_id'])) {
         $valid = 0;
-        $error_message .= "You must have to select a country<br>";
+        $error_message .= "You must have to select a location<br>";
     } else {
-		// Duplicate Country checking
-    	// current Country name that is in the database
-    	$statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE shipping_cost_id=?");
-		$statement->execute(array($_REQUEST['id']));
+		// Duplicate Location checking
+    	$statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE shipping_cost_id=? AND supplier_id=?");
+		$statement->execute(array($_REQUEST['id'], $supplier_id));
 		$result = $statement->fetchAll(PDO::FETCH_ASSOC);
 		foreach($result as $row) {
 			$current_country = $row['country_id'];
 		}
 
-		$statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE country_id=? and country_id!=?");
-    	$statement->execute(array($_POST['country_id'],$current_country));
+		$statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE country_id=? AND country_id!=? AND supplier_id=?");
+    	$statement->execute(array($_POST['country_id'],$current_country, $supplier_id));
     	$total = $statement->rowCount();							
     	if($total) {
     		$valid = 0;
-        	$error_message .= 'Country already exists<br>';
+        	$error_message .= 'Location already exists<br>';
     	}
     }
 
     if($valid == 1) {    	
 		// updating into the database
-		$statement = $pdo->prepare("UPDATE tbl_shipping_cost SET country_id=?,amount=? WHERE shipping_cost_id=?");
-		$statement->execute(array($_POST['country_id'],$_POST['amount'],$_REQUEST['id']));
+		$statement = $pdo->prepare("UPDATE tbl_shipping_cost SET country_id=?,amount=? WHERE shipping_cost_id=? AND supplier_id=?");
+		$statement->execute(array($_POST['country_id'],$_POST['amount'],$_REQUEST['id'], $supplier_id));
 
     	$success_message = 'Shipping Cost is updated successfully.';
     }
@@ -42,8 +41,8 @@ if(!isset($_REQUEST['id'])) {
 	exit;
 } else {
 	// Check the id is valid or not
-	$statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE shipping_cost_id=?");
-	$statement->execute(array($_REQUEST['id']));
+	$statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE shipping_cost_id=? AND supplier_id=?");
+	$statement->execute(array($_REQUEST['id'], $supplier_id));
 	$total = $statement->rowCount();
 	$result = $statement->fetchAll(PDO::FETCH_ASSOC);
 	if( $total == 0 ) {
@@ -95,17 +94,17 @@ foreach ($result as $row) {
             <div class="box box-info">
                 <div class="box-body">
                     <div class="form-group">
-                        <label for="" class="col-sm-2 control-label">Select Country <span>*</span></label>
+                        <label for="" class="col-sm-2 control-label">Select Location <span>*</span></label>
                         <div class="col-sm-4">
                             <select name="country_id" class="form-control select2">
-                                <option value="">Select a country</option>
+                                <option value="">Select a location</option>
                                 <?php
-                                $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
+                                $statement = $pdo->prepare("SELECT * FROM tbl_brgy ORDER BY brgy_name ASC");
                                 $statement->execute();
                                 $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                                 foreach ($result as $row) {
                                     ?>
-                                    <option value="<?php echo $row['country_id']; ?>" <?php if($row['country_id'] == $country_id) {echo 'selected';} ?>><?php echo $row['country_name']; ?></option>
+                                    <option value="<?php echo $row['brgy_id']; ?>" <?php if($row['brgy_id'] == $country_id) {echo 'selected';} ?>><?php echo $row['brgy_name']; ?></option>
                                     <?php
                                 }
                                 ?>
