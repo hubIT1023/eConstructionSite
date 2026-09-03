@@ -138,34 +138,110 @@ if(!isset($_SESSION['cart_p_id'])) {
                             <th class="total-amount"><?php echo LANG_VALUE_1; ?><?php echo $table_total_price; ?></th>
                         </tr>
                         <?php
-                        $statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost WHERE country_id=?");
-                        $statement->execute(array($_SESSION['customer']['cust_country']));
-                        $total = $statement->rowCount();
-                        if($total) {
-                            $result = $statement->fetchAll(PDO::FETCH_ASSOC);
-                            foreach ($result as $row) {
-                                $shipping_cost = $row['amount'];
+                        // Resolve customer's delivery Barangay
+                        $shipping_brgy = '';
+                        if (!empty($_SESSION['customer']['cust_s_state'])) {
+                            $shipping_brgy = $_SESSION['customer']['cust_s_state'];
+                        } elseif (!empty($_SESSION['customer']['cust_state'])) {
+                            $shipping_brgy = $_SESSION['customer']['cust_state'];
+                        } elseif (!empty($_SESSION['customer']['cust_b_state'])) {
+                            $shipping_brgy = $_SESSION['customer']['cust_b_state'];
+                        }
+
+                        $target_brgy_id = 0;
+                        $target_brgy_name = '';
+
+                        if (is_numeric($shipping_brgy) && (int)$shipping_brgy > 0) {
+                            $target_brgy_id = (int)$shipping_brgy;
+                            $stmt_b = $pdo->prepare("SELECT brgy_name FROM tbl_brgy WHERE brgy_id = ?");
+                            $stmt_b->execute(array($target_brgy_id));
+                            $row_b = $stmt_b->fetch(PDO::FETCH_ASSOC);
+                            if ($row_b) {
+                                $target_brgy_name = $row_b['brgy_name'];
                             }
-                        } else {
-                            $statement = $pdo->prepare("SELECT * FROM tbl_shipping_cost_all WHERE sca_id=1");
-                            $statement->execute();
-                            $result = $statement->fetchAll(PDO::FETCH_ASSOC);
-                            foreach ($result as $row) {
-                                $shipping_cost = $row['amount'];
+                        } elseif (!empty($shipping_brgy)) {
+                            $stmt_b = $pdo->prepare("SELECT brgy_id, brgy_name FROM tbl_brgy WHERE LOWER(TRIM(brgy_name)) = LOWER(TRIM(?))");
+                            $stmt_b->execute(array(trim($shipping_brgy)));
+                            $row_b = $stmt_b->fetch(PDO::FETCH_ASSOC);
+                            if ($row_b) {
+                                $target_brgy_id = (int)$row_b['brgy_id'];
+                                $target_brgy_name = $row_b['brgy_name'];
+                            } else {
+                                $target_brgy_name = $shipping_brgy;
                             }
-                        }                        
+                        }
+
+                        // Collect unique supplier IDs for all items in the cart
+                        $cart_supplier_ids = [];
+                        for ($m = 1; $m <= count($arr_cart_p_id); $m++) {
+                            $p_id = $arr_cart_p_id[$m];
+                            $statement_sup = $pdo->prepare("SELECT supplier_id FROM tbl_product WHERE p_id = ?");
+                            $statement_sup->execute(array($p_id));
+                            $p_row = $statement_sup->fetch(PDO::FETCH_ASSOC);
+                            if ($p_row && !in_array($p_row['supplier_id'], $cart_supplier_ids)) {
+                                $cart_supplier_ids[] = $p_row['supplier_id'];
+                            }
+                        }
+                        if (empty($cart_supplier_ids)) {
+                            $cart_supplier_ids = [1];
+                        }
+
+                        // Calculate total delivery cost across suppliers
+                        $shipping_cost = 0;
+                        foreach ($cart_supplier_ids as $sup_id) {
+                            $sup_shipping = null;
+
+                            // 1. Check supplier-specific cost for this Barangay
+                            if ($target_brgy_id > 0) {
+                                $stmt_sc = $pdo->prepare("SELECT amount FROM tbl_shipping_cost WHERE country_id = ? AND supplier_id = ?");
+                                $stmt_sc->execute(array($target_brgy_id, $sup_id));
+                                $sc_row = $stmt_sc->fetch(PDO::FETCH_ASSOC);
+                                if ($sc_row) {
+                                    $sup_shipping = (float)$sc_row['amount'];
+                                }
+                            }
+
+                            // 2. Check general shipping cost for this Barangay
+                            if ($sup_shipping === null && $target_brgy_id > 0) {
+                                $stmt_sc = $pdo->prepare("SELECT amount FROM tbl_shipping_cost WHERE country_id = ?");
+                                $stmt_sc->execute(array($target_brgy_id));
+                                $sc_row = $stmt_sc->fetch(PDO::FETCH_ASSOC);
+                                if ($sc_row) {
+                                    $sup_shipping = (float)$sc_row['amount'];
+                                }
+                            }
+
+                            // 3. Fallback: Default delivery cost (All the Towns)
+                            if ($sup_shipping === null) {
+                                $stmt_all = $pdo->prepare("SELECT amount FROM tbl_shipping_cost_all WHERE sca_id = 1");
+                                $stmt_all->execute();
+                                $all_row = $stmt_all->fetch(PDO::FETCH_ASSOC);
+                                if ($all_row) {
+                                    $sup_shipping = (float)$all_row['amount'];
+                                } else {
+                                    $sup_shipping = 0;
+                                }
+                            }
+
+                            $shipping_cost += $sup_shipping;
+                        }
                         ?>
                         <tr>
-                            <td colspan="7" class="total-text"><?php echo LANG_VALUE_84; ?></td>
-                            <td class="total-amount"><?php echo LANG_VALUE_1; ?><?php echo $shipping_cost; ?></td>
+                            <td colspan="7" class="total-text">
+                                <?php echo LANG_VALUE_84; ?>
+                                <?php if (!empty($target_brgy_name)): ?>
+                                    <span style="font-size:13px;font-weight:normal;color:#555;">(Location: <?php echo htmlspecialchars($target_brgy_name); ?>)</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="total-amount"><?php echo LANG_VALUE_1; ?><?php echo number_format($shipping_cost, 2); ?></td>
                         </tr>
                         <tr>
                             <th colspan="7" class="total-text"><?php echo LANG_VALUE_82; ?></th>
                             <th class="total-amount">
                                 <?php
-                                $final_total = $table_total_price+$shipping_cost;
+                                $final_total = $table_total_price + $shipping_cost;
                                 ?>
-                                <?php echo LANG_VALUE_1; ?><?php echo $final_total; ?>
+                                <?php echo LANG_VALUE_1; ?><?php echo number_format($final_total, 2); ?>
                             </th>
                         </tr>
                     </table> 
