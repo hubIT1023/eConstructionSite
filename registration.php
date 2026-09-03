@@ -48,8 +48,15 @@ if (isset($_POST['form1'])) {
     }
 
     if(empty($_POST['cust_country'])) {
-        $valid = 0;
-        $error_message .= LANG_VALUE_126."<br>";
+        $statement_ph = $pdo->prepare("SELECT country_id FROM tbl_country WHERE country_name ILIKE 'Philippines' LIMIT 1");
+        $statement_ph->execute();
+        $ph_row = $statement_ph->fetch(PDO::FETCH_ASSOC);
+        if ($ph_row) {
+            $_POST['cust_country'] = $ph_row['country_id'];
+        } else {
+            $valid = 0;
+            $error_message .= LANG_VALUE_126."<br>";
+        }
     }
 
     if(empty($_POST['cust_zip'])) {
@@ -224,16 +231,25 @@ if (isset($_POST['form1'])) {
                                     <textarea name="cust_address" class="form-control" cols="30" rows="10" style="height:70px;"><?php if(isset($_POST['cust_address'])){echo $_POST['cust_address'];} ?></textarea>
                                 </div>
                                 <div class="col-md-6 form-group">
-                                    <label for="">Town/City *</label>
+                                    <label for=""><?php echo LANG_VALUE_106; ?> *</label>
                                     <select name="cust_country" class="form-control select2">
-                                        <option value="">Select Town/City</option>
                                     <?php
                                     $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
                                     $statement->execute();
                                     $result = $statement->fetchAll(PDO::FETCH_ASSOC);                            
                                     foreach ($result as $row) {
+                                        $selected = '';
+                                        if (isset($_POST['cust_country'])) {
+                                            if ($_POST['cust_country'] == $row['country_id'] || $_POST['cust_country'] == $row['country_name']) {
+                                                $selected = 'selected';
+                                            }
+                                        } else {
+                                            if (strtolower($row['country_name']) == 'philippines') {
+                                                $selected = 'selected';
+                                            }
+                                        }
                                         ?>
-                                        <option value="<?php echo $row['country_id']; ?>"><?php echo $row['country_name']; ?></option>
+                                        <option value="<?php echo $row['country_id']; ?>" <?php echo $selected; ?>><?php echo $row['country_name']; ?></option>
                                         <?php
                                     }
                                     ?>    
