@@ -194,13 +194,19 @@ if(!isset($_SESSION['cart_p_id'])) {
                                     <td>Town/City</td>
                                     <td>
                                         <?php
-                                        $statement = $pdo->prepare("SELECT * FROM tbl_country WHERE country_id=?");
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_town WHERE town_id=?");
                                         $statement->execute(array($_SESSION['customer']['cust_b_country']));
                                         $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                                         foreach ($result as $row) {
-                                            echo $row['country_name'];
+                                            echo $row['town_name'];
                                         }
                                         ?>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Barangay</td>
+                                    <td>
+                                        <?php echo isset($_SESSION['customer']['cust_b_state']) ? $_SESSION['customer']['cust_b_state'] : ''; ?>
                                     </td>
                                 </tr>
                                 <tr>
@@ -234,13 +240,19 @@ if(!isset($_SESSION['cart_p_id'])) {
                                     <td>Town/City</td>
                                     <td>
                                         <?php
-                                        $statement = $pdo->prepare("SELECT * FROM tbl_country WHERE country_id=?");
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_town WHERE town_id=?");
                                         $statement->execute(array($_SESSION['customer']['cust_s_country']));
                                         $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                                         foreach ($result as $row) {
-                                            echo $row['country_name'];
+                                            echo $row['town_name'];
                                         }
                                         ?>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Barangay</td>
+                                    <td>
+                                        <?php echo isset($_SESSION['customer']['cust_s_state']) ? $_SESSION['customer']['cust_s_state'] : ''; ?>
                                     </td>
                                 </tr>
                                 <tr>
@@ -292,7 +304,7 @@ if(!isset($_SESSION['cart_p_id'])) {
 		                <?php if($checkout_access == 0): ?>
 		                	<div class="col-md-12">
 				                <div style="color:red;font-size:22px;margin-bottom:50px;">
-			                        You must have to fill up all the billing and shipping information from your dashboard panel in order to checkout the order. Please fill up the information going to <a href="customer-billing-shipping-update.php" style="color:red;text-decoration:underline;">this link</a>.
+			                        You must have to fill up all the billing and shipping information from your dashboard panel in order to checkout the order. Please fill up the information to <a href="customer-billing-shipping-update.php" style="color:#007bff;font-weight:bold;text-decoration:underline;">this LINK</a>.
 			                    </div>
 	                    	</div>
 	                	<?php else: ?>
