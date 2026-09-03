@@ -156,5 +156,9 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
         send_system_email($to_supplier, $subject_supplier, $message_supplier);
 	}
 
-	header('location: order.php');
+	if ($_REQUEST['task'] == 'Paid') {
+		header('location: paid-orders.php');
+	} else {
+		header('location: order.php');
+	}
 ?>

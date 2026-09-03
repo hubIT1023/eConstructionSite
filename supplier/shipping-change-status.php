@@ -20,5 +20,6 @@ if( !isset($_REQUEST['id']) || !isset($_REQUEST['task']) ) {
 	$statement = $pdo->prepare("UPDATE tbl_payment SET shipping_status=? WHERE id=?");
 	$statement->execute(array($_REQUEST['task'],$_REQUEST['id']));
 
-	header('location: order.php');
+	$redirect_to = (isset($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'paid-orders.php') !== false) ? 'paid-orders.php' : 'order.php';
+	header('location: ' . $redirect_to);
 ?>

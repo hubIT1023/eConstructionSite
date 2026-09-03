@@ -126,7 +126,7 @@ if($success_message != '') {
 
 <section class="content-header">
 	<div class="content-header-left">
-		<h1>Receive Orders</h1>
+		<h1>View Paid Orders</h1>
 	</div>
 </section>
 
@@ -158,7 +158,7 @@ if($success_message != '') {
             <tbody>
             	<?php
             	$i=0;
-            	$statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id=? AND payment_status != 'Paid' AND payment_status != 'Completed' ORDER by id DESC");
+            	$statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id=? AND (payment_status = 'Paid' OR payment_status = 'Completed') ORDER by id DESC");
             	$statement->execute(array($supplier_id));
             	$result = $statement->fetchAll(PDO::FETCH_ASSOC);							
             	foreach ($result as $row) {
