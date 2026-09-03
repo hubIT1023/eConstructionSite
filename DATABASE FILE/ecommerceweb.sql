@@ -641,7 +641,7 @@ INSERT INTO `tbl_language` (`lang_id`, `lang_name`, `lang_value`) VALUES
 (105, 'Address', 'Address'),
 (106, 'Country', 'Country'),
 (107, 'Town/City', 'Town/City'),
-(108, 'State', 'State'),
+(108, 'Barangay', 'Barangay'),
 (109, 'Zip Code', 'Zip Code'),
 (110, 'About Us', 'About Us'),
 (111, 'Featured Posts', 'Featured Posts'),
