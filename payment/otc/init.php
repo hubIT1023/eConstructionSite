@@ -299,5 +299,4 @@ if( !isset($_REQUEST['msg']) ) {
     header('location: ../../purchase-order-receipt.php?order_id=' . urlencode(implode(',', $created_payment_ids)));
     exit;
 }
-}
 ?>
