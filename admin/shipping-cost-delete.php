@@ -1,8 +1,8 @@
-﻿<?php require_once('header.php'); ?>
+<?php require_once('header.php'); ?>
 
 <?php
 if(!isset($_REQUEST['id'])) {
-	header('location: logout.php');
+	header('location: shipping-cost.php');
 	exit;
 } else {
 	// Check the id is valid or not
@@ -10,7 +10,7 @@ if(!isset($_REQUEST['id'])) {
 	$statement->execute(array($_REQUEST['id']));
 	$total = $statement->rowCount();
 	if( $total == 0 ) {
-		header('location: logout.php');
+		header('location: shipping-cost.php');
 		exit;
 	}
 }
@@ -20,4 +20,5 @@ $statement = $pdo->prepare("DELETE FROM tbl_shipping_cost WHERE shipping_cost_id
 $statement->execute(array($_REQUEST['id']));
 
 header('location: shipping-cost.php');
+exit;
 ?>
