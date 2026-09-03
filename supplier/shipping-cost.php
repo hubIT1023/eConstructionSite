@@ -49,7 +49,7 @@ if(isset($_POST['form2'])) {
         $statement = $pdo->prepare("UPDATE tbl_shipping_cost_all SET amount=? WHERE sca_id=1");
         $statement->execute(array($_POST['amount']));
 
-        $success_message = 'Delivery cost for all the towns is updated successfully.';
+        $success_message = 'Delivery cost for all towns is updated successfully.';
 
     }
 }
@@ -196,14 +196,14 @@ if(isset($_POST['form2'])) {
         </div>
       </div> 
 
-      <h4 style="background: #dd4b39;color:#fff;padding:10px 20px;">NB: If a location does not exist in the above list, the following "Delivery Cost (All the Towns)" will be applied upon that.</h4>
+      <h4 style="background: #dd4b39;color:#fff;padding:10px 20px;">NB: If a location does not exist in the above list, the following "Delivery Cost (All Towns)" will be applied upon that.</h4>
 
 </section>
 
 
 <section class="content-header">
     <div class="content-header-left">
-        <h1>Delivery Cost (All the Towns)</h1>
+        <h1>Delivery Cost (All Towns)</h1>
     </div>
 </section>
 
