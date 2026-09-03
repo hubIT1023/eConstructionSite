@@ -681,7 +681,7 @@ INSERT INTO `tbl_language` (`lang_id`, `lang_name`, `lang_value`) VALUES
 (145, 'A confirmation link is sent to your email address. You will get the password reset information in there.', 'A confirmation link is sent to your email address. You will get the password reset information in there.'),
 (146, 'Password is reset successfully. You can now login.', 'Password is reset successfully. You can now login.'),
 (147, 'Email Address Already Exists', 'Email Address Already Exists.'),
-(148, 'Sorry! Your account is inactive. Please contact to the administrator.', 'Sorry! Your account is inactive. Please contact to the administrator.'),
+(148, 'Sorry! Your account is inactive. Please contact to the administrator at: support.econstructionsupply@gmail.com.', 'Sorry! Your account is inactive. Please contact to the administrator at: support.econstructionsupply@gmail.com.'),
 (149, 'Change Password', 'Change Password'),
 (150, 'Registration Email Confirmation for YOUR WEBSITE', 'Registration Email Confirmation for YOUR WEBSITE.'),
 (151, 'Thank you for your registration! Your account has been created. To active your account click on the link below:', 'Thank you for your registration! Your account has been created. To active your account click on the link below:'),
