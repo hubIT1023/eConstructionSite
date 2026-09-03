@@ -128,6 +128,12 @@ $supplier_id = $_SESSION['supplier_user']['supplier_id'];
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'sales-report.php') ) {echo 'active';} ?>">
+                        <a href="sales-report.php">
+                            <i class="fa fa-line-chart" style="color: #fbbf24;"></i> <span style="color: #fef08a; font-weight: bold;">Sales Report</span>
+                        </a>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'shipping-cost.php') || ($cur_page == 'shipping-cost-edit.php') ) {echo 'active';} ?>">
                         <a href="#">
                             <i class="fa fa-cogs"></i>
