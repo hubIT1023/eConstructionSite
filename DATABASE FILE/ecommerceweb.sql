@@ -2044,6 +2044,72 @@ CREATE TABLE IF NOT EXISTS `tbl_brgy` (
   PRIMARY KEY (`brgy_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+--
+-- Dumping data for table `tbl_brgy`
+--
+
+INSERT INTO `tbl_brgy` (`brgy_id`, `brgy_name`) VALUES
+(1, 'Agusipan, Santa Barbara'),
+(2, 'Agutayan, Santa Barbara'),
+(3, 'Bagumbayan, Santa Barbara'),
+(4, 'Balabag, Santa Barbara'),
+(5, 'Balibagan Este, Santa Barbara'),
+(6, 'Balibagan Oeste, Santa Barbara'),
+(7, 'Ban-ag, Santa Barbara'),
+(8, 'Bantay, Santa Barbara'),
+(9, 'Barangay Zone I (Poblacion), Santa Barbara'),
+(10, 'Barangay Zone II (Poblacion), Santa Barbara'),
+(11, 'Barangay Zone III (Poblacion), Santa Barbara'),
+(12, 'Barangay Zone IV (Poblacion), Santa Barbara'),
+(13, 'Barangay Zone V (Poblacion), Santa Barbara'),
+(14, 'Barangay Zone VI (Poblacion), Santa Barbara'),
+(15, 'Barasan Este, Santa Barbara'),
+(16, 'Barasan Oeste, Santa Barbara'),
+(17, 'Binangkilan, Santa Barbara'),
+(18, 'Bitaog-Taytay, Santa Barbara'),
+(19, 'Bolong Este, Santa Barbara'),
+(20, 'Bolong Oeste, Santa Barbara'),
+(21, 'Buayahon, Santa Barbara'),
+(22, 'Buyo, Santa Barbara'),
+(23, 'Cabugao Norte, Santa Barbara'),
+(24, 'Cabugao Sur, Santa Barbara'),
+(25, 'Cadagmayan Norte, Santa Barbara'),
+(26, 'Cadagmayan Sur, Santa Barbara'),
+(27, 'Cafe, Santa Barbara'),
+(28, 'Calaboa Este, Santa Barbara'),
+(29, 'Calaboa Oeste, Santa Barbara'),
+(30, 'Camambugan, Santa Barbara'),
+(31, 'Canipayan, Santa Barbara'),
+(32, 'Conaynay, Santa Barbara'),
+(33, 'Daga, Santa Barbara'),
+(34, 'Dalid, Santa Barbara'),
+(35, 'Duyanduyan, Santa Barbara'),
+(36, 'Gen. Martin T. Delgado, Santa Barbara'),
+(37, 'Guno, Santa Barbara'),
+(38, 'Inangayan, Santa Barbara'),
+(39, 'Jibao-an, Santa Barbara'),
+(40, 'Lacadon, Santa Barbara'),
+(41, 'Lanag, Santa Barbara'),
+(42, 'Lupa, Santa Barbara'),
+(43, 'Magancina, Santa Barbara'),
+(44, 'Malawog, Santa Barbara'),
+(45, 'Mambuyo, Santa Barbara'),
+(46, 'Manhayang, Santa Barbara'),
+(47, 'Miraga-Guibuangan, Santa Barbara'),
+(48, 'Nasugban, Santa Barbara'),
+(49, 'Omambog, Santa Barbara'),
+(50, 'Pal-agon, Santa Barbara'),
+(51, 'Pungsod, Santa Barbara'),
+(52, 'San Sebastian, Santa Barbara'),
+(53, 'Sangcate, Santa Barbara'),
+(54, 'Tagsing, Santa Barbara'),
+(55, 'Talanghauan, Santa Barbara'),
+(56, 'Talongadian, Santa Barbara'),
+(57, 'Tigtig, Santa Barbara'),
+(58, 'Tungay, Santa Barbara'),
+(59, 'Tuburan, Santa Barbara'),
+(60, 'Tugas, Santa Barbara');
+
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
