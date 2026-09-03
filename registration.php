@@ -243,11 +243,7 @@ if (isset($_POST['form1'])) {
                                             if ($_POST['cust_country'] == $row['country_id'] || $_POST['cust_country'] == $row['country_name']) {
                                                 $selected = 'selected';
                                             }
-                                        } else {
-                                            if (strtolower($row['country_name']) == 'philippines') {
-                                                $selected = 'selected';
-                                            }
-                                        }
+                                        } 
                                         ?>
                                         <option value="<?php echo $row['country_id']; ?>" <?php echo $selected; ?>><?php echo $row['country_name']; ?></option>
                                         <?php
