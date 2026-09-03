@@ -81,8 +81,11 @@ if( !isset($_REQUEST['msg']) ) {
     }
 
     // Process order for each supplier
+    $created_payment_ids = [];
     foreach ($supplier_cart as $sup_id => $items) {
-        $payment_id = time() . '_' . rand(100, 999);
+        $payment_id = 'PO-' . date('Ymd') . '-' . rand(1000, 9999);
+        $txnid = $payment_id;
+        $created_payment_ids[] = $payment_id;
         
         // Calculate subtotal for this supplier
         $sup_subtotal = 0;
@@ -153,7 +156,7 @@ if( !isset($_REQUEST['msg']) ) {
                                 $_SESSION['customer']['cust_name'],
                                 $_SESSION['customer']['cust_email'],
                                 $payment_date,
-                                '',
+                                $txnid,
                                 $sup_total,
                                 '', 
                                 '',
@@ -292,7 +295,9 @@ if( !isset($_REQUEST['msg']) ) {
     unset($_SESSION['cart_p_name']);
     unset($_SESSION['cart_p_featured_photo']);
 
-    header('location: ../../payment_success.php');
+    $_SESSION['last_po_ids'] = $created_payment_ids;
+    header('location: ../../purchase-order-receipt.php?order_id=' . urlencode(implode(',', $created_payment_ids)));
     exit;
+}
 }
 ?>

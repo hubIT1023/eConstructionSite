@@ -33,11 +33,11 @@ if(!isset($_SESSION['customer'])) {
                                     <th><?php echo '#' ?></th>
                                     <th><?php echo LANG_VALUE_48; ?></th>
                                     <th><?php echo LANG_VALUE_27; ?></th>
-                                    <th><?php echo LANG_VALUE_28; ?></th>
+                                    <th>Transaction ID</th>
                                     <th><?php echo LANG_VALUE_29; ?></th>
                                     <th><?php echo LANG_VALUE_30; ?></th>
                                     <th><?php echo LANG_VALUE_31; ?></th>
-                                    <th><?php echo LANG_VALUE_32; ?></th>
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -152,25 +152,37 @@ if(!isset($_SESSION['customer'])) {
                                         <td><?php echo $tip; ?></td>
                                         <td>
                                             <?php
-                                            $statement1 = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
-                                            $statement1->execute(array($row['payment_id']));
-                                            $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
-                                            foreach ($result1 as $row1) {
-                                                echo 'Product Name: '.$row1['product_name'];
-                                                echo '<br>Size: '.$row1['size'];
-                                                echo '<br>Color: '.$row1['color'];
-                                                echo '<br>Quantity: '.$row1['quantity'];
-                                                echo '<br>Unit Price: $'.$row1['unit_price'];
-                                                echo '<br><br>';
+                                             $statement1 = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
+                                             $statement1->execute(array($row['payment_id']));
+                                             $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
+                                             foreach ($result1 as $row1) {
+                                                 echo '<strong>Product:</strong> '.htmlspecialchars($row1['product_name']);
+                                                 if(!empty($row1['size'])) echo '<br>Size: '.htmlspecialchars($row1['size']);
+                                                 if(!empty($row1['color'])) echo '<br>Color: '.htmlspecialchars($row1['color']);
+                                                 echo '<br>Quantity: '.htmlspecialchars($row1['quantity']);
+                                                 echo '<br>Unit Price: &#8369;'.number_format($row1['unit_price'], 2);
+                                                 echo '<br><br>';
+                                             }
+                                             ?>
+                                        </td>
+                                        <td><?php echo date('M d, Y h:i A', strtotime($row['payment_date'])); ?></td>
+                                        <td><span class="label label-info" style="font-size: 13px;"><?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></span></td>
+                                        <td>&#8369;<?php echo number_format($row['paid_amount'], 2); ?></td>
+                                        <td>
+                                            <?php
+                                            if($row['payment_status'] == 'Pending' || $row['payment_status'] == 'Awaiting for Payment') {
+                                                echo '<span class="label label-warning">'.htmlspecialchars($row['payment_status']).'</span>';
+                                            } else {
+                                                echo '<span class="label label-success">'.htmlspecialchars($row['payment_status']).'</span>';
                                             }
                                             ?>
                                         </td>
-                                        <td><?php echo $row['payment_date']; ?></td>
-                                        <td><?php echo $row['txnid']; ?></td>
-                                        <td><?php echo '$'.$row['paid_amount']; ?></td>
-                                        <td><?php echo $row['payment_status']; ?></td>
-                                        <td><?php echo $row['payment_method']; ?></td>
-                                        <td><?php echo $row['payment_id']; ?></td>
+                                        <td><?php echo htmlspecialchars($row['payment_method']); ?></td>
+                                        <td>
+                                            <a href="purchase-order-receipt.php?order_id=<?php echo urlencode($row['payment_id']); ?>" class="btn btn-primary btn-xs" target="_blank">
+                                                <i class="fa fa-file-text-o"></i> View Receipt
+                                            </a>
+                                        </td>
                                     </tr>
                                     <?php
                                 } 
