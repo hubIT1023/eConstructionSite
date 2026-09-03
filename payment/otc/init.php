@@ -21,6 +21,29 @@ if( !isset($_REQUEST['msg']) ) {
     }
 
     $payment_date = date('Y-m-d H:i:s');
+    $otc_delivery_option = isset($_POST['otc_delivery_option']) ? $_POST['otc_delivery_option'] : 'exclude';
+
+    // Resolve customer's delivery Barangay
+    $shipping_brgy = '';
+    if (!empty($_SESSION['customer']['cust_s_state'])) {
+        $shipping_brgy = $_SESSION['customer']['cust_s_state'];
+    } elseif (!empty($_SESSION['customer']['cust_state'])) {
+        $shipping_brgy = $_SESSION['customer']['cust_state'];
+    } elseif (!empty($_SESSION['customer']['cust_b_state'])) {
+        $shipping_brgy = $_SESSION['customer']['cust_b_state'];
+    }
+
+    $target_brgy_id = 0;
+    if (is_numeric($shipping_brgy) && (int)$shipping_brgy > 0) {
+        $target_brgy_id = (int)$shipping_brgy;
+    } elseif (!empty($shipping_brgy)) {
+        $stmt_b = $pdo->prepare("SELECT brgy_id FROM tbl_brgy WHERE LOWER(TRIM(brgy_name)) = LOWER(TRIM(?))");
+        $stmt_b->execute(array(trim($shipping_brgy)));
+        $row_b = $stmt_b->fetch(PDO::FETCH_ASSOC);
+        if ($row_b) {
+            $target_brgy_id = (int)$row_b['brgy_id'];
+        }
+    }
 
     // Group cart items by supplier
     $supplier_cart = [];
@@ -62,10 +85,44 @@ if( !isset($_REQUEST['msg']) ) {
         $payment_id = time() . '_' . rand(100, 999);
         
         // Calculate subtotal for this supplier
-        $sup_total = 0;
+        $sup_subtotal = 0;
         foreach ($items as $item) {
-            $sup_total += $item['price'] * $item['qty'];
+            $sup_subtotal += $item['price'] * $item['qty'];
         }
+
+        $sup_shipping = 0;
+        if ($otc_delivery_option === 'include') {
+            // Check supplier shipping rate for this barangay
+            if ($target_brgy_id > 0) {
+                $stmt_sc = $pdo->prepare("SELECT amount FROM tbl_shipping_cost WHERE country_id = ? AND supplier_id = ?");
+                $stmt_sc->execute(array($target_brgy_id, $sup_id));
+                $sc_row = $stmt_sc->fetch(PDO::FETCH_ASSOC);
+                if ($sc_row) {
+                    $sup_shipping = (float)$sc_row['amount'];
+                }
+            }
+            if ($sup_shipping === 0 && $target_brgy_id > 0) {
+                $stmt_sc = $pdo->prepare("SELECT amount FROM tbl_shipping_cost WHERE country_id = ?");
+                $stmt_sc->execute(array($target_brgy_id));
+                $sc_row = $stmt_sc->fetch(PDO::FETCH_ASSOC);
+                if ($sc_row) {
+                    $sup_shipping = (float)$sc_row['amount'];
+                }
+            }
+            if ($sup_shipping === 0) {
+                $stmt_all = $pdo->prepare("SELECT amount FROM tbl_shipping_cost_all WHERE sca_id = 1");
+                $stmt_all->execute();
+                $all_row = $stmt_all->fetch(PDO::FETCH_ASSOC);
+                if ($all_row) {
+                    $sup_shipping = (float)$all_row['amount'];
+                }
+            }
+        }
+
+        $sup_total = $sup_subtotal + $sup_shipping;
+        $order_note = ($otc_delivery_option === 'exclude') 
+            ? 'Over the Counter Purchase (Store Pick-up - No Delivery Fee)' 
+            : 'Over the Counter Purchase (With Delivery Fee: ₱' . number_format($sup_shipping, 2) . ')';
 
         // Fetch supplier info
         $statement_sup_info = $pdo->prepare("SELECT supplier_name, supplier_email, supplier_address, supplier_phone FROM tbl_supplier WHERE supplier_id=?");
@@ -102,7 +159,7 @@ if( !isset($_REQUEST['msg']) ) {
                                 '',
                                 '', 
                                 '',
-                                'Over the Counter Purchase',
+                                $order_note,
                                 'Over the Counter',
                                 'Awaiting for Payment',
                                 'Pending',

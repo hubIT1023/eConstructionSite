@@ -458,22 +458,68 @@ if(!isset($_SESSION['cart_p_id'])) {
                                      </form>
 
                                      <form action="payment/otc/init.php" method="post" id="otc_form">
-                                         <input type="hidden" name="amount" value="<?php echo $final_total; ?>">
                                          <div class="col-md-12 form-group" style="padding-top: 10px;">
                                              <label for=""><strong>Over the Counter Payment:</strong></label><br>
-                                             <p style="margin-top: 5px; color: #555;">Please pay over the counter at the supplier's address:</p>
+
+                                             <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 15px;">
+                                                 <label style="font-weight: 600; color: #1e293b; margin-bottom: 8px; display: block;">Delivery Fee Option:</label>
+                                                 <div class="radio" style="margin-top: 5px;">
+                                                     <label style="font-weight: normal; cursor: pointer;">
+                                                         <input type="radio" name="otc_delivery_option" value="exclude" checked onchange="updateOtcTotal()">
+                                                         <strong>Store Pick-up</strong> (Do NOT include delivery fee: <strong>&#8369;0.00</strong>)
+                                                     </label>
+                                                 </div>
+                                                 <div class="radio" style="margin-top: 5px;">
+                                                     <label style="font-weight: normal; cursor: pointer;">
+                                                         <input type="radio" name="otc_delivery_option" value="include" onchange="updateOtcTotal()">
+                                                         <strong>Include Delivery Fee</strong> (+&#8369;<?php echo number_format($shipping_cost, 2); ?>)
+                                                     </label>
+                                                 </div>
+                                             </div>
+
+                                             <p style="margin-top: 5px; color: #555;">Please visit and present this Purchase Order at the supplier's address:</p>
                                              <?php foreach ($cart_suppliers as $sup): ?>
-                                                 <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #fafafa;">
+                                                 <div style="border: 1px solid #e2e8f0; padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #fff;">
                                                      <strong>Store / Supplier:</strong> <?php echo htmlspecialchars($sup['supplier_name']); ?><br>
                                                      <strong>Address:</strong> <?php echo nl2br(htmlspecialchars($sup['supplier_address'])); ?><br>
                                                      <strong>Phone:</strong> <?php echo htmlspecialchars($sup['supplier_phone']); ?>
                                                  </div>
                                              <?php endforeach; ?>
+
+                                             <div style="margin-top: 12px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px;">
+                                                 <strong style="color: #166534;">Payable Amount:</strong> 
+                                                 <span id="otc_total_display" style="font-size: 18px; color: #15803d; font-weight: bold; margin-left: 5px;">
+                                                     &#8369;<?php echo number_format($table_total_price, 2); ?>
+                                                 </span>
+                                             </div>
                                          </div>
-                                         <div class="col-md-12 form-group">
-                                             <input type="submit" class="btn btn-primary" value="<?php echo LANG_VALUE_46; ?>" name="form_otc">
+
+                                         <input type="hidden" name="amount" id="otc_amount" value="<?php echo $table_total_price; ?>">
+                                         <input type="hidden" name="delivery_cost" id="otc_delivery_cost" value="0">
+
+                                         <div class="col-md-12 form-group" style="margin-top: 10px;">
+                                             <input type="submit" class="btn btn-primary" value="Send Purchase Order" name="form_otc" style="background-color: #0284c7; border-color: #0284c7; font-size: 16px; padding: 10px 20px;">
                                          </div>
                                      </form>
+
+                                     <script>
+                                     function updateOtcTotal() {
+                                         var subtotal = <?php echo (float)$table_total_price; ?>;
+                                         var shipping = <?php echo (float)$shipping_cost; ?>;
+                                         var selected = document.querySelector('input[name="otc_delivery_option"]:checked').value;
+                                         var finalAmt = subtotal;
+                                         var delCost = 0;
+                                         
+                                         if (selected === 'include') {
+                                             finalAmt = subtotal + shipping;
+                                             delCost = shipping;
+                                         }
+                                         
+                                         document.getElementById('otc_amount').value = finalAmt;
+                                         document.getElementById('otc_delivery_cost').value = delCost;
+                                         document.getElementById('otc_total_display').innerHTML = '&#8369;' + finalAmt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                     }
+                                     </script>
 	                                
 	                            </div>
 		                            
