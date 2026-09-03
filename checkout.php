@@ -227,13 +227,29 @@ if(!isset($_SESSION['cart_p_id'])) {
                         }
                         ?>
                         <tr>
-                            <td colspan="7" class="total-text">
-                                <?php echo LANG_VALUE_84; ?>
-                                <?php if (!empty($target_brgy_name)): ?>
-                                    <span style="font-size:13px;font-weight:normal;color:#555;">(Location: <?php echo htmlspecialchars($target_brgy_name); ?>)</span>
-                                <?php endif; ?>
+                            <td colspan="7" class="total-text" style="vertical-align: middle;">
+                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                    <div style="font-weight: bold;">
+                                        <?php echo LANG_VALUE_84; ?>:
+                                        <?php if (!empty($target_brgy_name)): ?>
+                                            <span style="font-size:13px;font-weight:normal;color:#475569;">(Location: <?php echo htmlspecialchars($target_brgy_name); ?>)</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 15px; font-weight: normal; font-size: 14px; margin-top: 4px;">
+                                        <label style="cursor: pointer; margin-bottom: 0; display: inline-flex; align-items: center; gap: 6px;">
+                                            <input type="radio" name="global_delivery_option" value="include" checked onchange="updateDeliveryOption()">
+                                            <span>Deliver to Address (<strong>&#8369;<?php echo number_format($shipping_cost, 2); ?></strong>)</span>
+                                        </label>
+                                        <label style="cursor: pointer; margin-bottom: 0; display: inline-flex; align-items: center; gap: 6px;">
+                                            <input type="radio" name="global_delivery_option" value="exclude" onchange="updateDeliveryOption()">
+                                            <span>Store Pick-up (<strong>No Delivery Fee - &#8369;0.00</strong>)</span>
+                                        </label>
+                                    </div>
+                                </div>
                             </td>
-                            <td class="total-amount"><?php echo LANG_VALUE_1; ?><?php echo number_format($shipping_cost, 2); ?></td>
+                            <td class="total-amount" style="vertical-align: middle;">
+                                <span id="order_delivery_display">&#8369;<?php echo number_format($shipping_cost, 2); ?></span>
+                            </td>
                         </tr>
                         <tr>
                             <th colspan="7" class="total-text"><?php echo LANG_VALUE_82; ?></th>
@@ -241,7 +257,7 @@ if(!isset($_SESSION['cart_p_id'])) {
                                 <?php
                                 $final_total = $table_total_price + $shipping_cost;
                                 ?>
-                                <?php echo LANG_VALUE_1; ?><?php echo number_format($final_total, 2); ?>
+                                <span id="order_final_total_display">&#8369;<?php echo number_format($final_total, 2); ?></span>
                             </th>
                         </tr>
                     </table> 
@@ -458,44 +474,21 @@ if(!isset($_SESSION['cart_p_id'])) {
                                      </form>
 
                                      <form action="payment/otc/init.php" method="post" id="otc_form">
+                                         <input type="hidden" name="amount" id="otc_amount" value="<?php echo $final_total; ?>">
+                                         <input type="hidden" name="delivery_cost" id="otc_delivery_cost" value="<?php echo $shipping_cost; ?>">
+                                         <input type="hidden" name="otc_delivery_option" id="otc_delivery_option" value="include">
+
                                          <div class="col-md-12 form-group" style="padding-top: 10px;">
                                              <label for=""><strong>Over the Counter Payment:</strong></label><br>
-
-                                             <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 15px;">
-                                                 <label style="font-weight: 600; color: #1e293b; margin-bottom: 8px; display: block;">Delivery Fee Option:</label>
-                                                 <div class="radio" style="margin-top: 5px;">
-                                                     <label style="font-weight: normal; cursor: pointer;">
-                                                         <input type="radio" name="otc_delivery_option" value="exclude" checked onchange="updateOtcTotal()">
-                                                         <strong>Store Pick-up</strong> (Do NOT include delivery fee: <strong>&#8369;0.00</strong>)
-                                                     </label>
-                                                 </div>
-                                                 <div class="radio" style="margin-top: 5px;">
-                                                     <label style="font-weight: normal; cursor: pointer;">
-                                                         <input type="radio" name="otc_delivery_option" value="include" onchange="updateOtcTotal()">
-                                                         <strong>Include Delivery Fee</strong> (+&#8369;<?php echo number_format($shipping_cost, 2); ?>)
-                                                     </label>
-                                                 </div>
-                                             </div>
-
-                                             <p style="margin-top: 5px; color: #555;">Please visit and present this Purchase Order at the supplier's address:</p>
+                                             <p style="margin-top: 5px; color: #555;">Please present this Purchase Order upon payment and pickup at the store address:</p>
                                              <?php foreach ($cart_suppliers as $sup): ?>
-                                                 <div style="border: 1px solid #e2e8f0; padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #fff;">
+                                                 <div style="border: 1px solid #e2e8f0; padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #fafafa;">
                                                      <strong>Store / Supplier:</strong> <?php echo htmlspecialchars($sup['supplier_name']); ?><br>
                                                      <strong>Address:</strong> <?php echo nl2br(htmlspecialchars($sup['supplier_address'])); ?><br>
                                                      <strong>Phone:</strong> <?php echo htmlspecialchars($sup['supplier_phone']); ?>
                                                  </div>
                                              <?php endforeach; ?>
-
-                                             <div style="margin-top: 12px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px;">
-                                                 <strong style="color: #166534;">Payable Amount:</strong> 
-                                                 <span id="otc_total_display" style="font-size: 18px; color: #15803d; font-weight: bold; margin-left: 5px;">
-                                                     &#8369;<?php echo number_format($table_total_price, 2); ?>
-                                                 </span>
-                                             </div>
                                          </div>
-
-                                         <input type="hidden" name="amount" id="otc_amount" value="<?php echo $table_total_price; ?>">
-                                         <input type="hidden" name="delivery_cost" id="otc_delivery_cost" value="0">
 
                                          <div class="col-md-12 form-group" style="margin-top: 10px;">
                                              <input type="submit" class="btn btn-primary" value="Send Purchase Order" name="form_otc" style="background-color: #0284c7; border-color: #0284c7; font-size: 16px; padding: 10px 20px;">
@@ -503,21 +496,32 @@ if(!isset($_SESSION['cart_p_id'])) {
                                      </form>
 
                                      <script>
-                                     function updateOtcTotal() {
+                                     function updateDeliveryOption() {
                                          var subtotal = <?php echo (float)$table_total_price; ?>;
                                          var shipping = <?php echo (float)$shipping_cost; ?>;
-                                         var selected = document.querySelector('input[name="otc_delivery_option"]:checked').value;
-                                         var finalAmt = subtotal;
-                                         var delCost = 0;
-                                         
-                                         if (selected === 'include') {
-                                             finalAmt = subtotal + shipping;
-                                             delCost = shipping;
-                                         }
-                                         
-                                         document.getElementById('otc_amount').value = finalAmt;
-                                         document.getElementById('otc_delivery_cost').value = delCost;
-                                         document.getElementById('otc_total_display').innerHTML = '&#8369;' + finalAmt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                         var selected = document.querySelector('input[name="global_delivery_option"]:checked').value;
+                                         var currentDelivery = (selected === 'include') ? shipping : 0;
+                                         var finalTotal = subtotal + currentDelivery;
+
+                                         // Update Table Displays
+                                         document.getElementById('order_delivery_display').innerHTML = '&#8369;' + currentDelivery.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                         document.getElementById('order_final_total_display').innerHTML = '&#8369;' + finalTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                                         // Sync with PayPal form
+                                         var paypalAmt = document.querySelector('#paypal_form input[name="final_total"]');
+                                         if (paypalAmt) paypalAmt.value = finalTotal;
+
+                                         // Sync with Bank form
+                                         var bankAmt = document.querySelector('#bank_form input[name="amount"]');
+                                         if (bankAmt) bankAmt.value = finalTotal;
+
+                                         // Sync with OTC form
+                                         var otcAmt = document.getElementById('otc_amount');
+                                         if (otcAmt) otcAmt.value = finalTotal;
+                                         var otcDel = document.getElementById('otc_delivery_cost');
+                                         if (otcDel) otcDel.value = currentDelivery;
+                                         var otcOpt = document.getElementById('otc_delivery_option');
+                                         if (otcOpt) otcOpt.value = selected;
                                      }
                                      </script>
 	                                
