@@ -48,7 +48,7 @@ if (isset($_POST['form1'])) {
                             strip_tags($_POST['cust_b_country']),
                             strip_tags($_POST['cust_b_address']),
                             '',
-                            '',
+                            isset($_POST['cust_b_state']) ? strip_tags($_POST['cust_b_state']) : '',
                             strip_tags($_POST['cust_b_zip']),
                             strip_tags($_POST['cust_s_name']),
                             strip_tags($_POST['cust_s_cname']),
@@ -56,7 +56,7 @@ if (isset($_POST['form1'])) {
                             strip_tags($_POST['cust_s_country']),
                             strip_tags($_POST['cust_s_address']),
                             '',
-                            '',
+                            isset($_POST['cust_s_state']) ? strip_tags($_POST['cust_s_state']) : '',
                             strip_tags($_POST['cust_s_zip']),
                             $_SESSION['customer']['cust_id']
                         ));  
@@ -69,7 +69,7 @@ if (isset($_POST['form1'])) {
     $_SESSION['customer']['cust_b_country'] = strip_tags($_POST['cust_b_country']);
     $_SESSION['customer']['cust_b_address'] = strip_tags($_POST['cust_b_address']);
     $_SESSION['customer']['cust_b_city'] = '';
-    $_SESSION['customer']['cust_b_state'] = '';
+    $_SESSION['customer']['cust_b_state'] = isset($_POST['cust_b_state']) ? strip_tags($_POST['cust_b_state']) : '';
     $_SESSION['customer']['cust_b_zip'] = strip_tags($_POST['cust_b_zip']);
     $_SESSION['customer']['cust_s_name'] = strip_tags($_POST['cust_s_name']);
     $_SESSION['customer']['cust_s_cname'] = strip_tags($_POST['cust_s_cname']);
@@ -77,7 +77,7 @@ if (isset($_POST['form1'])) {
     $_SESSION['customer']['cust_s_country'] = strip_tags($_POST['cust_s_country']);
     $_SESSION['customer']['cust_s_address'] = strip_tags($_POST['cust_s_address']);
     $_SESSION['customer']['cust_s_city'] = '';
-    $_SESSION['customer']['cust_s_state'] = '';
+    $_SESSION['customer']['cust_s_state'] = isset($_POST['cust_s_state']) ? strip_tags($_POST['cust_s_state']) : '';
     $_SESSION['customer']['cust_s_zip'] = strip_tags($_POST['cust_s_zip']);
 
 }
@@ -117,15 +117,32 @@ if (isset($_POST['form1'])) {
                                     <input type="text" class="form-control" name="cust_b_phone" value="<?php echo $_SESSION['customer']['cust_b_phone']; ?>">
                                 </div>
                                 <div class="form-group">
-                                    <label for="">Town/City</label>
-                                    <select name="cust_b_country" class="form-control">
+                                    <label for="">Town/City *</label>
+                                    <select name="cust_b_country" class="form-control select2">
+                                        <option value="">Select Town/City</option>
                                         <?php
-                                        $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_town ORDER BY town_name ASC");
                                         $statement->execute();
                                         $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                                         foreach ($result as $row) {
                                             ?>
-                                            <option value="<?php echo $row['country_id']; ?>" <?php if($row['country_id'] == $_SESSION['customer']['cust_b_country']) {echo 'selected';} ?>><?php echo $row['country_name']; ?></option>
+                                            <option value="<?php echo $row['town_id']; ?>" <?php if(isset($_SESSION['customer']['cust_b_country']) && $row['town_id'] == $_SESSION['customer']['cust_b_country']) {echo 'selected';} ?>><?php echo $row['town_name']; ?></option>
+                                            <?php
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="">Barangay *</label>
+                                    <select name="cust_b_state" class="form-control select2">
+                                        <option value="">Select Barangay</option>
+                                        <?php
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_brgy ORDER BY brgy_name ASC");
+                                        $statement->execute();
+                                        $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                                        foreach ($result as $row) {
+                                            ?>
+                                            <option value="<?php echo $row['brgy_name']; ?>" <?php if(isset($_SESSION['customer']['cust_b_state']) && ($row['brgy_name'] == $_SESSION['customer']['cust_b_state'] || $row['brgy_id'] == $_SESSION['customer']['cust_b_state'])) {echo 'selected';} ?>><?php echo $row['brgy_name']; ?></option>
                                             <?php
                                         }
                                         ?>
@@ -155,15 +172,32 @@ if (isset($_POST['form1'])) {
                                     <input type="text" class="form-control" name="cust_s_phone" value="<?php echo $_SESSION['customer']['cust_s_phone']; ?>">
                                 </div>
                                 <div class="form-group">
-                                    <label for="">Town/City</label>
-                                    <select name="cust_s_country" class="form-control">
+                                    <label for="">Town/City *</label>
+                                    <select name="cust_s_country" class="form-control select2">
+                                        <option value="">Select Town/City</option>
                                         <?php
-                                        $statement = $pdo->prepare("SELECT * FROM tbl_country ORDER BY country_name ASC");
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_town ORDER BY town_name ASC");
                                         $statement->execute();
                                         $result = $statement->fetchAll(PDO::FETCH_ASSOC);
                                         foreach ($result as $row) {
                                             ?>
-                                            <option value="<?php echo $row['country_id']; ?>" <?php if($row['country_id'] == $_SESSION['customer']['cust_s_country']) {echo 'selected';} ?>><?php echo $row['country_name']; ?></option>
+                                            <option value="<?php echo $row['town_id']; ?>" <?php if(isset($_SESSION['customer']['cust_s_country']) && $row['town_id'] == $_SESSION['customer']['cust_s_country']) {echo 'selected';} ?>><?php echo $row['town_name']; ?></option>
+                                            <?php
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="">Barangay *</label>
+                                    <select name="cust_s_state" class="form-control select2">
+                                        <option value="">Select Barangay</option>
+                                        <?php
+                                        $statement = $pdo->prepare("SELECT * FROM tbl_brgy ORDER BY brgy_name ASC");
+                                        $statement->execute();
+                                        $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                                        foreach ($result as $row) {
+                                            ?>
+                                            <option value="<?php echo $row['brgy_name']; ?>" <?php if(isset($_SESSION['customer']['cust_s_state']) && ($row['brgy_name'] == $_SESSION['customer']['cust_s_state'] || $row['brgy_id'] == $_SESSION['customer']['cust_s_state'])) {echo 'selected';} ?>><?php echo $row['brgy_name']; ?></option>
                                             <?php
                                         }
                                         ?>
