@@ -1,4 +1,4 @@
-﻿<?php require_once('header.php'); ?>
+<?php require_once('header.php'); ?>
 
 <?php
 // Check if customer is logged in
