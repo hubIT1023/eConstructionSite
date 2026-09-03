@@ -213,9 +213,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
             $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
 
             // Automatic inventory & price rollover if stock reached 0 or 1 and (N)Quantity > 10% of (S)Level:
+            // "Quantity = Quantity + (N)Quantity", "(N)Quantity = 0"
+            // If "(C)Price < (N)Price" THEN "(C)Price = (N)Price", If "(C)Price > (N)Price" THEN "(C)Price = (C)Price"
             $statement_rollover = $pdo->prepare("UPDATE tbl_product 
                 SET p_qty = p_qty + p_new_qty,
-                    p_current_price = CASE WHEN (p_new_price IS NOT NULL AND p_new_price != '') THEN p_new_price ELSE p_current_price END,
+                    p_current_price = CASE 
+                        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric) 
+                        THEN p_new_price 
+                        ELSE p_current_price 
+                    END,
                     p_new_qty = 0
                 WHERE p_id = ? 
                   AND (p_qty = 0 OR p_qty = 1) 
