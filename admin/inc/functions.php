@@ -139,3 +139,150 @@ function send_system_email($to, $subject, $message_html) {
         return @mail($to, $subject, $message_html, $headers);
     }
 }
+
+if (!function_exists('parseConstructionProductDetails')) {
+    function parseConstructionProductDetails($raw_name) {
+        $name = trim($raw_name);
+        $color = "";
+        $thickness = "";
+        $diameter = "";
+        $size = "";
+        $weight_pack = "";
+        $material = "";
+        $voltage = "";
+        $power = "";
+        $rated_current = "";
+        $length = "";
+
+        // 1. Detect Color keyword
+        $colors = ["Orange", "Green", "Blue", "Yellow", "Red", "Black", "White", "Brown", "Tan", "Pink"];
+        foreach ($colors as $c) {
+            if (preg_match('/\b' . preg_quote($c, '/') . '\b/i', $name)) {
+                $color = $c;
+                $name = trim(preg_replace('/\b' . preg_quote($c, '/') . '\b/i', '', $name));
+                break;
+            }
+        }
+
+        // 2. Detect Material / Finish keywords (Stainless, Galvanized, GI, BI, Marine local, Mar china, Ord china, Ord local)
+        if (preg_match('/\b(Stainless|Galvanized|GI|BI)\b/i', $name, $matches)) {
+            $material = trim($matches[1]);
+            $name = trim(preg_replace('/\b' . preg_quote($matches[0], '/') . '\b/i', '', $name));
+        } elseif (preg_match('/\b(marine\s*local|mar\s*china|marine\s*china|ord\s*china|ord\s*local|marine)\b/i', $name, $matches)) {
+            $material = ucwords(trim($matches[1]));
+            $name = trim(preg_replace('/\b' . preg_quote($matches[0], '/') . '\b/i', '', $name));
+        }
+
+        // 3. Detect Weight / Packaging (e.g. (1/4kg), (1/2kg), (1kg), 1L, 1G, (1 Kg))
+        if (preg_match('/\(\s*([0-9\/\.]+\s*(?:kg|g|l|lbs|gal|kg\b))\s*\)/i', $name, $matches)) {
+            $weight_pack = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        } elseif (preg_match('/\b([0-9\/\.]+\s*(?:kg|g|l|lbs|gal))\b/i', $name, $matches)) {
+            $weight_pack = trim($matches[1]);
+            $name = trim(preg_replace('/\b' . preg_quote($matches[0], '/') . '\b/i', '', $name));
+        }
+
+        // 4. Detect Voltage / Power / Current (e.g. 220V, 110V, 850W, 1000W, 10A, 20A)
+        if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:V|VAC|VDC))\b/i', $name, $matches)) {
+            $voltage = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+        if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:W|kW|HP))\b/i', $name, $matches)) {
+            $power = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+        if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:A|Amp|Amps))\b/i', $name, $matches)) {
+            $rated_current = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+
+        // 5. Detect Diameter in parentheses: (D = 10 mm), (D = 16 mm)
+        if (preg_match('/\(\s*([dD]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
+            $diameter = trim($matches[1]);
+            if (empty($color) && !empty($matches[2])) {
+                $color = trim($matches[2]);
+            }
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+        // 6. Detect Thickness in parentheses: (t = 1.2), (t = 1/4"), (t = 3/16)
+        elseif (preg_match('/\(\s*([tT]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
+            $thickness = trim($matches[1]);
+            if (empty($color) && !empty($matches[2])) {
+                $color = trim($matches[2]);
+            }
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+        // Check remaining parenthesized text (e.g. (3-inch x 10ft) or (APO Brand))
+        elseif (preg_match('/\(\s*([^\)]+)\s*\)/i', $name, $matches)) {
+            $inside = trim($matches[1]);
+            if (preg_match('/brand/i', $inside)) {
+                $material = $inside;
+            } else {
+                $size = $inside;
+            }
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+
+        // 7. Detect Length (e.g. 10ft, 20ft, 6m)
+        if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:ft|m|meters|feet))\b/i', $name, $matches)) {
+            $length = trim($matches[1]);
+            $name = trim(str_replace($matches[0], '', $name));
+        }
+
+        // 8. Detect Size / Dimensions
+        if (empty($size)) {
+            // Pattern A: Hyphen with dimensions: Tubular - 2" x 3", Angle Bar - 1 1/2" x 1 1/2"
+            if (preg_match('/-\s*([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
+                $size = trim($matches[1]);
+                $name = trim(str_replace($matches[0], '', $name));
+            }
+            // Pattern B: Dimensions with x: 2 x 3, 2" x 4", 1" x 1"
+            elseif (preg_match('/([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
+                $size = trim($matches[1]);
+                $name = trim(str_replace($matches[0], '', $name));
+            }
+            // Pattern C: Single dimension sizes: 16mm, 12mm, 4", 2", 1 1/4, 1 1/2, 2 1/2, 3/4, 1/2, 4.5, 3.5, #4, #6, #8, #40
+            elseif (preg_match('/\b([0-9]+(?:\s+[0-9]+\/[0-9]+|\/[0-9]+|\.[0-9]+)?\s*(?:mm|cm|inch|in|\"|#\d+)?)\s*$/i', $name, $matches) && strlen(trim($matches[1])) > 0) {
+                $size = trim($matches[1]);
+                $name = trim(substr($name, 0, -strlen($matches[0])));
+            }
+        }
+
+        // Clean up base_name
+        $base_name = trim(trim($name), "- \t\n\r\0\x0B");
+        $base_name = preg_replace('/\s+/', ' ', $base_name);
+        if (empty($base_name)) {
+            $base_name = $raw_name;
+        }
+
+        // Build readable spec_label
+        $specs_parts = [];
+        if (!empty($diameter)) $specs_parts[] = $diameter;
+        if (!empty($size)) $specs_parts[] = $size;
+        if (!empty($thickness)) $specs_parts[] = $thickness;
+        if (!empty($weight_pack)) $specs_parts[] = $weight_pack;
+        if (!empty($voltage)) $specs_parts[] = $voltage;
+        if (!empty($power)) $specs_parts[] = $power;
+        if (!empty($rated_current)) $specs_parts[] = $rated_current;
+        if (!empty($length)) $specs_parts[] = $length;
+        if (!empty($material)) $specs_parts[] = $material;
+        if (!empty($color)) $specs_parts[] = $color;
+
+        $spec_label = !empty($specs_parts) ? implode(' | ', $specs_parts) : 'Standard';
+
+        return [
+            'base_name' => $base_name,
+            'size' => $size,
+            'thickness' => $thickness,
+            'diameter' => $diameter,
+            'color' => $color,
+            'material' => $material,
+            'weight_pack' => $weight_pack,
+            'voltage' => $voltage,
+            'power' => $power,
+            'rated_current' => $rated_current,
+            'length' => $length,
+            'spec_label' => $spec_label
+        ];
+    }
+}
