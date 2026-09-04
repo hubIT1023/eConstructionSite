@@ -444,7 +444,9 @@ $supplier_shipping_rates = $statement_sc->fetchAll(PDO::FETCH_KEY_PAIR);
 $statement_all = $pdo->prepare("SELECT amount FROM tbl_shipping_cost_all WHERE sca_id=1");
 $statement_all->execute();
 $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
-?<style>
+?>
+
+<style>
 .pos-wrapper {
     margin-top: 10px;
 }
