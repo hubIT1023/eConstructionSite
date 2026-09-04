@@ -9,10 +9,15 @@ function parseConstructionProductDetails($raw_name) {
     $thickness = "";
     $diameter = "";
     $size = "";
-    $base_name = $name;
+    $weight_pack = "";
+    $material = "";
+    $voltage = "";
+    $power = "";
+    $rated_current = "";
+    $length = "";
 
-    // 1. Detect Color / Material keyword
-    $colors = ["Orange", "Green", "Blue", "Yellow", "Red", "Black", "White", "Brown", "Tan", "Pink", "Stainless", "Galvanized", "GI", "BI"];
+    // 1. Detect Color keyword
+    $colors = ["Orange", "Green", "Blue", "Yellow", "Red", "Black", "White", "Brown", "Tan", "Pink"];
     foreach ($colors as $c) {
         if (preg_match('/\b' . preg_quote($c, '/') . '\b/i', $name)) {
             $color = $c;
@@ -21,7 +26,39 @@ function parseConstructionProductDetails($raw_name) {
         }
     }
 
-    // 2. Detect Diameter (e.g. (D = 10 mm), (D = 16 mm), (D = 1.7 mm))
+    // 2. Detect Material / Finish keywords (Stainless, Galvanized, GI, BI, Marine local, Mar china, Ord china, Ord local)
+    if (preg_match('/\b(Stainless|Galvanized|GI|BI)\b/i', $name, $matches)) {
+        $material = trim($matches[1]);
+        $name = trim(preg_replace('/\b' . preg_quote($matches[0], '/') . '\b/i', '', $name));
+    } elseif (preg_match('/\b(marine\s*local|mar\s*china|marine\s*china|ord\s*china|ord\s*local|marine)\b/i', $name, $matches)) {
+        $material = ucwords(trim($matches[1]));
+        $name = trim(preg_replace('/\b' . preg_quote($matches[0], '/') . '\b/i', '', $name));
+    }
+
+    // 3. Detect Weight / Packaging (e.g. (1/4kg), (1/2kg), (1kg), 1L, 1G, (1 Kg))
+    if (preg_match('/\(\s*([0-9\/\.]+\s*(?:kg|g|l|lbs|gal|kg\b))\s*\)/i', $name, $matches)) {
+        $weight_pack = trim($matches[1]);
+        $name = trim(str_replace($matches[0], '', $name));
+    } elseif (preg_match('/\b([0-9\/\.]+\s*(?:kg|g|l|lbs|gal))\b/i', $name, $matches)) {
+        $weight_pack = trim($matches[1]);
+        $name = trim(preg_replace('/\b' . preg_quote($matches[0], '/') . '\b/i', '', $name));
+    }
+
+    // 4. Detect Voltage / Power / Current (e.g. 220V, 110V, 850W, 1000W, 10A, 20A)
+    if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:V|VAC|VDC))\b/i', $name, $matches)) {
+        $voltage = trim($matches[1]);
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+    if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:W|kW|HP))\b/i', $name, $matches)) {
+        $power = trim($matches[1]);
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+    if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:A|Amp|Amps))\b/i', $name, $matches)) {
+        $rated_current = trim($matches[1]);
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+
+    // 5. Detect Diameter in parentheses: (D = 10 mm), (D = 16 mm)
     if (preg_match('/\(\s*([dD]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
         $diameter = trim($matches[1]);
         if (empty($color) && !empty($matches[2])) {
@@ -29,7 +66,7 @@ function parseConstructionProductDetails($raw_name) {
         }
         $name = trim(str_replace($matches[0], '', $name));
     }
-    // 3. Detect Thickness (e.g., ( t = 1/4 " ), (t = 1.2), (t = 3/16))
+    // 6. Detect Thickness in parentheses: (t = 1.2), (t = 1/4"), (t = 3/16)
     elseif (preg_match('/\(\s*([tT]\s*=\s*[^,\)]+)(?:,\s*([^)]+))?\s*\)/i', $name, $matches)) {
         $thickness = trim($matches[1]);
         if (empty($color) && !empty($matches[2])) {
@@ -37,42 +74,77 @@ function parseConstructionProductDetails($raw_name) {
         }
         $name = trim(str_replace($matches[0], '', $name));
     }
-    // Check if there is other content in parentheses (e.g. (3-inch x 10ft) or (HEB 200))
+    // Check remaining parenthesized text (e.g. (3-inch x 10ft) or (APO Brand))
     elseif (preg_match('/\(\s*([^\)]+)\s*\)/i', $name, $matches)) {
-        $size = trim($matches[1]);
+        $inside = trim($matches[1]);
+        if (preg_match('/brand/i', $inside)) {
+            $material = $inside;
+        } else {
+            $size = $inside;
+        }
         $name = trim(str_replace($matches[0], '', $name));
     }
 
-    // 4. Detect Size from remaining string if not yet found
+    // 7. Detect Length (e.g. 10ft, 20ft, 6m)
+    if (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:ft|m|meters|feet))\b/i', $name, $matches)) {
+        $length = trim($matches[1]);
+        $name = trim(str_replace($matches[0], '', $name));
+    }
+
+    // 8. Detect Size / Dimensions
     if (empty($size)) {
-        // Pattern A: Hyphen followed by dimensions (e.g. - 1 1/2" x 1 1/2" or - 2" x 2" or - 2 x 3)
+        // Pattern A: Hyphen with dimensions: Tubular - 2" x 3", Angle Bar - 1 1/2" x 1 1/2"
         if (preg_match('/-\s*([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
             $size = trim($matches[1]);
             $name = trim(str_replace($matches[0], '', $name));
         }
-        // Pattern B: Dimensions with x (e.g. 1 1/2" x 1 1/2" or 2 x 3)
+        // Pattern B: Dimensions with x: 2 x 3, 2" x 4", 1" x 1"
         elseif (preg_match('/([0-9\s\/\.\"]+\s*x\s*[0-9\s\/\.\"]+(?:\s*(?:inch|in|mm|cm|ft|\"))?)/i', $name, $matches)) {
             $size = trim($matches[1]);
             $name = trim(str_replace($matches[0], '', $name));
         }
-        // Pattern C: Common Nail 4", Finishing Nail 2", Square Bar 16mm, Round Bar 12mm
-        elseif (preg_match('/\b([0-9]+(?:\.[0-9]+)?\s*(?:mm|cm|m|inch|in|ft|\"|#\d+))\b/i', $name, $matches)) {
+        // Pattern C: Single dimension sizes: 16mm, 12mm, 4", 2", 1 1/4, 1 1/2, 2 1/2, 3/4, 1/2, 4.5, 3.5, #4, #6, #8, #40
+        elseif (preg_match('/\b([0-9]+(?:\s+[0-9]+\/[0-9]+|\/[0-9]+|\.[0-9]+)?\s*(?:mm|cm|inch|in|\"|#\d+)?)\s*$/i', $name, $matches) && strlen(trim($matches[1])) > 0) {
             $size = trim($matches[1]);
-            $name = trim(str_replace($matches[0], '', $name));
+            $name = trim(substr($name, 0, -strlen($matches[0])));
         }
     }
 
+    // Clean up base_name
     $base_name = trim(trim($name), "- \t\n\r\0\x0B");
+    $base_name = preg_replace('/\s+/', ' ', $base_name);
     if (empty($base_name)) {
         $base_name = $raw_name;
     }
+
+    // Build readable spec_label
+    $specs_parts = [];
+    if (!empty($diameter)) $specs_parts[] = $diameter;
+    if (!empty($size)) $specs_parts[] = $size;
+    if (!empty($thickness)) $specs_parts[] = $thickness;
+    if (!empty($weight_pack)) $specs_parts[] = $weight_pack;
+    if (!empty($voltage)) $specs_parts[] = $voltage;
+    if (!empty($power)) $specs_parts[] = $power;
+    if (!empty($rated_current)) $specs_parts[] = $rated_current;
+    if (!empty($length)) $specs_parts[] = $length;
+    if (!empty($material)) $specs_parts[] = $material;
+    if (!empty($color)) $specs_parts[] = $color;
+
+    $spec_label = !empty($specs_parts) ? implode(' | ', $specs_parts) : 'Standard';
 
     return [
         'base_name' => $base_name,
         'size' => $size,
         'thickness' => $thickness,
         'diameter' => $diameter,
-        'color' => $color
+        'color' => $color,
+        'material' => $material,
+        'weight_pack' => $weight_pack,
+        'voltage' => $voltage,
+        'power' => $power,
+        'rated_current' => $rated_current,
+        'length' => $length,
+        'spec_label' => $spec_label
     ];
 }
 
@@ -271,19 +343,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
     }
 }
 
-// Fetch Active Products for Supplier
-$statement_prod = $pdo->prepare("SELECT p.*, ec.ecat_name FROM tbl_product p 
+// Fetch Active Products for Supplier with Category Details
+$statement_prod = $pdo->prepare("SELECT p.*, ec.ecat_name, mc.mcat_name, tc.tcat_name 
+    FROM tbl_product p 
     LEFT JOIN tbl_end_category ec ON p.ecat_id = ec.ecat_id 
+    LEFT JOIN tbl_mid_category mc ON ec.mcat_id = mc.mcat_id
+    LEFT JOIN tbl_top_category tc ON mc.tcat_id = tc.tcat_id
     WHERE p.supplier_id = ? AND p.p_is_active = 1 
-    ORDER BY p.p_name ASC");
+    ORDER BY ec.ecat_name ASC, p.p_name ASC");
 $statement_prod->execute(array($supplier_id));
-$product_list = $statement_prod->fetchAll(PDO::FETCH_ASSOC);
+$raw_products = $statement_prod->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch Categories for Filtering
+// Group Products by End Level Category and Parent Base Name
+$grouped_products = array();
 $categories = array();
-foreach ($product_list as $prod) {
-    if (!empty($prod['ecat_name']) && !in_array($prod['ecat_name'], $categories)) {
-        $categories[] = $prod['ecat_name'];
+$total_inventory_items = count($raw_products);
+
+foreach ($raw_products as $prod) {
+    $ecat_name = !empty($prod['ecat_name']) ? trim($prod['ecat_name']) : 'Uncategorized';
+    if (!in_array($ecat_name, $categories)) {
+        $categories[] = $ecat_name;
+    }
+
+    $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
+    $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
+    $img_src = (!empty($prod['p_featured_photo']) && file_exists('../assets/uploads/'.$prod['p_featured_photo'])) 
+        ? '../assets/uploads/'.$prod['p_featured_photo'] 
+        : '../assets/uploads/photo-6.jpg';
+
+    $parsed_spec = parseConstructionProductDetails($prod['p_name']);
+    $base_name = $parsed_spec['base_name'];
+
+    // Grouping key: ecat_id + sanitized base_name
+    $group_key = $prod['ecat_id'] . '_' . strtolower(preg_replace('/[^a-z0-9]/', '', $base_name));
+
+    $variant_item = array(
+        'id' => intval($prod['p_id']),
+        'sku' => !empty($prod['p_sku']) ? $prod['p_sku'] : ('SKU-' . str_pad($prod['p_id'], 5, '0', STR_PAD_LEFT)),
+        'name' => $prod['p_name'],
+        'base_name' => $base_name,
+        'spec_label' => $parsed_spec['spec_label'],
+        'size' => $parsed_spec['size'],
+        'thickness' => $parsed_spec['thickness'],
+        'diameter' => $parsed_spec['diameter'],
+        'color' => $parsed_spec['color'],
+        'material' => $parsed_spec['material'],
+        'weight_pack' => $parsed_spec['weight_pack'],
+        'voltage' => $parsed_spec['voltage'],
+        'power' => $parsed_spec['power'],
+        'rated_current' => $parsed_spec['rated_current'],
+        'length' => $parsed_spec['length'],
+        'price' => $clean_price,
+        'stock' => $clean_stock,
+        'photo' => $img_src,
+        'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic'
+    );
+
+    if (!isset($grouped_products[$group_key])) {
+        $grouped_products[$group_key] = array(
+            'group_key' => $group_key,
+            'base_name' => $base_name,
+            'ecat_id' => $prod['ecat_id'],
+            'ecat_name' => $ecat_name,
+            'mcat_name' => $prod['mcat_name'] ?: '',
+            'tcat_name' => $prod['tcat_name'] ?: '',
+            'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic',
+            'photo' => $img_src,
+            'min_price' => $clean_price,
+            'max_price' => $clean_price,
+            'total_stock' => $clean_stock,
+            'variants' => array($variant_item)
+        );
+    } else {
+        $grouped_products[$group_key]['variants'][] = $variant_item;
+        $grouped_products[$group_key]['total_stock'] += $clean_stock;
+        if ($clean_price < $grouped_products[$group_key]['min_price']) {
+            $grouped_products[$group_key]['min_price'] = $clean_price;
+        }
+        if ($clean_price > $grouped_products[$group_key]['max_price']) {
+            $grouped_products[$group_key]['max_price'] = $clean_price;
+        }
     }
 }
 
@@ -305,9 +444,7 @@ $supplier_shipping_rates = $statement_sc->fetchAll(PDO::FETCH_KEY_PAIR);
 $statement_all = $pdo->prepare("SELECT amount FROM tbl_shipping_cost_all WHERE sca_id=1");
 $statement_all->execute();
 $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
-?>
-
-<style>
+?<style>
 .pos-wrapper {
     margin-top: 10px;
 }
@@ -321,14 +458,19 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     margin-left: 0 !important;
     margin-right: 0 !important;
 }
-@media (max-width: 991px) {
+@media (max-width: 1199px) {
     #posProductGrid {
         grid-template-columns: repeat(3, 1fr) !important;
     }
 }
-@media (max-width: 600px) {
+@media (max-width: 767px) {
     #posProductGrid {
         grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+@media (max-width: 480px) {
+    #posProductGrid {
+        grid-template-columns: repeat(1, 1fr) !important;
     }
 }
 .pos-product-item {
@@ -340,8 +482,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     background: #fff;
     border: 1.5px solid #e2e8f0;
     border-radius: 8px;
-    padding: 8px 10px;
-    margin-bottom: 0 !important;
+    padding: 10px;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     position: relative;
@@ -353,72 +494,134 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 }
 .pos-product-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+    box-shadow: 0 5px 15px rgba(37, 99, 235, 0.18);
     border-color: #2563eb;
 }
 .pos-product-card.out-of-stock {
-    opacity: 0.6;
-    cursor: not-allowed;
+    opacity: 0.65;
     background: #f8fafc;
 }
 .pos-product-img {
-    height: 95px;
+    height: 105px;
     width: 100%;
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
     background-color: #fff;
-    border-radius: 5px;
+    border-radius: 6px;
     margin-bottom: 8px;
     border: 1px solid #f1f5f9;
 }
-.pos-product-details-box {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 6px 8px;
-    margin-bottom: 6px;
-    min-height: 85px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-.pos-spec-row {
-    display: flex;
-    align-items: baseline;
-    margin-bottom: 2px;
-    line-height: 1.3;
-}
-.pos-spec-row:last-child {
-    margin-bottom: 0;
-}
-.pos-spec-label {
-    width: 68px;
-    flex-shrink: 0;
-    font-size: 11px;
+.pos-cat-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    background: rgba(30, 41, 59, 0.88);
+    color: #fff;
+    font-size: 10px;
     font-weight: 700;
-    color: #64748b;
+    padding: 2px 7px;
+    border-radius: 4px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    z-index: 2;
 }
-.pos-spec-val {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1e293b;
-    word-break: break-word;
+.pos-stock-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    z-index: 2;
 }
-.pos-spec-name {
+.pos-parent-info {
+    margin-bottom: 6px;
+    flex-grow: 1;
+}
+.pos-parent-name {
     font-size: 14px;
     font-weight: 800;
     color: #0f172a;
+    line-height: 1.3;
+    margin-bottom: 3px;
 }
-.pos-spec-size {
-    font-weight: 700;
-    color: #0369a1;
+.pos-parent-meta {
+    font-size: 11px;
+    color: #64748b;
+    margin-bottom: 6px;
 }
-.pos-spec-thick {
+.pos-variant-count-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    font-size: 11px;
     font-weight: 700;
-    color: #047857;
+    margin-bottom: 4px;
+}
+.pos-variant-count-badge.single {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+.pos-product-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 8px;
+    margin-top: 4px;
+}
+.pos-price-val {
+    font-size: 14px;
+    font-weight: 800;
+    color: #1d4ed8;
+}
+.pos-card-add-btn {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+.pos-variant-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1.5px solid #cbd5e1;
+    background: #fff;
+    color: #1e293b;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    text-decoration: none !important;
+}
+.pos-variant-chip:hover {
+    border-color: #2563eb;
+    background: #f8fafc;
+    color: #2563eb;
+}
+.pos-variant-chip.active {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}
+.pos-variant-chip.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f1f5f9;
+    border-color: #e2e8f0;
 }
 .pos-color-badge {
     display: inline-block;
@@ -440,25 +643,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 .pos-color-brown { background: #fdf8f6; color: #7c2d12; border-color: #fed7aa; }
 .pos-color-stainless { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
 .pos-color-galvanized { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
-.pos-product-price {
-    font-size: 17px;
-    font-weight: 800;
-    color: #1d4ed8;
-    margin-top: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.pos-stock-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 3px 6px;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-}
+
 .pos-cart-panel {
     background: #fff;
     border: 2px solid #e2e8f0;
@@ -535,7 +720,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <div class="col-sm-7">
                             <div class="input-group">
                                 <span class="input-group-addon" style="font-size: 16px;"><i class="fa fa-search"></i></span>
-                                <input type="text" id="posSearchInput" class="form-control input-lg" style="height: 42px; font-size: 15px;" placeholder="Search product by name, brand, or SKU..." onkeyup="filterPOSProducts()">
+                                <input type="text" id="posSearchInput" class="form-control input-lg" style="height: 42px; font-size: 15px;" placeholder="Search product by name, brand, spec, or SKU..." onkeyup="filterPOSProducts()">
                                 <span class="input-group-btn">
                                     <button class="btn btn-default input-lg" type="button" onclick="clearPOSSearch()" style="height: 42px;"><i class="fa fa-times"></i></button>
                                 </span>
@@ -543,99 +728,105 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </div>
                         <div class="col-sm-5 text-right">
                             <span class="text-muted" style="line-height: 34px; font-size: 13px;">
-                                Products Available: <strong id="productCount"><?php echo count($product_list); ?></strong>
+                                Products Available: <strong id="productCount"><?php echo count($grouped_products); ?></strong>
+                                <span style="font-size: 11px; color: #64748b;">(<?php echo $total_inventory_items; ?> items)</span>
                             </span>
                         </div>
                     </div>
 
-                    <!-- Category Filter Pills -->
+                    <!-- Category Filter Pills (End Level Categories) -->
                     <?php if (!empty($categories)): ?>
                     <div style="margin-bottom: 15px; overflow-x: auto; white-space: nowrap; padding-bottom: 5px;">
-                        <button type="button" class="btn btn-default btn-sm pos-cat-pill active" onclick="filterCategory('all', this)">All Categories</button>
+                        <button type="button" class="btn btn-default btn-sm pos-cat-pill active" onclick="filterCategory('all', this)">All Categories (<?php echo count($grouped_products); ?>)</button>
                         <?php foreach ($categories as $cat): ?>
                             <button type="button" class="btn btn-default btn-sm pos-cat-pill" onclick="filterCategory('<?php echo htmlspecialchars(addslashes($cat)); ?>', this)"><?php echo htmlspecialchars($cat); ?></button>
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
 
-                    <!-- Products Grid -->
+                    <!-- Products Grid (Grouped by End Level Category & Parent Product) -->
                     <div id="posProductGrid">
-                        <?php if (count($product_list) > 0): ?>
-                            <?php foreach ($product_list as $prod): 
-                                $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
-                                $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
-                                $is_out_of_stock = ($clean_stock <= 0);
-                                $img_src = (!empty($prod['p_featured_photo']) && file_exists('../assets/uploads/'.$prod['p_featured_photo'])) 
-                                    ? '../assets/uploads/'.$prod['p_featured_photo'] 
-                                    : '../assets/uploads/photo-6.jpg';
-
-                                $parsed_spec = parseConstructionProductDetails($prod['p_name']);
-
-                                $prod_data = array(
-                                    'id' => intval($prod['p_id']),
-                                    'name' => $prod['p_name'],
-                                    'base_name' => $parsed_spec['base_name'],
-                                    'size' => $parsed_spec['size'],
-                                    'thickness' => $parsed_spec['thickness'],
-                                    'diameter' => $parsed_spec['diameter'],
-                                    'color' => $parsed_spec['color'],
-                                    'price' => $clean_price,
-                                    'stock' => $clean_stock,
-                                    'photo' => $img_src
+                        <?php if (count($grouped_products) > 0): ?>
+                            <?php foreach ($grouped_products as $group_key => $group): 
+                                $is_out_of_stock = ($group['total_stock'] <= 0);
+                                $variant_count = count($group['variants']);
+                                
+                                // Build thorough search index for this parent group
+                                $search_terms = array(
+                                    $group['base_name'],
+                                    $group['brand'],
+                                    $group['ecat_name'],
+                                    $group['mcat_name'],
+                                    $group['tcat_name']
                                 );
+                                foreach ($group['variants'] as $v) {
+                                    $search_terms[] = $v['name'];
+                                    $search_terms[] = $v['sku'];
+                                    $search_terms[] = $v['spec_label'];
+                                    if (!empty($v['size'])) $search_terms[] = $v['size'];
+                                    if (!empty($v['thickness'])) $search_terms[] = $v['thickness'];
+                                    if (!empty($v['diameter'])) $search_terms[] = $v['diameter'];
+                                    if (!empty($v['color'])) $search_terms[] = $v['color'];
+                                    if (!empty($v['material'])) $search_terms[] = $v['material'];
+                                    if (!empty($v['weight_pack'])) $search_terms[] = $v['weight_pack'];
+                                    if (!empty($v['voltage'])) $search_terms[] = $v['voltage'];
+                                    if (!empty($v['power'])) $search_terms[] = $v['power'];
+                                }
+                                $search_index = strtolower(implode(' ', array_unique($search_terms)));
                             ?>
                             <div class="pos-product-item" 
-                                 data-name="<?php echo strtolower(htmlspecialchars($prod['p_name'] . ' ' . $prod['p_brand'])); ?>"
-                                 data-category="<?php echo htmlspecialchars($prod['ecat_name']); ?>"
-                                 data-product='<?php echo htmlspecialchars(json_encode($prod_data), ENT_QUOTES, 'UTF-8'); ?>'
-                                 onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleProductCardClick(this);'; ?>">
+                                 data-name="<?php echo htmlspecialchars($search_index, ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-category="<?php echo htmlspecialchars($group['ecat_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-group='<?php echo htmlspecialchars(json_encode($group), ENT_QUOTES, 'UTF-8'); ?>'
+                                 onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
                                 
                                 <div class="pos-product-card <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>">
-                                    <span class="label pos-stock-badge <?php echo $is_out_of_stock ? 'label-danger' : ($clean_stock < 10 ? 'label-warning' : 'label-success'); ?>">
-                                        <?php echo $is_out_of_stock ? 'Out of Stock' : $clean_stock . ' in stock'; ?>
+                                    <!-- End Category Badge -->
+                                    <span class="pos-cat-badge" title="<?php echo htmlspecialchars($group['ecat_name']); ?>">
+                                        <?php echo htmlspecialchars($group['ecat_name']); ?>
                                     </span>
-                                    <div class="pos-product-img" style="background-image: url('<?php echo $img_src; ?>');"></div>
+
+                                    <!-- Stock Badge -->
+                                    <span class="label pos-stock-badge <?php echo $is_out_of_stock ? 'label-danger' : ($group['total_stock'] < 10 ? 'label-warning' : 'label-success'); ?>">
+                                        <?php echo $is_out_of_stock ? 'Out of Stock' : $group['total_stock'] . ' in stock'; ?>
+                                    </span>
                                     
-                                    <div class="pos-product-details-box">
-                                        <div class="pos-spec-row">
-                                            <span class="pos-spec-label">Name:</span>
-                                            <span class="pos-spec-val pos-spec-name"><?php echo htmlspecialchars($parsed_spec['base_name']); ?></span>
+                                    <!-- Product Image -->
+                                    <div class="pos-product-img" style="background-image: url('<?php echo htmlspecialchars($group['photo']); ?>');"></div>
+                                    
+                                    <!-- Parent Product Info -->
+                                    <div class="pos-parent-info">
+                                        <div class="pos-parent-name" title="<?php echo htmlspecialchars($group['base_name']); ?>">
+                                            <?php echo htmlspecialchars($group['base_name']); ?>
                                         </div>
-                                        <?php if (!empty($parsed_spec['size'])): ?>
-                                        <div class="pos-spec-row">
-                                            <span class="pos-spec-label">Size:</span>
-                                            <span class="pos-spec-val pos-spec-size"><?php echo htmlspecialchars($parsed_spec['size']); ?></span>
+                                        <div class="pos-parent-meta">
+                                            <span class="text-muted"><i class="fa fa-tag"></i> <?php echo htmlspecialchars($group['brand']); ?></span>
                                         </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($parsed_spec['thickness'])): ?>
-                                        <div class="pos-spec-row">
-                                            <span class="pos-spec-label">Thickness:</span>
-                                            <span class="pos-spec-val pos-spec-thick"><?php echo htmlspecialchars($parsed_spec['thickness']); ?></span>
-                                        </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($parsed_spec['diameter'])): ?>
-                                        <div class="pos-spec-row">
-                                            <span class="pos-spec-label">Diameter:</span>
-                                            <span class="pos-spec-val pos-spec-thick"><?php echo htmlspecialchars($parsed_spec['diameter']); ?></span>
-                                        </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($parsed_spec['color'])): ?>
-                                        <div class="pos-spec-row">
-                                            <span class="pos-spec-label">Color:</span>
-                                            <span class="pos-spec-val">
-                                                <span class="pos-color-badge pos-color-<?php echo strtolower($parsed_spec['color']); ?>">
-                                                    <?php echo htmlspecialchars($parsed_spec['color']); ?>
-                                                </span>
+                                        
+                                        <!-- Variant Indicator Badge -->
+                                        <?php if ($variant_count > 1): ?>
+                                            <span class="pos-variant-count-badge">
+                                                <i class="fa fa-th-list"></i> <?php echo $variant_count; ?> Variants / Sizes
                                             </span>
-                                        </div>
+                                        <?php else: ?>
+                                            <span class="pos-variant-count-badge single">
+                                                <i class="fa fa-cube"></i> <?php echo htmlspecialchars($group['variants'][0]['spec_label']); ?>
+                                            </span>
                                         <?php endif; ?>
                                     </div>
 
-                                    <div class="pos-product-price">
-                                        <span>&#8369;<?php echo number_format($clean_price, 2); ?></span>
-                                        <span class="text-primary" style="font-size: 13px; font-weight: 700;">
-                                            <i class="fa fa-plus-circle"></i> Add
-                                        </span>
+                                    <!-- Price Range & Action -->
+                                    <div class="pos-product-footer">
+                                        <div class="pos-price-val">
+                                            <?php if ($group['min_price'] == $group['max_price']): ?>
+                                                &#8369;<?php echo number_format($group['min_price'], 2); ?>
+                                            <?php else: ?>
+                                                &#8369;<?php echo number_format($group['min_price'], 2); ?> - &#8369;<?php echo number_format($group['max_price'], 2); ?>
+                                            <?php endif; ?>
+                                        </div>
+                                        <button type="button" class="btn btn-primary btn-xs pos-card-add-btn">
+                                            <i class="fa fa-plus-circle"></i> <?php echo ($variant_count > 1) ? 'Select' : '+ Add'; ?>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -731,11 +922,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     </div>
 
                     <!-- Cart Items Table -->
-                    <div style="max-height: 220px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #f1f5f9; border-radius: 4px;">
+                    <div style="max-height: 240px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #f1f5f9; border-radius: 4px;">
                         <table class="table table-condensed pos-cart-table" style="margin-bottom: 0;">
                             <thead>
                                 <tr>
-                                    <th style="width: 45%;">Item</th>
+                                    <th style="width: 45%;">Item / Variant</th>
                                     <th style="width: 25%; text-align: center;">Qty</th>
                                     <th style="width: 20%; text-align: right;">Total</th>
                                     <th style="width: 10%;"></th>
@@ -745,7 +936,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <tr>
                                     <td colspan="4" class="text-center text-muted" style="padding: 25px 10px;">
                                         <i class="fa fa-shopping-basket fa-2x" style="color: #cbd5e1;"></i>
-                                        <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products to add.</div>
+                                        <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products to select variant and add.</div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -831,6 +1022,94 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     </div>
 </section>
 
+<!-- Interactive Product / Variant Selection Modal -->
+<div class="modal fade" id="posVariantModal" tabindex="-1" role="dialog" aria-labelledby="posVariantModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md" role="document">
+        <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+            <div class="modal-header" style="background: #1e3a8a; color: #fff; padding: 14px 18px;">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="color: #fff; opacity: 0.9; font-size: 24px;">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 class="modal-title" id="posVariantModalLabel" style="font-weight: 700; display: flex; align-items: center; gap: 8px; font-size: 17px;">
+                    <i class="fa fa-cubes text-info"></i> <span id="vModalTitle">Select Variant</span>
+                </h4>
+                <div style="margin-top: 4px; font-size: 12px; color: #bfdbfe;">
+                    Category: <strong id="vModalCategory" style="color: #fff;">-</strong> 
+                    <span id="vModalBrandWrap" style="margin-left: 10px;">| Brand: <strong id="vModalBrand" style="color: #fff;">-</strong></span>
+                </div>
+            </div>
+            
+            <div class="modal-body" style="padding: 18px;">
+                <!-- Selected Variant Live Details Card -->
+                <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px; display: flex; gap: 14px; align-items: center;">
+                    <div id="vModalImg" style="width: 85px; height: 85px; min-width: 85px; border-radius: 6px; background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #fff; border: 1px solid #cbd5e1;"></div>
+                    <div style="flex-grow: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                            <h4 id="vModalSelectedName" style="margin: 0 0 4px 0; font-size: 15px; font-weight: 800; color: #0f172a; line-height: 1.3;">-</h4>
+                            <span id="vModalStockBadge" class="label label-success" style="font-size: 12px; padding: 4px 8px; white-space: nowrap;">In Stock</span>
+                        </div>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">
+                            SKU: <strong id="vModalSku" style="color: #334155; font-family: monospace; font-size: 13px;">-</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px;">
+                            <div style="font-size: 20px; font-weight: 900; color: #1d4ed8;">
+                                &#8369;<span id="vModalPrice">0.00</span>
+                            </div>
+                            <div id="vModalSpecTags" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Variant Dropdown Selection -->
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                        <i class="fa fa-list-ul text-primary"></i> Select Specification / Variant:
+                    </label>
+                    <select id="vModalSelect" class="form-control input-lg" style="height: 42px; font-size: 14px; font-weight: 600;" onchange="onVariantSelectChange(this.value)">
+                    </select>
+                </div>
+
+                <!-- Clickable Variant Chips -->
+                <div id="vModalChipsContainer" style="margin-bottom: 16px;">
+                    <label style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; display: block; text-transform: uppercase;">
+                        Quick Variant Selector:
+                    </label>
+                    <div id="vModalChipsList" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; padding: 2px;"></div>
+                </div>
+
+                <!-- Quantity & Live Subtotal -->
+                <div style="background: #f1f5f9; border-radius: 8px; padding: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Quantity to Add:</label>
+                        <div class="input-group" style="width: 140px;">
+                            <span class="input-group-btn">
+                                <button type="button" class="btn btn-default" style="font-weight: bold; font-size: 16px; padding: 6px 12px;" onclick="changeModalQty(-1)">-</button>
+                            </span>
+                            <input type="number" id="vModalQtyInput" class="form-control text-center" style="font-size: 16px; font-weight: 800; height: 38px;" value="1" min="1" oninput="onModalQtyChange()">
+                            <span class="input-group-btn">
+                                <button type="button" class="btn btn-default" style="font-weight: bold; font-size: 16px; padding: 6px 12px;" onclick="changeModalQty(1)">+</button>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: right;">
+                        <span style="font-size: 12px; color: #64748b; display: block; font-weight: 600;">Item Subtotal:</span>
+                        <span style="font-size: 22px; font-weight: 900; color: #047857;">&#8369;<span id="vModalItemSubtotal">0.00</span></span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between;">
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600;">Cancel</button>
+                <button type="button" id="vModalAddBtn" class="btn btn-primary" onclick="submitVariantToCart()" style="font-weight: 800; padding: 8px 20px; font-size: 15px;">
+                    <i class="fa fa-cart-plus"></i> Add to Current Sale
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Success Receipt Modal -->
 <?php if ($pos_success_receipt): ?>
 <div class="modal fade in" id="posSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.6);">
@@ -881,7 +1160,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px;">
                     <thead>
                         <tr style="background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
-                            <th style="padding: 6px 4px; text-align: left;">Item</th>
+                            <th style="padding: 6px 4px; text-align: left;">Item / Variant</th>
                             <th style="padding: 6px 4px; text-align: center; width: 40px;">Qty</th>
                             <th style="padding: 6px 4px; text-align: right; width: 70px;">Price</th>
                             <th style="padding: 6px 4px; text-align: right; width: 80px;">Total</th>
@@ -892,7 +1171,12 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             $item_total = floatval($item['price']) * intval($item['qty']);
                         ?>
                         <tr style="border-bottom: 1px solid #f1f5f9;">
-                            <td style="padding: 6px 4px; font-weight: 500;"><?php echo htmlspecialchars($item['name']); ?></td>
+                            <td style="padding: 6px 4px; font-weight: 500;">
+                                <?php echo htmlspecialchars($item['name']); ?>
+                                <?php if (!empty($item['sku'])): ?>
+                                    <div style="font-size: 10px; color: #64748b; font-family: monospace;">SKU: <?php echo htmlspecialchars($item['sku']); ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td style="padding: 6px 4px; text-align: center;"><?php echo intval($item['qty']); ?></td>
                             <td style="padding: 6px 4px; text-align: right;">&#8369;<?php echo number_format($item['price'], 2); ?></td>
                             <td style="padding: 6px 4px; text-align: right; font-weight: 600;">&#8369;<?php echo number_format($item_total, 2); ?></td>
@@ -951,44 +1235,227 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
 <script>
 let cart = [];
+let currentModalGroup = null;
+let currentSelectedVariant = null;
 
-function handleProductCardClick(element) {
-    const rawData = element.getAttribute('data-product');
-    if (rawData) {
-        try {
-            const product = JSON.parse(rawData);
-            addToCart(product);
-        } catch (e) {
-            console.error('Failed to parse product data', e);
+// Handle Clicking on a Parent Product Card
+function handleGroupCardClick(element) {
+    const rawData = element.getAttribute('data-group');
+    if (!rawData) return;
+    
+    try {
+        const group = JSON.parse(rawData);
+        if (!group || !group.variants || group.variants.length === 0) return;
+        
+        if (group.total_stock <= 0) {
+            alert('This product is currently out of stock.');
+            return;
         }
+        
+        openVariantModal(group);
+    } catch (e) {
+        console.error('Failed to parse group data', e);
     }
 }
 
-function addToCart(product) {
-    const existingIndex = cart.findIndex(item => item.id === product.id);
+// Open Variant Selection Modal
+function openVariantModal(group) {
+    currentModalGroup = group;
+    
+    document.getElementById('vModalTitle').innerText = group.base_name;
+    document.getElementById('vModalCategory').innerText = group.ecat_name || 'General';
+    document.getElementById('vModalBrand').innerText = group.brand || 'Generic';
+    
+    const select = document.getElementById('vModalSelect');
+    const chipsList = document.getElementById('vModalChipsList');
+    
+    select.innerHTML = '';
+    chipsList.innerHTML = '';
+    
+    let firstInStockVariant = null;
+    
+    group.variants.forEach((v, index) => {
+        const isOutOfStock = (v.stock <= 0);
+        if (!firstInStockVariant && !isOutOfStock) {
+            firstInStockVariant = v;
+        }
+        
+        // Populate Select Option
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.disabled = isOutOfStock;
+        opt.innerText = `${v.spec_label} - ₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${isOutOfStock ? 'Out of stock' : v.stock + ' in stock'})`;
+        select.appendChild(opt);
+        
+        // Populate Quick Variant Chip
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `pos-variant-chip ${isOutOfStock ? 'disabled' : ''}`;
+        chip.id = `vChip_${v.id}`;
+        chip.setAttribute('data-id', v.id);
+        chip.title = isOutOfStock ? 'Out of stock' : `${v.stock} in stock`;
+        chip.innerHTML = `<i class="fa ${isOutOfStock ? 'fa-ban text-danger' : 'fa-check-circle'}"></i> ${escapeHtml(v.spec_label)} <span style="font-weight: 800; margin-left: 2px;">₱${v.price.toFixed(0)}</span>`;
+        if (!isOutOfStock) {
+            chip.onclick = function() { onVariantSelectChange(v.id); };
+        }
+        chipsList.appendChild(chip);
+    });
+    
+    // Default to first in-stock variant or first variant
+    const selectedVariant = firstInStockVariant || group.variants[0];
+    document.getElementById('vModalQtyInput').value = 1;
+    onVariantSelectChange(selectedVariant.id);
+    
+    $('#posVariantModal').modal('show');
+}
+
+// When a Variant is selected (via Select or Chip)
+function onVariantSelectChange(variantId) {
+    variantId = parseInt(variantId);
+    if (!currentModalGroup || !currentModalGroup.variants) return;
+    
+    const variant = currentModalGroup.variants.find(v => v.id === variantId);
+    if (!variant) return;
+    
+    currentSelectedVariant = variant;
+    
+    // Sync Select Dropdown
+    document.getElementById('vModalSelect').value = variant.id;
+    
+    // Sync Active Chip
+    document.querySelectorAll('.pos-variant-chip').forEach(c => c.classList.remove('active'));
+    const activeChip = document.getElementById(`vChip_${variant.id}`);
+    if (activeChip) activeChip.classList.add('active');
+    
+    // Update Image Preview
+    document.getElementById('vModalImg').style.backgroundImage = `url('${variant.photo}')`;
+    
+    // Update Info
+    document.getElementById('vModalSelectedName').innerText = variant.name;
+    document.getElementById('vModalSku').innerText = variant.sku || ('SKU-' + variant.id);
+    document.getElementById('vModalPrice').innerText = variant.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    
+    // Update Stock Badge & Button State
+    const stockBadge = document.getElementById('vModalStockBadge');
+    const addBtn = document.getElementById('vModalAddBtn');
+    const qtyInput = document.getElementById('vModalQtyInput');
+    
+    if (variant.stock <= 0) {
+        stockBadge.className = 'label label-danger';
+        stockBadge.innerText = 'Out of Stock';
+        addBtn.disabled = true;
+        qtyInput.disabled = true;
+    } else {
+        stockBadge.className = (variant.stock < 10) ? 'label label-warning' : 'label label-success';
+        stockBadge.innerText = `${variant.stock} in stock`;
+        addBtn.disabled = false;
+        qtyInput.disabled = false;
+        qtyInput.max = variant.stock;
+        
+        let currentQty = parseInt(qtyInput.value) || 1;
+        if (currentQty > variant.stock) {
+            qtyInput.value = variant.stock;
+        } else if (currentQty < 1) {
+            qtyInput.value = 1;
+        }
+    }
+    
+    // Render Specification Tags
+    const specTagsContainer = document.getElementById('vModalSpecTags');
+    let tagsHtml = [];
+    if (variant.size) tagsHtml.push(`<span style="color: #0369a1; font-weight: 700; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-size: 11px;">Size: ${escapeHtml(variant.size)}</span>`);
+    if (variant.thickness) tagsHtml.push(`<span style="color: #047857; font-weight: 700; background: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 11px;">Thick: ${escapeHtml(variant.thickness)}</span>`);
+    if (variant.diameter) tagsHtml.push(`<span style="color: #047857; font-weight: 700; background: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 11px;">Dia: ${escapeHtml(variant.diameter)}</span>`);
+    if (variant.color) tagsHtml.push(`<span class="pos-color-badge pos-color-${variant.color.toLowerCase()}">${escapeHtml(variant.color)}</span>`);
+    if (variant.material) tagsHtml.push(`<span style="color: #475569; font-weight: 700; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${escapeHtml(variant.material)}</span>`);
+    if (variant.voltage) tagsHtml.push(`<span style="color: #b45309; font-weight: 700; background: #fef3c7; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${escapeHtml(variant.voltage)}</span>`);
+    if (variant.power) tagsHtml.push(`<span style="color: #b45309; font-weight: 700; background: #fef3c7; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${escapeHtml(variant.power)}</span>`);
+    if (variant.length) tagsHtml.push(`<span style="color: #4338ca; font-weight: 700; background: #e0e7ff; padding: 2px 6px; border-radius: 4px; font-size: 11px;">Len: ${escapeHtml(variant.length)}</span>`);
+    specTagsContainer.innerHTML = tagsHtml.join(' ');
+    
+    calcModalSubtotal();
+}
+
+// Modal Quantity Stepper
+function changeModalQty(delta) {
+    if (!currentSelectedVariant) return;
+    const qtyInput = document.getElementById('vModalQtyInput');
+    let currentVal = parseInt(qtyInput.value) || 1;
+    let newVal = currentVal + delta;
+    
+    if (newVal < 1) newVal = 1;
+    if (newVal > currentSelectedVariant.stock) {
+        alert(`Cannot exceed available inventory (${currentSelectedVariant.stock} units).`);
+        newVal = currentSelectedVariant.stock;
+    }
+    
+    qtyInput.value = newVal;
+    calcModalSubtotal();
+}
+
+function onModalQtyChange() {
+    if (!currentSelectedVariant) return;
+    const qtyInput = document.getElementById('vModalQtyInput');
+    let val = parseInt(qtyInput.value) || 1;
+    if (val < 1) val = 1;
+    if (val > currentSelectedVariant.stock) {
+        alert(`Maximum available inventory is ${currentSelectedVariant.stock} units.`);
+        val = currentSelectedVariant.stock;
+    }
+    qtyInput.value = val;
+    calcModalSubtotal();
+}
+
+function calcModalSubtotal() {
+    if (!currentSelectedVariant) return;
+    const qty = parseInt(document.getElementById('vModalQtyInput').value) || 1;
+    const subtotal = currentSelectedVariant.price * qty;
+    document.getElementById('vModalItemSubtotal').innerText = subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+// Submit Variant from Modal to Cart
+function submitVariantToCart() {
+    if (!currentSelectedVariant) return;
+    if (currentSelectedVariant.stock <= 0) {
+        alert('Selected variant is out of stock.');
+        return;
+    }
+    
+    const qty = parseInt(document.getElementById('vModalQtyInput').value) || 1;
+    
+    addVariantToCart(currentSelectedVariant, qty);
+    $('#posVariantModal').modal('hide');
+}
+
+// Add Variant to Cart with Specific Qty
+function addVariantToCart(variant, qty) {
+    const existingIndex = cart.findIndex(item => item.id === variant.id);
     if (existingIndex > -1) {
-        if (cart[existingIndex].qty < product.stock) {
-            cart[existingIndex].qty++;
+        const potentialQty = cart[existingIndex].qty + qty;
+        if (potentialQty <= variant.stock) {
+            cart[existingIndex].qty = potentialQty;
         } else {
-            alert('Cannot add more than available inventory (' + product.stock + ' units).');
-            return;
+            alert(`Cannot add more than available inventory (${variant.stock} units). Currently in cart: ${cart[existingIndex].qty}`);
+            cart[existingIndex].qty = variant.stock;
         }
     } else {
-        if (product.stock <= 0) {
-            alert('Item is out of stock.');
-            return;
+        if (qty > variant.stock) {
+            qty = variant.stock;
         }
         cart.push({
-            id: product.id,
-            name: product.name,
-            base_name: product.base_name || product.name,
-            size: product.size || '',
-            thickness: product.thickness || '',
-            diameter: product.diameter || '',
-            color: product.color || '',
-            price: product.price,
-            stock: product.stock,
-            qty: 1
+            id: variant.id,
+            sku: variant.sku,
+            name: variant.name,
+            base_name: variant.base_name || variant.name,
+            spec_label: variant.spec_label,
+            size: variant.size || '',
+            thickness: variant.thickness || '',
+            diameter: variant.diameter || '',
+            color: variant.color || '',
+            material: variant.material || '',
+            price: variant.price,
+            stock: variant.stock,
+            qty: qty
         });
     }
     renderCart();
@@ -1034,7 +1501,7 @@ function renderCart() {
             <tr>
                 <td colspan="4" class="text-center text-muted" style="padding: 25px 10px;">
                     <i class="fa fa-shopping-basket fa-2x" style="color: #cbd5e1;"></i>
-                    <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products to add.</div>
+                    <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products to select variant and add.</div>
                 </td>
             </tr>`;
         completeBtn.disabled = true;
@@ -1044,27 +1511,33 @@ function renderCart() {
         cart.forEach(item => {
             const lineTotal = (item.price * item.qty).toFixed(2);
             let specsArr = [];
-            if (item.size) specsArr.push(`<span style="color: #0369a1; font-weight: 700;">${escapeHtml(item.size)}</span>`);
-            if (item.thickness) specsArr.push(`<span style="color: #047857; font-weight: 700;">${escapeHtml(item.thickness)}</span>`);
-            if (item.diameter) specsArr.push(`<span style="color: #047857; font-weight: 700;">Diameter: ${escapeHtml(item.diameter)}</span>`);
-            if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
-            let specsHtml = specsArr.length > 0 ? `<div style="font-size: 12px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
+            if (item.spec_label && item.spec_label !== 'Standard') {
+                specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.spec_label)}</span>`);
+            } else {
+                if (item.size) specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.size)}</span>`);
+                if (item.thickness) specsArr.push(`<span style="color: #047857; font-weight: 700; font-size: 11px;">${escapeHtml(item.thickness)}</span>`);
+                if (item.diameter) specsArr.push(`<span style="color: #047857; font-weight: 700; font-size: 11px;">${escapeHtml(item.diameter)}</span>`);
+                if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
+            }
+            let specsHtml = specsArr.length > 0 ? `<div style="margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
 
             html += `
                 <tr>
                     <td style="padding: 8px 4px;">
-                        <strong style="color: #0f172a; font-size: 14px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
+                        <strong style="color: #0f172a; font-size: 13px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
                         ${specsHtml}
-                        <div style="font-size: 13px; font-weight: 600; color: #64748b; margin-top: 2px;">&#8369;${item.price.toFixed(2)} each</div>
+                        <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-top: 2px;">
+                            ${item.sku ? 'SKU: ' + escapeHtml(item.sku) + ' | ' : ''}&#8369;${item.price.toFixed(2)} each
+                        </div>
                     </td>
                     <td style="padding: 8px 4px; text-align: center;">
                         <div class="btn-group" style="display: inline-flex; align-items: center;">
                             <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${item.id}, ${item.qty - 1})">-</button>
-                            <span style="display: inline-block; width: 30px; text-align: center; font-weight: 800; font-size: 15px; color: #0f172a;">${item.qty}</span>
+                            <span style="display: inline-block; width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: #0f172a;">${item.qty}</span>
                             <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${item.id}, ${item.qty + 1})">+</button>
                         </div>
                     </td>
-                    <td style="padding: 8px 4px; text-align: right; font-weight: 800; font-size: 16px; color: #1e40af;">&#8369;${lineTotal}</td>
+                    <td style="padding: 8px 4px; text-align: right; font-weight: 800; font-size: 15px; color: #1e40af;">&#8369;${lineTotal}</td>
                     <td style="padding: 8px 2px; text-align: center;">
                         <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(${item.id})" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
                     </td>
@@ -1205,14 +1678,16 @@ function handleLocationChange() {
 function filterPOSProducts() {
     const query = document.getElementById('posSearchInput').value.toLowerCase().trim();
     const items = document.querySelectorAll('.pos-product-item');
+    const activePill = document.querySelector('.pos-cat-pill.active');
+    const activeCat = activePill ? activePill.innerText.replace(/\s*\(\d+\)$/, '').trim() : 'All Categories';
     let visibleCount = 0;
 
     items.forEach(item => {
-        const name = item.getAttribute('data-name');
-        const activeCat = document.querySelector('.pos-cat-pill.active').innerText.trim();
+        const searchData = item.getAttribute('data-name') || '';
+        const itemCat = item.getAttribute('data-category') || '';
 
-        const matchesQuery = (name.indexOf(query) > -1);
-        const matchesCat = (activeCat === 'All Categories' || item.getAttribute('data-category') === activeCat);
+        const matchesQuery = (query === '' || searchData.indexOf(query) > -1);
+        const matchesCat = (activeCat === 'All Categories' || itemCat === activeCat);
 
         if (matchesQuery && matchesCat) {
             item.style.display = '';
@@ -1294,6 +1769,7 @@ function printPOSReceipt() {
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.innerText = text;
     return div.innerHTML;
