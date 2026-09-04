@@ -108,6 +108,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 $customer_phone = $cust_row['cust_phone'];
                 $customer_address = $cust_row['cust_address'] ?: 'Registered Address';
             }
+        } elseif ($customer_type === 'location' && !empty($_POST['location_brgy_id'])) {
+            $b_id = intval($_POST['location_brgy_id']);
+            $stmt_b = $pdo->prepare("SELECT brgy_name FROM tbl_brgy WHERE brgy_id=?");
+            $stmt_b->execute(array($b_id));
+            $brgy_row = $stmt_b->fetch(PDO::FETCH_ASSOC);
+            $b_name = $brgy_row ? $brgy_row['brgy_name'] : 'Barangay #' . $b_id;
+
+            $loc_cust_name = !empty($_POST['location_cust_name']) ? trim($_POST['location_cust_name']) : 'Location Customer';
+            $loc_cust_phone = !empty($_POST['location_cust_phone']) ? trim($_POST['location_cust_phone']) : '';
+
+            $customer_name = $loc_cust_name . ' (' . $b_name . ')';
+            $customer_email = 'location@pos.local';
+            $customer_phone = $loc_cust_phone;
+            $customer_address = 'Barangay ' . $b_name . ', Santa Barbara, Iloilo';
         } else {
             if (!empty($_POST['walkin_name'])) {
                 $customer_name = trim($_POST['walkin_name']);
@@ -271,6 +285,20 @@ foreach ($product_list as $prod) {
 $statement_cust = $pdo->prepare("SELECT cust_id, cust_name, cust_email, cust_phone, cust_address FROM tbl_customer ORDER BY cust_name ASC");
 $statement_cust->execute();
 $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch Barangays for Location selection
+$statement_brgy = $pdo->prepare("SELECT brgy_id, brgy_name FROM tbl_brgy ORDER BY brgy_name ASC");
+$statement_brgy->execute();
+$brgy_list = $statement_brgy->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch Supplier Shipping Costs
+$statement_sc = $pdo->prepare("SELECT country_id, amount FROM tbl_shipping_cost WHERE supplier_id=?");
+$statement_sc->execute(array($supplier_id));
+$supplier_shipping_rates = $statement_sc->fetchAll(PDO::FETCH_KEY_PAIR);
+
+$statement_all = $pdo->prepare("SELECT amount FROM tbl_shipping_cost_all WHERE sca_id=1");
+$statement_all->execute();
+$default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 ?>
 
 <style>
@@ -633,17 +661,16 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
 
                     <!-- Customer Selection -->
                     <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; margin-bottom: 12px;">
-                        <div class="row" style="margin-bottom: 8px;">
-                            <div class="col-xs-6">
-                                <label style="font-size: 11px; font-weight: 600; margin-bottom: 0;">
-                                    <input type="radio" name="customer_type" value="walkin" checked onchange="toggleCustomerType()"> Walk-in (OTC)
-                                </label>
-                            </div>
-                            <div class="col-xs-6 text-right">
-                                <label style="font-size: 11px; font-weight: 600; margin-bottom: 0;">
-                                    <input type="radio" name="customer_type" value="registered" onchange="toggleCustomerType()"> Registered User
-                                </label>
-                            </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                            <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                <input type="radio" name="customer_type" value="walkin" checked onchange="toggleCustomerType()"> Walk-in (OTC)
+                            </label>
+                            <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                <input type="radio" name="customer_type" value="registered" onchange="toggleCustomerType()"> Registered User
+                            </label>
+                            <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                <input type="radio" name="customer_type" value="location" onchange="toggleCustomerType()"> <span style="color: #0284c7; font-weight: 700;"><i class="fa fa-map-marker"></i> Location</span>
+                            </label>
                         </div>
 
                         <!-- Walk-in fields -->
@@ -668,6 +695,31 @@ $registered_customers = $statement_cust->fetchAll(PDO::FETCH_ASSOC);
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                        </div>
+
+                        <!-- Location Select (tbl_brgy) -->
+                        <div id="locationFields" style="display: none;">
+                            <div style="margin-bottom: 6px;">
+                                <select name="location_brgy_id" id="locationBrgySelect" class="form-control select2 input-sm" style="width: 100%;" onchange="handleLocationChange()">
+                                    <option value="">-- Select Barangay / Location --</option>
+                                    <?php foreach ($brgy_list as $brgy): 
+                                        $b_id = $brgy['brgy_id'];
+                                        $b_shipping = isset($supplier_shipping_rates[$b_id]) ? floatval($supplier_shipping_rates[$b_id]) : $default_shipping_rate;
+                                    ?>
+                                        <option value="<?php echo $b_id; ?>" data-shipping="<?php echo $b_shipping; ?>">
+                                            <?php echo htmlspecialchars($brgy['brgy_name']); ?> (Delivery: &#8369;<?php echo number_format($b_shipping, 2); ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="row">
+                                <div class="col-xs-7" style="padding-right: 4px;">
+                                    <input type="text" name="location_cust_name" class="form-control input-sm" placeholder="Customer / Site Name (Optional)">
+                                </div>
+                                <div class="col-xs-5" style="padding-left: 4px;">
+                                    <input type="text" name="location_cust_phone" class="form-control input-sm" placeholder="Phone (Optional)">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1077,12 +1129,30 @@ function toggleCustomerType() {
     const type = document.querySelector('input[name="customer_type"]:checked').value;
     const walkinFields = document.getElementById('walkinFields');
     const registeredFields = document.getElementById('registeredFields');
+    const locationFields = document.getElementById('locationFields');
+    
     if (type === 'walkin') {
         walkinFields.style.display = 'block';
         registeredFields.style.display = 'none';
-    } else {
+        locationFields.style.display = 'none';
+    } else if (type === 'registered') {
         walkinFields.style.display = 'none';
         registeredFields.style.display = 'block';
+        locationFields.style.display = 'none';
+    } else if (type === 'location') {
+        walkinFields.style.display = 'none';
+        registeredFields.style.display = 'none';
+        locationFields.style.display = 'block';
+    }
+}
+
+function handleLocationChange() {
+    const select = document.getElementById('locationBrgySelect');
+    const selectedOption = select.options[select.selectedIndex];
+    if (selectedOption && selectedOption.dataset.shipping !== undefined) {
+        const shippingRate = parseFloat(selectedOption.dataset.shipping) || 0;
+        document.getElementById('posDeliveryCost').value = shippingRate.toFixed(2);
+        updatePOSCalculations();
     }
 }
 
@@ -1124,6 +1194,20 @@ function validatePOSForm() {
     if (cart.length === 0) {
         alert('Please add at least one item to the cart.');
         return false;
+    }
+    const type = document.querySelector('input[name="customer_type"]:checked').value;
+    if (type === 'registered') {
+        const regCust = document.querySelector('select[name="registered_cust_id"]').value;
+        if (!regCust) {
+            alert('Please select a registered customer.');
+            return false;
+        }
+    } else if (type === 'location') {
+        const brgy = document.getElementById('locationBrgySelect').value;
+        if (!brgy) {
+            alert('Please select a location / barangay.');
+            return false;
+        }
     }
     return true;
 }
