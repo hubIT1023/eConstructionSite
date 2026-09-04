@@ -96,6 +96,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
         $customer_phone = '';
         $customer_address = 'Over the Counter';
 
+        $is_location_active = isset($_POST['is_location_delivery']) && $_POST['is_location_delivery'] == '1';
+        $location_brgy_id = isset($_POST['location_brgy_id']) ? intval($_POST['location_brgy_id']) : 0;
+        $brgy_name = '';
+
+        if ($is_location_active && $location_brgy_id > 0) {
+            $stmt_b = $pdo->prepare("SELECT brgy_name FROM tbl_brgy WHERE brgy_id=?");
+            $stmt_b->execute(array($location_brgy_id));
+            $brgy_row = $stmt_b->fetch(PDO::FETCH_ASSOC);
+            if ($brgy_row) {
+                $brgy_name = $brgy_row['brgy_name'];
+            }
+        }
+
         if ($customer_type === 'registered' && !empty($_POST['registered_cust_id'])) {
             $c_id = intval($_POST['registered_cust_id']);
             $statement_c = $pdo->prepare("SELECT * FROM tbl_customer WHERE cust_id=?");
@@ -107,21 +120,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 $customer_email = $cust_row['cust_email'];
                 $customer_phone = $cust_row['cust_phone'];
                 $customer_address = $cust_row['cust_address'] ?: 'Registered Address';
+                if ($brgy_name) {
+                    $customer_address .= ' (Delivery: Brgy. ' . $brgy_name . ')';
+                }
             }
-        } elseif ($customer_type === 'location' && !empty($_POST['location_brgy_id'])) {
-            $b_id = intval($_POST['location_brgy_id']);
-            $stmt_b = $pdo->prepare("SELECT brgy_name FROM tbl_brgy WHERE brgy_id=?");
-            $stmt_b->execute(array($b_id));
-            $brgy_row = $stmt_b->fetch(PDO::FETCH_ASSOC);
-            $b_name = $brgy_row ? $brgy_row['brgy_name'] : 'Barangay #' . $b_id;
-
-            $loc_cust_name = !empty($_POST['location_cust_name']) ? trim($_POST['location_cust_name']) : 'Location Customer';
-            $loc_cust_phone = !empty($_POST['location_cust_phone']) ? trim($_POST['location_cust_phone']) : '';
-
-            $customer_name = $loc_cust_name . ' (' . $b_name . ')';
-            $customer_email = 'location@pos.local';
-            $customer_phone = $loc_cust_phone;
-            $customer_address = 'Barangay ' . $b_name . ', Santa Barbara, Iloilo';
         } else {
             if (!empty($_POST['walkin_name'])) {
                 $customer_name = trim($_POST['walkin_name']);
@@ -132,14 +134,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
             if (!empty($_POST['walkin_email'])) {
                 $customer_email = trim($_POST['walkin_email']);
             }
-            if (!empty($_POST['walkin_address'])) {
+            if ($brgy_name) {
+                $customer_address = 'Barangay ' . $brgy_name . ', Santa Barbara, Iloilo';
+            } elseif (!empty($_POST['walkin_address'])) {
                 $customer_address = trim($_POST['walkin_address']);
+            } else {
+                $customer_address = 'Over the Counter';
             }
         }
 
         $payment_method = isset($_POST['payment_method']) ? $_POST['payment_method'] : 'Cash (OTC)';
-        $delivery_type = isset($_POST['delivery_type']) ? $_POST['delivery_type'] : 'pickup';
-        $delivery_cost = ($delivery_type === 'delivery') ? floatval($_POST['delivery_cost']) : 0.00;
+        $delivery_type = $is_location_active ? 'delivery' : 'pickup';
+        $delivery_cost = ($is_location_active && isset($_POST['delivery_cost'])) ? floatval($_POST['delivery_cost']) : 0.00;
         $amount_tendered = isset($_POST['amount_tendered']) ? floatval($_POST['amount_tendered']) : 0.00;
 
         // Calculate Subtotal
@@ -659,18 +665,26 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <input type="hidden" name="pos_action" value="complete_sale">
                     <input type="hidden" id="cartItemsInput" name="cart_items" value="[]">
 
-                    <!-- Customer Selection -->
+                    <!-- Customer Selection & Independent Location Toggle -->
                     <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                            <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
-                                <input type="radio" name="customer_type" value="walkin" checked onchange="toggleCustomerType()"> Walk-in (OTC)
-                            </label>
-                            <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
-                                <input type="radio" name="customer_type" value="registered" onchange="toggleCustomerType()"> Registered User
-                            </label>
-                            <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
-                                <input type="radio" name="customer_type" value="location" onchange="toggleCustomerType()"> <span style="color: #0284c7; font-weight: 700;"><i class="fa fa-map-marker"></i> Location</span>
-                            </label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+                            <!-- Customer Type Selection (Mutually Exclusive) -->
+                            <div style="display: inline-flex; align-items: center; gap: 12px;">
+                                <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                    <input type="radio" name="customer_type" value="walkin" checked onchange="toggleCustomerType()"> Walk-in (OTC)
+                                </label>
+                                <label style="font-size: 11px; font-weight: 600; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                    <input type="radio" name="customer_type" value="registered" onchange="toggleCustomerType()"> Registered User
+                                </label>
+                            </div>
+
+                            <!-- Independent Location Toggle Option -->
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; margin-bottom: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: #0284c7; background: #e0f2fe; padding: 2px 7px; border-radius: 4px; border: 1px solid #bae6fd;" title="Toggle to add or exclude location delivery fee">
+                                    <input type="checkbox" id="locationRadio" name="is_location_delivery" value="1" onchange="toggleLocationOption()"> 
+                                    <i class="fa fa-map-marker"></i> Location
+                                </label>
+                            </div>
                         </div>
 
                         <!-- Walk-in fields -->
@@ -697,29 +711,22 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </select>
                         </div>
 
-                        <!-- Location Select (tbl_brgy) -->
-                        <div id="locationFields" style="display: none;">
-                            <div style="margin-bottom: 6px;">
-                                <select name="location_brgy_id" id="locationBrgySelect" class="form-control select2 input-sm" style="width: 100%;" onchange="handleLocationChange()">
-                                    <option value="">-- Select Barangay / Location --</option>
-                                    <?php foreach ($brgy_list as $brgy): 
-                                        $b_id = $brgy['brgy_id'];
-                                        $b_shipping = isset($supplier_shipping_rates[$b_id]) ? floatval($supplier_shipping_rates[$b_id]) : $default_shipping_rate;
-                                    ?>
-                                        <option value="<?php echo $b_id; ?>" data-shipping="<?php echo $b_shipping; ?>">
-                                            <?php echo htmlspecialchars($brgy['brgy_name']); ?> (Delivery: &#8369;<?php echo number_format($b_shipping, 2); ?>)
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
+                        <!-- Location Select (tbl_brgy) - shown only when Location radio/checkbox is active -->
+                        <div id="locationFields" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+                            <div style="font-size: 11px; font-weight: 700; color: #0284c7; margin-bottom: 4px;">
+                                <i class="fa fa-truck"></i> Select Delivery Location (Barangay):
                             </div>
-                            <div class="row">
-                                <div class="col-xs-7" style="padding-right: 4px;">
-                                    <input type="text" name="location_cust_name" class="form-control input-sm" placeholder="Customer / Site Name (Optional)">
-                                </div>
-                                <div class="col-xs-5" style="padding-left: 4px;">
-                                    <input type="text" name="location_cust_phone" class="form-control input-sm" placeholder="Phone (Optional)">
-                                </div>
-                            </div>
+                            <select name="location_brgy_id" id="locationBrgySelect" class="form-control select2 input-sm" style="width: 100%;" onchange="handleLocationChange()">
+                                <option value="" data-shipping="0">-- Select Barangay Location --</option>
+                                <?php foreach ($brgy_list as $brgy): 
+                                    $b_id = $brgy['brgy_id'];
+                                    $b_shipping = isset($supplier_shipping_rates[$b_id]) ? floatval($supplier_shipping_rates[$b_id]) : $default_shipping_rate;
+                                ?>
+                                    <option value="<?php echo $b_id; ?>" data-name="<?php echo htmlspecialchars($brgy['brgy_name']); ?>" data-shipping="<?php echo $b_shipping; ?>">
+                                        <?php echo htmlspecialchars($brgy['brgy_name']); ?> (+&#8369;<?php echo number_format($b_shipping, 2); ?> delivery fee)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
 
@@ -747,6 +754,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                     <!-- Pricing & Fulfillment Summary -->
                     <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 15px;">
+                        <input type="hidden" name="delivery_type" id="posDeliveryType" value="pickup">
+                        <input type="hidden" name="delivery_cost" id="posDeliveryCost" value="0.00">
+
                         <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 600; margin-bottom: 8px;">
                             <span class="text-muted">Subtotal:</span>
                             <span style="color: #1e293b;">&#8369;<span id="posSubtotal">0.00</span></span>
@@ -754,18 +764,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
                             <span class="text-muted" style="font-weight: 600;">Fulfillment:</span>
-                            <select name="delivery_type" id="posDeliveryType" class="form-control input-sm" style="width: 160px; height: 32px; padding: 4px 8px; font-size: 13px; font-weight: 600;" onchange="updatePOSCalculations()">
-                                <option value="pickup">Store Pickup (₱0)</option>
-                                <option value="delivery">Delivery</option>
-                            </select>
+                            <span id="posFulfillmentBadge" style="font-weight: 700; color: #059669; font-size: 13px;">
+                                <i class="fa fa-shopping-bag"></i> Store Pickup (₱0)
+                            </span>
                         </div>
 
                         <div id="deliveryFeeRow" style="display: none; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
-                            <span class="text-muted" style="font-weight: 600;">Delivery Fee:</span>
-                            <div class="input-group" style="width: 130px;">
-                                <span class="input-group-addon" style="padding: 4px 8px; font-size: 13px; font-weight: bold;">&#8369;</span>
-                                <input type="number" step="any" name="delivery_cost" id="posDeliveryCost" class="form-control input-sm" value="0.00" style="height: 32px; padding: 4px 8px; font-size: 14px; font-weight: bold; text-align: right;" onkeyup="updatePOSCalculations()">
-                            </div>
+                            <span class="text-muted" style="font-weight: 600;">Delivery Cost:</span>
+                            <span style="font-weight: 800; color: #0284c7;">+&#8369;<span id="posDeliveryFeeDisplay">0.00</span></span>
                         </div>
 
                         <div style="background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
@@ -1078,16 +1084,39 @@ function updatePOSCalculations() {
         subtotal += item.price * item.qty;
     });
 
-    const deliveryType = document.getElementById('posDeliveryType').value;
+    const isLocationActive = document.getElementById('locationRadio').checked;
     const deliveryFeeRow = document.getElementById('deliveryFeeRow');
+    const posDeliveryType = document.getElementById('posDeliveryType');
+    const posFulfillmentBadge = document.getElementById('posFulfillmentBadge');
+    const posDeliveryFeeDisplay = document.getElementById('posDeliveryFeeDisplay');
+    const locationSelect = document.getElementById('locationBrgySelect');
+    
     let deliveryCost = 0;
 
-    if (deliveryType === 'delivery') {
-        deliveryFeeRow.style.display = 'flex';
+    if (isLocationActive) {
         deliveryCost = parseFloat(document.getElementById('posDeliveryCost').value) || 0;
+        posDeliveryType.value = 'delivery';
+        
+        const selectedOption = locationSelect.options[locationSelect.selectedIndex];
+        const brgyName = (selectedOption && selectedOption.dataset.name) ? selectedOption.dataset.name : '';
+        
+        if (brgyName) {
+            posFulfillmentBadge.innerHTML = `<i class="fa fa-truck text-info"></i> Delivery: Brgy. ${escapeHtml(brgyName)}`;
+            posFulfillmentBadge.style.color = '#0284c7';
+        } else {
+            posFulfillmentBadge.innerHTML = `<i class="fa fa-truck text-info"></i> Delivery (Select Brgy)`;
+            posFulfillmentBadge.style.color = '#0284c7';
+        }
+        
+        posDeliveryFeeDisplay.innerText = deliveryCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        deliveryFeeRow.style.display = 'flex';
     } else {
-        deliveryFeeRow.style.display = 'none';
         deliveryCost = 0;
+        document.getElementById('posDeliveryCost').value = '0.00';
+        posDeliveryType.value = 'pickup';
+        posFulfillmentBadge.innerHTML = `<i class="fa fa-shopping-bag"></i> Store Pickup (₱0)`;
+        posFulfillmentBadge.style.color = '#059669';
+        deliveryFeeRow.style.display = 'none';
     }
 
     const grandTotal = subtotal + deliveryCost;
@@ -1103,8 +1132,8 @@ function updatePOSCalculations() {
 function setExactAmount() {
     let subtotal = 0;
     cart.forEach(item => subtotal += item.price * item.qty);
-    const deliveryType = document.getElementById('posDeliveryType').value;
-    const deliveryCost = (deliveryType === 'delivery') ? (parseFloat(document.getElementById('posDeliveryCost').value) || 0) : 0;
+    const isLocationActive = document.getElementById('locationRadio').checked;
+    const deliveryCost = isLocationActive ? (parseFloat(document.getElementById('posDeliveryCost').value) || 0) : 0;
     const grandTotal = subtotal + deliveryCost;
     document.getElementById('posAmountTendered').value = grandTotal.toFixed(2);
     updatePOSCalculations();
@@ -1129,31 +1158,48 @@ function toggleCustomerType() {
     const type = document.querySelector('input[name="customer_type"]:checked').value;
     const walkinFields = document.getElementById('walkinFields');
     const registeredFields = document.getElementById('registeredFields');
-    const locationFields = document.getElementById('locationFields');
     
     if (type === 'walkin') {
         walkinFields.style.display = 'block';
         registeredFields.style.display = 'none';
-        locationFields.style.display = 'none';
     } else if (type === 'registered') {
         walkinFields.style.display = 'none';
         registeredFields.style.display = 'block';
-        locationFields.style.display = 'none';
-    } else if (type === 'location') {
-        walkinFields.style.display = 'none';
-        registeredFields.style.display = 'none';
+    }
+}
+
+function toggleLocationOption() {
+    const isLocationActive = document.getElementById('locationRadio').checked;
+    const locationFields = document.getElementById('locationFields');
+    
+    if (isLocationActive) {
         locationFields.style.display = 'block';
+        handleLocationChange();
+    } else {
+        locationFields.style.display = 'none';
+        document.getElementById('posDeliveryCost').value = '0.00';
+        updatePOSCalculations();
     }
 }
 
 function handleLocationChange() {
+    const isLocationActive = document.getElementById('locationRadio').checked;
+    if (!isLocationActive) {
+        document.getElementById('posDeliveryCost').value = '0.00';
+        updatePOSCalculations();
+        return;
+    }
+
     const select = document.getElementById('locationBrgySelect');
     const selectedOption = select.options[select.selectedIndex];
-    if (selectedOption && selectedOption.dataset.shipping !== undefined) {
-        const shippingRate = parseFloat(selectedOption.dataset.shipping) || 0;
-        document.getElementById('posDeliveryCost').value = shippingRate.toFixed(2);
-        updatePOSCalculations();
+    let shippingRate = 0;
+    
+    if (selectedOption && selectedOption.dataset.shipping !== undefined && select.value !== '') {
+        shippingRate = parseFloat(selectedOption.dataset.shipping) || 0;
     }
+    
+    document.getElementById('posDeliveryCost').value = shippingRate.toFixed(2);
+    updatePOSCalculations();
 }
 
 function filterPOSProducts() {
@@ -1202,10 +1248,12 @@ function validatePOSForm() {
             alert('Please select a registered customer.');
             return false;
         }
-    } else if (type === 'location') {
+    }
+    const isLocationActive = document.getElementById('locationRadio').checked;
+    if (isLocationActive) {
         const brgy = document.getElementById('locationBrgySelect').value;
         if (!brgy) {
-            alert('Please select a location / barangay.');
+            alert('Please select a Barangay location or uncheck the Location option.');
             return false;
         }
     }
