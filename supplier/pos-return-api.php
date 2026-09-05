@@ -53,8 +53,9 @@ if ($action === 'search_orders') {
     try {
         if ($keyword !== '') {
             $search_param = '%' . $keyword . '%';
-            $sql = "SELECT DISTINCT p.* 
+            $sql = "SELECT DISTINCT p.*, c.cust_phone 
                     FROM tbl_payment p
+                    LEFT JOIN tbl_customer c ON p.customer_id = c.cust_id
                     LEFT JOIN tbl_order o ON p.payment_id = o.payment_id
                     LEFT JOIN tbl_product prod ON o.product_id = prod.p_id
                     WHERE p.supplier_id = ?
@@ -62,7 +63,7 @@ if ($action === 'search_orders') {
                           p.payment_id ILIKE ? OR 
                           p.txnid ILIKE ? OR 
                           p.customer_name ILIKE ? OR 
-                          p.customer_phone ILIKE ? OR 
+                          c.cust_phone ILIKE ? OR 
                           p.customer_email ILIKE ? OR 
                           o.product_name ILIKE ? OR 
                           o.special_order_reference ILIKE ? OR 
@@ -73,7 +74,10 @@ if ($action === 'search_orders') {
             $stmt->execute(array($supplier_id, $search_param, $search_param, $search_param, $search_param, $search_param, $search_param, $search_param, $search_param));
         } else {
             // Default: Show recent 20 orders for this supplier
-            $sql = "SELECT * FROM tbl_payment WHERE supplier_id = ? ORDER BY id DESC LIMIT 20";
+            $sql = "SELECT p.*, c.cust_phone 
+                    FROM tbl_payment p 
+                    LEFT JOIN tbl_customer c ON p.customer_id = c.cust_id 
+                    WHERE p.supplier_id = ? ORDER BY p.id DESC LIMIT 20";
             $stmt = $pdo->prepare($sql);
             $stmt->execute(array($supplier_id));
         }
@@ -161,7 +165,7 @@ if ($action === 'search_orders') {
                 'paid_amount' => (float)$payment['paid_amount'],
                 'customer_id' => (int)$payment['customer_id'],
                 'customer_name' => $payment['customer_name'] ?: 'Walk-in Customer',
-                'customer_phone' => $payment['customer_phone'] ?: 'N/A',
+                'customer_phone' => !empty($payment['cust_phone']) ? $payment['cust_phone'] : 'N/A',
                 'customer_email' => $payment['customer_email'] ?: '',
                 'items' => $processed_items,
                 'items_count' => count($processed_items),
@@ -197,7 +201,7 @@ if ($action === 'get_order_details') {
     }
 
     try {
-        $stmt_pay = $pdo->prepare("SELECT * FROM tbl_payment WHERE payment_id = ? AND supplier_id = ?");
+        $stmt_pay = $pdo->prepare("SELECT p.*, c.cust_phone FROM tbl_payment p LEFT JOIN tbl_customer c ON p.customer_id = c.cust_id WHERE p.payment_id = ? AND p.supplier_id = ?");
         $stmt_pay->execute(array($payment_id, $supplier_id));
         $payment = $stmt_pay->fetch(PDO::FETCH_ASSOC);
 
@@ -279,7 +283,7 @@ if ($action === 'get_order_details') {
                 'paid_amount' => (float)$payment['paid_amount'],
                 'customer_id' => (int)$payment['customer_id'],
                 'customer_name' => $payment['customer_name'] ?: 'Walk-in Customer',
-                'customer_phone' => $payment['customer_phone'] ?: 'N/A',
+                'customer_phone' => !empty($payment['cust_phone']) ? $payment['cust_phone'] : 'N/A',
                 'customer_email' => $payment['customer_email'] ?: '',
                 'has_returnable_items' => $order_has_returnable,
                 'items' => $processed_items,
@@ -340,9 +344,10 @@ if ($action === 'process_return') {
     try {
         // Fetch Authoritative Order Item & Payment details for current supplier
         $stmt_check = $pdo->prepare("
-            SELECT o.*, p.payment_date, p.payment_method as orig_payment_method, p.customer_id, p.customer_name, p.customer_email, p.customer_phone, prod.p_sku
+            SELECT o.*, p.payment_date, p.payment_method as orig_payment_method, p.customer_id, p.customer_name, p.customer_email, c.cust_phone as customer_phone, prod.p_sku
             FROM tbl_order o
             JOIN tbl_payment p ON o.payment_id = p.payment_id
+            LEFT JOIN tbl_customer c ON p.customer_id = c.cust_id
             LEFT JOIN tbl_product prod ON o.product_id = prod.p_id
             WHERE o.id = ? AND o.payment_id = ? AND o.supplier_id = ? AND p.supplier_id = ?
         ");
