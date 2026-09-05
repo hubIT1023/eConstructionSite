@@ -139,3 +139,104 @@ function send_system_email($to, $subject, $message_html) {
         return @mail($to, $subject, $message_html, $headers);
     }
 }
+
+// -------------------------------------------------------------
+// Multi-Tenant Authentication & POS User Quota Helper Functions
+// -------------------------------------------------------------
+
+function is_supplier_logged_in() {
+    return isset($_SESSION['supplier_user']) && !empty($_SESSION['supplier_user']['id']);
+}
+
+function current_supplier_user() {
+    return is_supplier_logged_in() ? $_SESSION['supplier_user'] : null;
+}
+
+function current_supplier_id() {
+    return is_supplier_logged_in() ? (int)$_SESSION['supplier_user']['supplier_id'] : 0;
+}
+
+function is_supplier_admin() {
+    $u = current_supplier_user();
+    if (!$u || empty($u['role'])) return false;
+    $r = strtoupper(trim($u['role']));
+    return in_array($r, ['ADMIN', 'SUPPLIER_ADMIN', 'SUPERADMIN']);
+}
+
+function is_pos_user() {
+    $u = current_supplier_user();
+    if (!$u || empty($u['role'])) return false;
+    $r = strtoupper(trim($u['role']));
+    return in_array($r, ['USER', 'POS_USER', 'CASHIER']);
+}
+
+function verify_supplier_password($input_password, $stored_hash) {
+    if (empty($input_password) || empty($stored_hash)) return false;
+    // Check modern password_hash (bcrypt/argon)
+    if (password_verify($input_password, $stored_hash)) {
+        return true;
+    }
+    // Fallback to legacy MD5 for existing seeded accounts
+    if (md5($input_password) === $stored_hash) {
+        return true;
+    }
+    return false;
+}
+
+function hash_supplier_password($password) {
+    return password_hash($password, PASSWORD_BCRYPT);
+}
+
+function get_tenant_pos_user_stats($pdo, $supplier_id) {
+    $supplier_id = (int)$supplier_id;
+    
+    // Fetch supplier plan and max_pos_users
+    $stmt_supp = $pdo->prepare("SELECT supplier_id, supplier_name, supplier_slug, supplier_plan, max_pos_users, supplier_status FROM tbl_supplier WHERE supplier_id = ?");
+    $stmt_supp->execute(array($supplier_id));
+    $supp = $stmt_supp->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$supp) {
+        return [
+            'exists' => false,
+            'plan_name' => 'Starter',
+            'max_pos_users' => 3,
+            'current_pos_users' => 0,
+            'remaining_slots' => 0,
+            'is_limit_reached' => true,
+            'supplier_status' => 'Unknown'
+        ];
+    }
+    
+    $plan_name = !empty($supp['supplier_plan']) ? $supp['supplier_plan'] : 'Starter';
+    $max_users = isset($supp['max_pos_users']) && (int)$supp['max_pos_users'] > 0 ? (int)$supp['max_pos_users'] : 3;
+    
+    // Count active and total POS users for this specific tenant (excluding Admin)
+    $stmt_cnt = $pdo->prepare("SELECT COUNT(*) as total_pos_users FROM tbl_supplier_user WHERE supplier_id = ? AND UPPER(role) IN ('USER', 'POS_USER', 'CASHIER')");
+    $stmt_cnt->execute(array($supplier_id));
+    $row_cnt = $stmt_cnt->fetch(PDO::FETCH_ASSOC);
+    $current_pos_users = (int)$row_cnt['total_pos_users'];
+    
+    $remaining_slots = max(0, $max_users - $current_pos_users);
+    $is_limit_reached = ($current_pos_users >= $max_users);
+    
+    return [
+        'exists' => true,
+        'supplier_id' => $supplier_id,
+        'supplier_name' => $supp['supplier_name'],
+        'supplier_slug' => $supp['supplier_slug'],
+        'plan_name' => $plan_name,
+        'max_pos_users' => $max_users,
+        'current_pos_users' => $current_pos_users,
+        'remaining_slots' => $remaining_slots,
+        'is_limit_reached' => $is_limit_reached,
+        'supplier_status' => $supp['supplier_status']
+    ];
+}
+
+function can_tenant_create_pos_user($pdo, $supplier_id) {
+    $stats = get_tenant_pos_user_stats($pdo, $supplier_id);
+    if (!$stats['exists'] || $stats['supplier_status'] !== 'Active') {
+        return false;
+    }
+    return !$stats['is_limit_reached'];
+}

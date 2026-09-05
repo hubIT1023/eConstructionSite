@@ -46,7 +46,14 @@
 									</td>
 									<td><?php echo htmlspecialchars($row['supplier_address'] ?: 'Not Specified'); ?></td>
 									<td>
-                                        <span class="label label-warning" style="background-color: #F59E0B; font-weight: bold;"><?php echo htmlspecialchars($row['supplier_plan']); ?></span>
+                                        <?php
+                                        $stmt_u_cnt = $pdo->prepare("SELECT COUNT(*) as pos_count FROM tbl_supplier_user WHERE supplier_id = ? AND UPPER(role) IN ('USER', 'POS_USER', 'CASHIER')");
+                                        $stmt_u_cnt->execute(array($row['supplier_id']));
+                                        $pos_count = (int)$stmt_u_cnt->fetch(PDO::FETCH_ASSOC)['pos_count'];
+                                        $max_u = isset($row['max_pos_users']) && (int)$row['max_pos_users'] > 0 ? (int)$row['max_pos_users'] : 3;
+                                        ?>
+                                        <span class="label label-warning" style="background-color: #F59E0B; font-weight: bold;"><?php echo htmlspecialchars($row['supplier_plan']); ?></span><br>
+                                        <small style="color: #64748b; font-weight: 600;"><i class="fa fa-users"></i> <?php echo $pos_count; ?> / <?php echo $max_u; ?> POS Users</small>
                                     </td>
 									<td><strong><?php echo htmlspecialchars($row['supplier_commission']); ?>%</strong></td>
 									<td>
