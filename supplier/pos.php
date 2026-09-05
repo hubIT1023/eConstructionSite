@@ -350,8 +350,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
 
                 // Automatic inventory & price rollover if stock reached 0 or 1 and (N)Quantity > 10% of (S)Level:
-                // "Quantity = Quantity + (N)Quantity", "(N)Quantity = 0"
-                // If "(C)Price < (N)Price" THEN "(C)Price = (N)Price", If "(C)Price > (N)Price" THEN "(C)Price = (C)Price"
                 $statement_rollover = $pdo->prepare("UPDATE tbl_product 
                     SET p_qty = p_qty + p_new_qty,
                         p_current_price = CASE 
@@ -749,6 +747,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
             <small>Over-the-Counter Sales & Direct Billing</small>
         </h1>
         <div>
+            <a href="returns.php" class="btn btn-default btn-sm"><i class="fa fa-undo"></i> Return History</a>
             <a href="order.php" class="btn btn-default btn-sm"><i class="fa fa-list"></i> Order History</a>
             <a href="index.php" class="btn btn-default btn-sm"><i class="fa fa-dashboard"></i> Dashboard</a>
         </div>
@@ -765,7 +764,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     
                     <!-- Search and Filters -->
                     <div class="row" style="margin-bottom: 12px;">
-                        <div class="col-sm-6 col-xs-12" style="margin-bottom: 6px;">
+                        <div class="col-sm-5 col-xs-12" style="margin-bottom: 6px;">
                             <div class="input-group">
                                 <span class="input-group-addon" style="font-size: 16px;"><i class="fa fa-search"></i></span>
                                 <input type="text" id="posSearchInput" class="form-control input-lg" style="height: 42px; font-size: 15px;" placeholder="Search product by name, brand, spec, or SKU..." onkeyup="filterPOSProducts()">
@@ -774,11 +773,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 </span>
                             </div>
                         </div>
-                        <div class="col-sm-6 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13.5px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Create custom/manual order item not in catalogue">
+                        <div class="col-sm-7 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Create custom/manual order item not in catalogue">
                                 <i class="fa fa-plus-circle"></i> + Special Order
                             </button>
-                            <span class="text-muted" style="line-height: 42px; font-size: 13px;">
+                            <button type="button" class="btn btn-danger input-lg" onclick="openReturnModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #dc2626; border-color: #b91c1c; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(220,38,38,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Search completed orders and process item returns & refunds">
+                                <i class="fa fa-undo"></i> RETURN
+                            </button>
+                            <span class="text-muted" style="line-height: 42px; font-size: 12.5px;">
                                 Products: <strong id="productCount"><?php echo count($grouped_products); ?></strong>
                                 <span style="font-size: 11px; color: #64748b;">(<?php echo $total_inventory_items; ?> items)</span>
                             </span>
@@ -987,7 +989,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <tr>
                                     <td colspan="4" class="text-center text-muted" style="padding: 25px 10px;">
                                         <i class="fa fa-shopping-basket fa-2x" style="color: #cbd5e1;"></i>
-                                        <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products to select variant and add.</div>
+                                        <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products or "+ Special Order" to add.</div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1257,6 +1259,299 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <i class="fa fa-cart-plus"></i> Add to Cart
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- POS Return Items Modal -->
+<div class="modal fade" id="posReturnModal" tabindex="-1" role="dialog" aria-labelledby="posReturnModalLabel" aria-hidden="true" style="z-index: 10050;">
+    <div class="modal-dialog modal-lg" role="document" style="max-width: 900px;">
+        <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 35px rgba(0,0,0,0.35);">
+            
+            <!-- Modal Header -->
+            <div class="modal-header" style="background: #0f172a; color: #fff; border-top-left-radius: 8px; border-top-right-radius: 8px; padding: 16px 22px;">
+                <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.85; font-size: 24px;">&times;</button>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="label label-danger" style="background: #dc2626; font-size: 11px; font-weight: 800; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fa fa-undo"></i> RETURN ITEM
+                    </span>
+                    <h4 class="modal-title" style="font-weight: 800; font-size: 18px; margin: 0; color: #fff;">
+                        Return Item & Customer Refund
+                    </h4>
+                </div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                    Search completed order, select item to return, specify quantity, condition, and refund method
+                </div>
+            </div>
+
+            <div class="modal-body" style="padding: 20px 24px; background: #fff; max-height: 75vh; overflow-y: auto;">
+                
+                <!-- Alert Area -->
+                <div id="retModalAlert" class="alert" style="display: none; padding: 10px 14px; margin-bottom: 15px; font-size: 13.5px; font-weight: 600; border-radius: 6px;"></div>
+
+                <!-- VIEW 1: SEARCH & ORDERS LIST -->
+                <div id="retSearchSection">
+                    
+                    <!-- Search Input Bar -->
+                    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+                        <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                            <i class="fa fa-search text-primary"></i> Search Original Order:
+                        </label>
+                        <div class="input-group">
+                            <input type="text" id="retOrderSearchInput" class="form-control input-lg" style="height: 44px; font-size: 15px;" placeholder="Enter Invoice # (POS-...), Customer Name, Phone, Email, SKU, or Date..." onkeyup="if(event.key === 'Enter') executeOrderReturnSearch();">
+                            <span class="input-group-btn">
+                                <button class="btn btn-primary input-lg" type="button" onclick="executeOrderReturnSearch()" style="height: 44px; font-weight: 700; padding: 6px 18px;">
+                                    <i class="fa fa-search"></i> Search
+                                </button>
+                                <button class="btn btn-default input-lg" type="button" onclick="resetOrderReturnSearch()" style="height: 44px;" title="Reset / Show Recent Orders">
+                                    <i class="fa fa-refresh"></i> Recent
+                                </button>
+                            </span>
+                        </div>
+                        <div style="font-size: 11.5px; color: #64748b; margin-top: 6px;">
+                            <i class="fa fa-info-circle"></i> Supports search by receipt/invoice ID (e.g. <code>POS-20260904-AA89B</code>), customer name, phone number, or product SKU.
+                        </div>
+                    </div>
+
+                    <!-- Search Results Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h5 style="margin: 0; font-weight: 700; color: #334155; font-size: 14px;">
+                            <i class="fa fa-list-alt text-primary"></i> <span id="retOrdersListTitle">Recent Completed Orders</span>
+                        </h5>
+                        <span id="retOrdersCountBadge" class="badge" style="background: #2563eb; font-size: 12px;">0 orders</span>
+                    </div>
+
+                    <!-- Orders Container -->
+                    <div id="retOrdersContainer" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="text-center text-muted" style="padding: 40px 20px;">
+                            <i class="fa fa-spinner fa-spin fa-2x text-primary"></i>
+                            <div style="margin-top: 8px; font-size: 13px;">Loading orders...</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- VIEW 2: CONFIGURE RETURN FOR SELECTED ITEM -->
+                <div id="retItemConfigSection" style="display: none;">
+                    
+                    <!-- Back button -->
+                    <div style="margin-bottom: 14px;">
+                        <button type="button" class="btn btn-default btn-sm" onclick="backToReturnOrdersList()" style="font-weight: 700;">
+                            <i class="fa fa-arrow-left"></i> Back to Orders List
+                        </button>
+                    </div>
+
+                    <!-- Order Header Info Card -->
+                    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Original Invoice:</span>
+                            <strong id="retCfgOrderRef" style="font-family: monospace; font-size: 14px; color: #0f172a; margin-left: 4px;">POS-...</strong>
+                            <span id="retCfgOrderDate" style="font-size: 12px; color: #475569; margin-left: 10px;">-</span>
+                        </div>
+                        <div style="font-size: 12px; color: #334155;">
+                            Customer: <strong id="retCfgCustomerName">-</strong> 
+                            <span id="retCfgCustomerPhone" style="color: #64748b; margin-left: 6px;"></span>
+                        </div>
+                    </div>
+
+                    <!-- Selected Product Card -->
+                    <div style="background: #fff; border: 2px solid #3b82f6; border-radius: 8px; padding: 14px; margin-bottom: 18px; display: flex; gap: 14px; align-items: center;">
+                        <div id="retCfgItemImg" style="width: 75px; height: 75px; min-width: 75px; border-radius: 6px; background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #f8fafc; border: 1px solid #e2e8f0;"></div>
+                        <div style="flex-grow: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+                                <div>
+                                    <span id="retCfgSpecialBadge" class="label label-warning" style="display: none; font-size: 10px; font-weight: 800; background: #d97706; padding: 2px 6px; margin-bottom: 3px;">SPECIAL ORDER</span>
+                                    <h4 id="retCfgItemName" style="margin: 0 0 3px 0; font-size: 16px; font-weight: 800; color: #0f172a;">-</h4>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-size: 11px; color: #64748b; display: block;">Original Unit Price</span>
+                                    <strong style="font-size: 18px; color: #1d4ed8;">&#8369;<span id="retCfgUnitPrice">0.00</span></strong>
+                                </div>
+                            </div>
+                            <div id="retCfgItemDetails" style="font-size: 12px; color: #475569; margin-bottom: 4px;"></div>
+                            <div style="font-size: 11.5px; color: #64748b; font-family: monospace;">
+                                SKU / Ref: <strong id="retCfgSku" style="color: #334155;">-</strong>
+                            </div>
+
+                            <!-- Quantities Breakdown Badges -->
+                            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                                <span class="label label-default" style="font-size: 11.5px; padding: 4px 8px; background: #e2e8f0; color: #334155;">
+                                    Purchased: <strong id="retCfgPurchasedQty">0</strong>
+                                </span>
+                                <span class="label label-default" style="font-size: 11.5px; padding: 4px 8px; background: #fee2e2; color: #991b1b;">
+                                    Previously Returned: <strong id="retCfgPrevReturnedQty">0</strong>
+                                </span>
+                                <span class="label label-success" style="font-size: 11.5px; padding: 4px 8px; background: #dcfce7; color: #166534; font-weight: 800;">
+                                    Available to Return: <strong id="retCfgAvailableQty">0</strong>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Return Configuration Form -->
+                    <form id="posReturnItemForm" onsubmit="event.preventDefault(); confirmAndSubmitReturn();">
+                        <input type="hidden" id="retSubmitOrderItemId" value="">
+                        <input type="hidden" id="retSubmitPaymentId" value="">
+
+                        <div class="row">
+                            <!-- Quantity Stepper -->
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                                        Return Quantity <span class="text-danger">*</span>
+                                    </label>
+                                    <div class="input-group" style="width: 100%;">
+                                        <span class="input-group-btn">
+                                            <button type="button" class="btn btn-default input-lg" style="font-weight: bold; font-size: 18px; height: 44px; padding: 6px 16px;" onclick="changeReturnQty(-1)">-</button>
+                                        </span>
+                                        <input type="number" id="retQuantityInput" class="form-control text-center input-lg" style="font-size: 18px; font-weight: 800; height: 44px; color: #0f172a;" value="1" min="1" oninput="onReturnQtyInput()">
+                                        <span class="input-group-btn">
+                                            <button type="button" class="btn btn-default input-lg" style="font-weight: bold; font-size: 18px; height: 44px; padding: 6px 16px;" onclick="changeReturnQty(1)">+</button>
+                                        </span>
+                                    </div>
+                                    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">
+                                        Maximum allowed return: <strong id="retMaxQtyNotice">0</strong> units
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Refund Method -->
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                                        Refund Method <span class="text-danger">*</span>
+                                    </label>
+                                    <select id="retRefundMethod" class="form-control input-lg" style="height: 44px; font-size: 14px; font-weight: 600;">
+                                        <option value="Cash">💵 Cash (Over the Counter)</option>
+                                        <option value="Original Payment Method">🔄 Original Payment Method</option>
+                                        <option value="Store Credit / Account Credit">🏬 Store Credit / Account Credit</option>
+                                        <option value="GCash / Maya">📱 GCash / Maya E-Wallet</option>
+                                        <option value="Bank Transfer">🏦 Bank Transfer</option>
+                                        <option value="Replacement">🔁 Replacement Item Issued</option>
+                                        <option value="Other">📄 Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <!-- Return Reason -->
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                                        Return Reason <span class="text-danger">*</span>
+                                    </label>
+                                    <select id="retReasonSelect" class="form-control input-lg" style="height: 44px; font-size: 14px; font-weight: 600;" onchange="onReturnReasonChange()">
+                                        <option value="Customer changed mind">Customer changed mind</option>
+                                        <option value="Wrong item supplied">Wrong item supplied</option>
+                                        <option value="Wrong size/specification">Wrong size/specification</option>
+                                        <option value="Incorrect quantity">Incorrect quantity</option>
+                                        <option value="Damaged item">Damaged item</option>
+                                        <option value="Defective item">Defective item</option>
+                                        <option value="Delivery damage">Delivery damage</option>
+                                        <option value="Supplier error">Supplier error</option>
+                                        <option value="Product quality issue">Product quality issue</option>
+                                        <option value="Other">Other (Specify below)</option>
+                                    </select>
+                                    
+                                    <div id="retReasonNotesWrap" style="display: none; margin-top: 8px;">
+                                        <input type="text" id="retReasonNotes" class="form-control" placeholder="Specify custom return reason..." style="font-size: 13px;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Item Condition -->
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                                        Item Condition <span class="text-danger">*</span>
+                                    </label>
+                                    <select id="retConditionSelect" class="form-control input-lg" style="height: 44px; font-size: 14px; font-weight: 600;" onchange="updateRestockBadge()">
+                                        <option value="Resellable">🟢 Resellable (Restock to sellable inventory)</option>
+                                        <option value="Unopened">🟢 Unopened (Restock to sellable inventory)</option>
+                                        <option value="Opened">🟡 Opened (Non-sellable / Inspection - Do NOT restock)</option>
+                                        <option value="Used">🟡 Used (Non-sellable - Do NOT restock)</option>
+                                        <option value="Damaged">🔴 Damaged (Damaged stock - Do NOT restock)</option>
+                                        <option value="Defective">🔴 Defective (Defective stock - Do NOT restock)</option>
+                                        <option value="Needs Inspection">🟡 Needs Inspection (Quarantine - Do NOT restock)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Restock Status Alert -->
+                        <div id="retRestockAlert" style="margin-bottom: 16px;"></div>
+
+                        <!-- General Notes -->
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="font-size: 12.5px; font-weight: 600; color: #475569; margin-bottom: 4px; display: block;">
+                                Additional Notes / Audit Remarks (Optional):
+                            </label>
+                            <input type="text" id="retGeneralNotes" class="form-control" placeholder="e.g. Customer receipt presented, item verified by cashier..." style="font-size: 13px;">
+                        </div>
+
+                        <!-- Live Refund Calculation Box -->
+                        <div style="background: #eff6ff; border: 2px solid #93c5fd; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <span style="font-size: 12px; color: #1e40af; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block;">Total Refund Amount Due:</span>
+                                <span style="font-size: 12px; color: #64748b;">Formula: <span id="retCalculationFormula">0 × ₱0.00</span></span>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="font-size: 26px; font-weight: 900; color: #1d4ed8;">&#8369;<span id="retTotalRefundDisplay">0.00</span></span>
+                            </div>
+                        </div>
+
+                        <!-- Confirmation / Action Buttons -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                            <button type="button" class="btn btn-default" onclick="backToReturnOrdersList()" style="font-weight: 600;">
+                                Cancel
+                            </button>
+                            <button type="submit" id="retProcessSubmitBtn" class="btn btn-danger btn-lg" style="background: #dc2626; border-color: #b91c1c; font-weight: 800; padding: 10px 24px; font-size: 16px; border-radius: 6px; box-shadow: 0 4px 10px rgba(220,38,38,0.3);">
+                                <i class="fa fa-check-circle"></i> Confirm & Process Return
+                            </button>
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+            <!-- Modal Footer (for View 1) -->
+            <div class="modal-footer" id="retModalFooterView1" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <a href="returns.php" class="btn btn-link" style="color: #2563eb; font-weight: 600; padding-left: 0;">
+                    <i class="fa fa-history"></i> View Complete Returns History
+                </a>
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600;">Close</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Return Success & Official Slip Modal -->
+<div class="modal fade" id="posReturnSuccessModal" tabindex="-1" role="dialog" style="z-index: 10070;">
+    <div class="modal-dialog" role="document" style="max-width: 550px;">
+        <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+            
+            <div class="modal-header" style="background-color: #dc2626; color: #fff; padding: 15px 20px;">
+                <button type="button" class="close" data-dismiss="modal" onclick="closeReturnSuccessModal()" style="color: #fff; opacity: 0.9;">&times;</button>
+                <h4 class="modal-title" style="font-weight: bold; font-size: 17px;">
+                    <i class="fa fa-check-circle"></i> Return Processed Successfully!
+                </h4>
+            </div>
+
+            <div class="modal-body" id="posPrintReturnSlipArea" style="padding: 20px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
+                <!-- Filled dynamically by renderReturnSlip(receipt) -->
+            </div>
+
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between;">
+                <button type="button" class="btn btn-default" onclick="closeReturnSuccessModal()"><i class="fa fa-times"></i> Close</button>
+                <button type="button" class="btn btn-danger" onclick="printReturnSlip()" style="background: #dc2626; border-color: #b91c1c; font-weight: 700;">
+                    <i class="fa fa-print"></i> Print Return Slip
+                </button>
+            </div>
+
         </div>
     </div>
 </div>
@@ -2077,6 +2372,578 @@ function printPOSReceipt() {
         printWindow.print();
         printWindow.close();
     }, 350);
+}
+
+// ==========================================
+// RETURN ITEM & REFUND FUNCTIONS
+// ==========================================
+
+let currentLoadedOrders = [];
+let currentReturnOrder = null;
+let currentReturnItem = null;
+
+function openReturnModal() {
+    $('#posReturnModal').modal('show');
+    resetOrderReturnSearch();
+}
+
+function resetOrderReturnSearch() {
+    document.getElementById('retOrderSearchInput').value = '';
+    backToReturnOrdersList();
+    fetchReturnOrders('');
+}
+
+function executeOrderReturnSearch() {
+    const keyword = document.getElementById('retOrderSearchInput').value.trim();
+    backToReturnOrdersList();
+    fetchReturnOrders(keyword);
+}
+
+function fetchReturnOrders(keyword) {
+    const container = document.getElementById('retOrdersContainer');
+    const badge = document.getElementById('retOrdersCountBadge');
+    const title = document.getElementById('retOrdersListTitle');
+    
+    title.innerText = keyword ? `Search Results for "${keyword}"` : 'Recent Completed Orders';
+    container.innerHTML = `
+        <div class="text-center text-muted" style="padding: 35px 20px;">
+            <i class="fa fa-spinner fa-spin fa-2x" style="color: #2563eb;"></i>
+            <div style="margin-top: 8px; font-size: 13px;">Searching transactions...</div>
+        </div>
+    `;
+
+    fetch(`pos-return-api.php?action=search_orders&keyword=${encodeURIComponent(keyword)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                currentLoadedOrders = data.orders || [];
+                badge.innerText = `${currentLoadedOrders.length} order${currentLoadedOrders.length === 1 ? '' : 's'}`;
+                renderReturnOrdersList(currentLoadedOrders);
+            } else {
+                container.innerHTML = `
+                    <div class="alert alert-danger" style="margin: 10px 0;">
+                        <i class="fa fa-exclamation-circle"></i> ${escapeHtml(data.message || 'Failed to load orders.')}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching return orders:', err);
+            container.innerHTML = `
+                <div class="alert alert-danger" style="margin: 10px 0;">
+                    <i class="fa fa-exclamation-triangle"></i> Network / Server error while fetching orders.
+                </div>
+            `;
+        });
+}
+
+function renderReturnOrdersList(orders) {
+    const container = document.getElementById('retOrdersContainer');
+    if (!orders || orders.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted" style="padding: 40px 10px; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                <i class="fa fa-search fa-3x" style="color: #cbd5e1;"></i>
+                <h4 style="margin: 12px 0 4px 0; font-weight: 700; color: #475569;">No Matching Orders Found</h4>
+                <p style="font-size: 13px; color: #64748b;">Try searching with a different invoice number, customer name, phone, or product SKU.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    orders.forEach((ord, index) => {
+        const hasReturnable = ord.has_returnable_items;
+        const isAllReturned = ord.is_all_fully_returned;
+
+        let statusBadge = '';
+        if (isAllReturned) {
+            statusBadge = `<span class="label label-default" style="background: #64748b; font-size: 10.5px; padding: 3px 7px;"><i class="fa fa-check-circle"></i> FULLY RETURNED</span>`;
+        } else if (hasReturnable) {
+            statusBadge = `<span class="label label-success" style="background: #16a34a; font-size: 10.5px; padding: 3px 7px;"><i class="fa fa-check"></i> ELIGIBLE FOR RETURN</span>`;
+        } else {
+            statusBadge = `<span class="label label-warning" style="background: #d97706; font-size: 10.5px; padding: 3px 7px;">NO RETURNABLE ITEMS</span>`;
+        }
+
+        let itemsRows = '';
+        ord.items.forEach(item => {
+            const isSpecial = (item.item_type === 'SPECIAL_ORDER');
+            const available = item.available_to_return;
+            const isFullyRet = item.is_fully_returned;
+
+            let actionBtn = '';
+            if (available > 0) {
+                actionBtn = `
+                    <button type="button" class="btn btn-danger btn-xs" style="font-weight: 700; padding: 4px 10px; background: #dc2626; border-color: #b91c1c;" onclick="startReturnForItem('${escapeHtml(ord.payment_id)}', ${item.order_item_id})">
+                        <i class="fa fa-reply"></i> Return Item
+                    </button>
+                `;
+            } else {
+                actionBtn = `
+                    <span class="label label-default" style="font-size: 10px; background: #94a3b8; padding: 3px 6px;">
+                        <i class="fa fa-ban"></i> Fully Returned
+                    </span>
+                `;
+            }
+
+            let specialBadge = isSpecial ? `<span class="label label-warning" style="background: #d97706; font-size: 9px; padding: 1px 4px; font-weight: bold;">SPECIAL ORDER</span> ` : '';
+            let detailsHtml = (isSpecial && item.product_details) ? `<div style="font-size: 11px; color: #475569; margin-top: 1px;">${escapeHtml(item.product_details)}</div>` : '';
+
+            itemsRows += `
+                <tr style="border-bottom: 1px solid #f1f5f9; ${isFullyRet ? 'background: #f8fafc; opacity: 0.7;' : ''}">
+                    <td style="padding: 8px 6px;">
+                        ${specialBadge}
+                        <strong style="color: #0f172a; font-size: 13px;">${escapeHtml(item.product_name)}</strong>
+                        ${detailsHtml}
+                        <div style="font-size: 11px; color: #64748b; font-family: monospace;">
+                            ${item.sku ? 'SKU: ' + escapeHtml(item.sku) : ''}
+                        </div>
+                    </td>
+                    <td style="padding: 8px 6px; text-align: center; font-weight: 600;">${item.purchased_qty}</td>
+                    <td style="padding: 8px 6px; text-align: center; color: ${item.previously_returned > 0 ? '#dc2626' : '#64748b'}; font-weight: 600;">${item.previously_returned}</td>
+                    <td style="padding: 8px 6px; text-align: center; font-weight: 800; color: ${available > 0 ? '#16a34a' : '#94a3b8'};">${available}</td>
+                    <td style="padding: 8px 6px; text-align: right; font-weight: 600;">₱${item.unit_price.toFixed(2)}</td>
+                    <td style="padding: 8px 6px; text-align: right;">${actionBtn}</td>
+                </tr>
+            `;
+        });
+
+        // Existing returns list for this order (if any)
+        let returnsListHtml = '';
+        if (ord.existing_returns && ord.existing_returns.length > 0) {
+            returnsListHtml = `
+                <div style="background: #fef2f2; border: 1px dashed #fca5a5; border-radius: 4px; padding: 6px 10px; margin-top: 8px; font-size: 11.5px; color: #991b1b;">
+                    <i class="fa fa-history"></i> <strong>Previous Returns on this order:</strong>
+                    ${ord.existing_returns.map(r => `<span style="font-family: monospace; font-weight: bold; margin-left: 6px;">${escapeHtml(r.return_reference)} (₱${parseFloat(r.refund_amount).toFixed(2)})</span>`).join(', ')}
+                </div>
+            `;
+        }
+
+        html += `
+            <div class="panel panel-default" style="border-radius: 8px; margin-bottom: 0; border: 1.5px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                
+                <div class="panel-heading" style="background: #f8fafc; padding: 12px 16px; border-top-left-radius: 7px; border-top-right-radius: 7px; border-bottom: 1px solid #e2e8f0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Invoice / Receipt:</span>
+                            <strong style="font-family: monospace; font-size: 15px; color: #1e3a8a; margin-left: 4px;">${escapeHtml(ord.payment_id)}</strong>
+                            <span style="font-size: 12px; color: #64748b; margin-left: 10px;">
+                                <i class="fa fa-calendar"></i> ${escapeHtml(ord.payment_date)}
+                            </span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            ${statusBadge}
+                            <span style="font-size: 13px; font-weight: 800; color: #0f172a; background: #e0f2fe; padding: 3px 8px; border-radius: 4px; border: 1px solid #bae6fd;">
+                                Paid: ₱${ord.paid_amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 6px; font-size: 12px; color: #334155; display: flex; gap: 14px; flex-wrap: wrap;">
+                        <span><i class="fa fa-user text-muted"></i> <strong>${escapeHtml(ord.customer_name)}</strong></span>
+                        ${ord.customer_phone && ord.customer_phone !== 'N/A' ? `<span><i class="fa fa-phone text-muted"></i> ${escapeHtml(ord.customer_phone)}</span>` : ''}
+                        <span><i class="fa fa-credit-card text-muted"></i> Method: ${escapeHtml(ord.payment_method)}</span>
+                    </div>
+
+                    ${returnsListHtml}
+                </div>
+
+                <div class="panel-body" style="padding: 0;">
+                    <table class="table table-condensed table-hover" style="margin-bottom: 0; font-size: 12.5px;">
+                        <thead>
+                            <tr style="background: #f1f5f9; color: #475569; font-size: 11px; text-transform: uppercase;">
+                                <th style="padding: 6px;">Purchased Item / Specs</th>
+                                <th style="padding: 6px; text-align: center; width: 65px;">Purchased</th>
+                                <th style="padding: 6px; text-align: center; width: 65px;">Returned</th>
+                                <th style="padding: 6px; text-align: center; width: 80px;">Available</th>
+                                <th style="padding: 6px; text-align: right; width: 90px;">Unit Price</th>
+                                <th style="padding: 6px; text-align: right; width: 120px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsRows}
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function startReturnForItem(paymentId, orderItemId) {
+    const order = currentLoadedOrders.find(o => o.payment_id === paymentId);
+    if (!order) {
+        alert('Order transaction details not found.');
+        return;
+    }
+    const item = order.items.find(i => i.order_item_id === orderItemId);
+    if (!item) {
+        alert('Item details not found.');
+        return;
+    }
+    if (item.available_to_return <= 0) {
+        alert('This item has already been fully returned.');
+        return;
+    }
+
+    currentReturnOrder = order;
+    currentReturnItem = item;
+
+    // Populate View 2
+    document.getElementById('retSubmitOrderItemId').value = item.order_item_id;
+    document.getElementById('retSubmitPaymentId').value = order.payment_id;
+
+    document.getElementById('retCfgOrderRef').innerText = order.payment_id;
+    document.getElementById('retCfgOrderDate').innerText = order.payment_date;
+    document.getElementById('retCfgCustomerName').innerText = order.customer_name;
+    document.getElementById('retCfgCustomerPhone').innerText = order.customer_phone && order.customer_phone !== 'N/A' ? `(${order.customer_phone})` : '';
+
+    const isSpecial = (item.item_type === 'SPECIAL_ORDER');
+    document.getElementById('retCfgSpecialBadge').style.display = isSpecial ? 'inline-block' : 'none';
+    document.getElementById('retCfgItemName').innerText = item.product_name;
+    document.getElementById('retCfgUnitPrice').innerText = item.unit_price.toFixed(2);
+    document.getElementById('retCfgSku').innerText = item.sku || 'N/A';
+    document.getElementById('retCfgItemImg').style.backgroundImage = `url('${item.photo}')`;
+
+    let detailsText = '';
+    if (isSpecial && item.product_details) {
+        detailsText = item.product_details;
+    } else if (item.size || item.color) {
+        detailsText = [item.size, item.color].filter(Boolean).join(' | ');
+    }
+    document.getElementById('retCfgItemDetails').innerText = detailsText;
+
+    document.getElementById('retCfgPurchasedQty').innerText = item.purchased_qty;
+    document.getElementById('retCfgPrevReturnedQty').innerText = item.previously_returned;
+    document.getElementById('retCfgAvailableQty').innerText = item.available_to_return;
+    document.getElementById('retMaxQtyNotice').innerText = item.available_to_return;
+
+    // Reset Form Fields
+    const qtyInput = document.getElementById('retQuantityInput');
+    qtyInput.value = 1;
+    qtyInput.max = item.available_to_return;
+
+    document.getElementById('retReasonSelect').value = 'Customer changed mind';
+    document.getElementById('retReasonNotes').value = '';
+    document.getElementById('retReasonNotesWrap').style.display = 'none';
+
+    document.getElementById('retConditionSelect').value = 'Resellable';
+    document.getElementById('retRefundMethod').value = 'Cash';
+    document.getElementById('retGeneralNotes').value = '';
+
+    updateReturnCalculations();
+    updateRestockBadge();
+    clearReturnAlert();
+
+    // Switch View
+    document.getElementById('retSearchSection').style.display = 'none';
+    document.getElementById('retModalFooterView1').style.display = 'none';
+    document.getElementById('retItemConfigSection').style.display = 'block';
+}
+
+function backToReturnOrdersList() {
+    document.getElementById('retItemConfigSection').style.display = 'none';
+    document.getElementById('retSearchSection').style.display = 'block';
+    document.getElementById('retModalFooterView1').style.display = 'flex';
+    clearReturnAlert();
+}
+
+function changeReturnQty(delta) {
+    if (!currentReturnItem) return;
+    const input = document.getElementById('retQuantityInput');
+    let val = parseInt(input.value) || 1;
+    val += delta;
+    if (val < 1) val = 1;
+    if (val > currentReturnItem.available_to_return) {
+        alert(`Cannot exceed available return quantity (${currentReturnItem.available_to_return} units).`);
+        val = currentReturnItem.available_to_return;
+    }
+    input.value = val;
+    updateReturnCalculations();
+}
+
+function onReturnQtyInput() {
+    if (!currentReturnItem) return;
+    const input = document.getElementById('retQuantityInput');
+    let val = parseInt(input.value) || 1;
+    if (val < 1) val = 1;
+    if (val > currentReturnItem.available_to_return) {
+        alert(`Maximum available return quantity is ${currentReturnItem.available_to_return} units.`);
+        val = currentReturnItem.available_to_return;
+    }
+    input.value = val;
+    updateReturnCalculations();
+}
+
+function updateReturnCalculations() {
+    if (!currentReturnItem) return;
+    const qty = parseInt(document.getElementById('retQuantityInput').value) || 1;
+    const unitPrice = currentReturnItem.unit_price;
+    const totalRefund = qty * unitPrice;
+
+    document.getElementById('retCalculationFormula').innerText = `${qty} unit${qty === 1 ? '' : 's'} × ₱${unitPrice.toFixed(2)}`;
+    document.getElementById('retTotalRefundDisplay').innerText = totalRefund.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    updateRestockBadge();
+}
+
+function updateRestockBadge() {
+    if (!currentReturnItem) return;
+    const condition = document.getElementById('retConditionSelect').value;
+    const isSpecial = (currentReturnItem.item_type === 'SPECIAL_ORDER' || currentReturnItem.product_id === 0);
+    const qty = parseInt(document.getElementById('retQuantityInput').value) || 1;
+    const alertBox = document.getElementById('retRestockAlert');
+
+    if (isSpecial) {
+        alertBox.innerHTML = `
+            <div class="alert alert-info" style="margin-bottom: 0; padding: 10px 12px; font-size: 12.5px; border-radius: 6px;">
+                <i class="fa fa-info-circle"></i> <strong>Special Order Rule:</strong> This is a custom/manual non-catalogue item. Refund will be recorded, but <strong>NO catalogue inventory</strong> will be modified.
+            </div>
+        `;
+    } else if (condition === 'Resellable' || condition === 'Unopened') {
+        alertBox.innerHTML = `
+            <div class="alert alert-success" style="margin-bottom: 0; padding: 10px 12px; font-size: 12.5px; border-radius: 6px; background-color: #f0fdf4; border-color: #bbf7d0; color: #166534;">
+                <i class="fa fa-check-circle"></i> <strong>Inventory Restock:</strong> Item is in <em>${condition}</em> condition. <strong>+${qty} units</strong> will be automatically added back to active catalogue inventory.
+            </div>
+        `;
+    } else {
+        alertBox.innerHTML = `
+            <div class="alert alert-warning" style="margin-bottom: 0; padding: 10px 12px; font-size: 12.5px; border-radius: 6px; background-color: #fffbeb; border-color: #fde68a; color: #92400e;">
+                <i class="fa fa-exclamation-triangle"></i> <strong>Non-Sellable Stock:</strong> Item condition is <em>${condition}</em>. Available sellable stock will <strong>NOT</strong> be increased.
+            </div>
+        `;
+    }
+}
+
+function onReturnReasonChange() {
+    const reason = document.getElementById('retReasonSelect').value;
+    const wrap = document.getElementById('retReasonNotesWrap');
+    if (reason === 'Other') {
+        wrap.style.display = 'block';
+        document.getElementById('retReasonNotes').focus();
+    } else {
+        wrap.style.display = 'none';
+        document.getElementById('retReasonNotes').value = '';
+    }
+}
+
+function clearReturnAlert() {
+    const el = document.getElementById('retModalAlert');
+    if (el) {
+        el.style.display = 'none';
+        el.className = 'alert';
+        el.innerText = '';
+    }
+}
+
+function showReturnAlert(type, msg) {
+    const el = document.getElementById('retModalAlert');
+    if (el) {
+        el.className = `alert alert-${type}`;
+        el.innerHTML = msg;
+        el.style.display = 'block';
+    }
+}
+
+function confirmAndSubmitReturn() {
+    if (!currentReturnItem || !currentReturnOrder) {
+        alert('Invalid state. Please select an item.');
+        return;
+    }
+
+    const orderItemId = parseInt(document.getElementById('retSubmitOrderItemId').value);
+    const paymentId = document.getElementById('retSubmitPaymentId').value;
+    const returnQty = parseInt(document.getElementById('retQuantityInput').value) || 1;
+    const returnReason = document.getElementById('retReasonSelect').value;
+    const reasonNotes = document.getElementById('retReasonNotes').value.trim();
+    const condition = document.getElementById('retConditionSelect').value;
+    const refundMethod = document.getElementById('retRefundMethod').value;
+    const generalNotes = document.getElementById('retGeneralNotes').value.trim();
+
+    if (returnReason === 'Other' && !reasonNotes) {
+        alert('Please specify the return reason notes.');
+        document.getElementById('retReasonNotes').focus();
+        return;
+    }
+
+    if (returnQty < 1 || returnQty > currentReturnItem.available_to_return) {
+        alert(`Return quantity must be between 1 and ${currentReturnItem.available_to_return}.`);
+        return;
+    }
+
+    const totalRefund = returnQty * currentReturnItem.unit_price;
+    const confirmMsg = `Are you sure you want to process this return?\n\n` +
+        `• Product: ${currentReturnItem.product_name}\n` +
+        `• Quantity: ${returnQty}\n` +
+        `• Refund Amount: ₱${totalRefund.toFixed(2)}\n` +
+        `• Refund Method: ${refundMethod}\n` +
+        `• Condition: ${condition}`;
+
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    const submitBtn = document.getElementById('retProcessSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<i class="fa fa-spinner fa-spin"></i> Processing Return...`;
+
+    const formData = new FormData();
+    formData.append('order_item_id', orderItemId);
+    formData.append('payment_id', paymentId);
+    formData.append('return_quantity', returnQty);
+    formData.append('return_reason', returnReason);
+    formData.append('reason_notes', reasonNotes);
+    formData.append('condition', condition);
+    formData.append('refund_method', refundMethod);
+    formData.append('general_notes', generalNotes);
+
+    fetch('pos-return-api.php?action=process_return', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="fa fa-check-circle"></i> Confirm & Process Return`;
+
+        if (data.status === 'success') {
+            $('#posReturnModal').modal('hide');
+            renderReturnSlip(data.receipt);
+            $('#posReturnSuccessModal').modal('show');
+        } else {
+            showReturnAlert('danger', `<i class="fa fa-exclamation-circle"></i> ${escapeHtml(data.message || 'Failed to process return.')}`);
+        }
+    })
+    .catch(err => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="fa fa-check-circle"></i> Confirm & Process Return`;
+        console.error('Error processing return:', err);
+        showReturnAlert('danger', `<i class="fa fa-exclamation-triangle"></i> Network / Server connection failure.`);
+    });
+}
+
+function renderReturnSlip(receipt) {
+    const isSpecial = receipt.is_special_order;
+    const isRestocked = (receipt.restock_status === 'RESTOCKED');
+    
+    let specialTag = isSpecial ? `<span class="label label-warning" style="background-color: #d97706; font-size: 9px; padding: 1px 4px; font-weight: bold; text-transform: uppercase;">SPECIAL ORDER</span><br>` : '';
+    let detailsHtml = (isSpecial && receipt.product_details) ? `<div style="font-size: 11px; color: #475569; margin-top: 1px;">${escapeHtml(receipt.product_details)}</div>` : '';
+    let refOrSku = isSpecial 
+        ? (receipt.special_order_reference ? `Ref: ${escapeHtml(receipt.special_order_reference)}` : '')
+        : (receipt.sku ? `SKU: ${escapeHtml(receipt.sku)}` : '');
+
+    let restockText = isRestocked 
+        ? '<span style="color: #15803d; font-weight: bold;"><i class="fa fa-check"></i> Restocked (+' + receipt.quantity_returned + ' units added to active inventory)</span>'
+        : '<span style="color: #b45309; font-weight: bold;"><i class="fa fa-ban"></i> Not Restocked (' + escapeHtml(receipt.condition) + ')</span>';
+
+    const slipHtml = `
+        <div style="text-align: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #1e3a8a; font-weight: bold; letter-spacing: 0.5px;">E-CONSTRUCTION SUPPLY</h3>
+            <p style="margin: 3px 0 0 0; font-size: 13px; color: #64748b;">Supplier Store: <strong>${escapeHtml(receipt.supplier_name)}</strong></p>
+            ${receipt.supplier_address ? `<p style="margin: 1px 0 0 0; font-size: 11px; color: #64748b;">${escapeHtml(receipt.supplier_address)} | Tel: ${escapeHtml(receipt.supplier_phone)}</p>` : ''}
+            <hr style="margin: 12px 0; border: 0; border-top: 1px dashed #cbd5e1;">
+            <h4 style="margin: 0; font-size: 16px; font-weight: bold; color: #dc2626; text-transform: uppercase; letter-spacing: 0.5px;">Official Return & Refund Receipt</h4>
+        </div>
+
+        <table style="width: 100%; font-size: 12px; margin-bottom: 12px;">
+            <tr>
+                <td style="width: 50%; vertical-align: top; line-height: 1.4;">
+                    <strong style="color: #475569; font-size: 10px; text-transform: uppercase;">Return Transaction:</strong><br>
+                    <strong>Return Ref:</strong> <span style="font-family: monospace; color: #dc2626; font-weight: bold;">${escapeHtml(receipt.return_reference)}</span><br>
+                    <strong>Date:</strong> ${escapeHtml(receipt.return_date)}<br>
+                    <strong>Cashier:</strong> ${escapeHtml(receipt.processed_by)}
+                </td>
+                <td style="width: 50%; vertical-align: top; text-align: right; line-height: 1.4;">
+                    <strong style="color: #475569; font-size: 10px; text-transform: uppercase;">Original Invoice:</strong><br>
+                    <strong>Invoice #:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: bold;">${escapeHtml(receipt.payment_id)}</span><br>
+                    <strong>Customer:</strong> ${escapeHtml(receipt.customer_name)}<br>
+                    ${receipt.customer_phone ? `<strong>Phone:</strong> ${escapeHtml(receipt.customer_phone)}` : ''}
+                </td>
+            </tr>
+        </table>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;">
+            <thead>
+                <tr style="background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
+                    <th style="padding: 6px 4px; text-align: left;">Item Returned</th>
+                    <th style="padding: 6px 4px; text-align: center; width: 45px;">Qty</th>
+                    <th style="padding: 6px 4px; text-align: right; width: 75px;">Price</th>
+                    <th style="padding: 6px 4px; text-align: right; width: 85px;">Refund</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom: 1px solid #f1f5f9;">
+                    <td style="padding: 8px 4px;">
+                        ${specialTag}
+                        <strong style="color: #0f172a;">${escapeHtml(receipt.product_name)}</strong>
+                        ${detailsHtml}
+                        ${refOrSku ? `<div style="font-size: 10.5px; color: #64748b; font-family: monospace; margin-top: 1px;">${refOrSku}</div>` : ''}
+                    </td>
+                    <td style="padding: 8px 4px; text-align: center; font-weight: bold; color: #991b1b;">${receipt.quantity_returned}</td>
+                    <td style="padding: 8px 4px; text-align: right;">₱${parseFloat(receipt.unit_price).toFixed(2)}</td>
+                    <td style="padding: 8px 4px; text-align: right; font-weight: bold; color: #dc2626;">₱${parseFloat(receipt.refund_amount).toFixed(2)}</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr style="background: #fef2f2; border-top: 2px solid #fecaca;">
+                    <td colspan="2" style="padding: 8px 4px; font-weight: 700; color: #991b1b;">TOTAL REFUND PAID:</td>
+                    <td colspan="2" style="padding: 8px 4px; text-align: right; font-size: 16px; font-weight: 900; color: #dc2626;">₱${parseFloat(receipt.refund_amount).toFixed(2)}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.5; margin-bottom: 15px;">
+            <div><strong>Refund Method:</strong> <span style="font-weight: 700; color: #1e3a8a;">${escapeHtml(receipt.refund_method)}</span></div>
+            <div><strong>Reason:</strong> ${escapeHtml(receipt.return_reason)}</div>
+            <div><strong>Condition:</strong> ${escapeHtml(receipt.condition)}</div>
+            <div><strong>Inventory Status:</strong> ${restockText}</div>
+            <div style="margin-top: 4px; font-size: 11px; color: #64748b;">
+                Original Purchased: <strong>${receipt.purchased_qty}</strong> | Total Returned to date: <strong>${receipt.total_returned}</strong> | Remaining: <strong>${receipt.remaining_returnable}</strong>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 15px; font-size: 11px; color: #64748b;">
+            <p style="margin: 0; font-weight: bold; color: #334155;">Customer Return Verified</p>
+            <p style="margin: 2px 0 0 0; font-size: 10px; color: #94a3b8;">This is a system-generated official return slip.</p>
+        </div>
+    `;
+
+    document.getElementById('posPrintReturnSlipArea').innerHTML = slipHtml;
+}
+
+function printReturnSlip() {
+    const printContent = document.getElementById('posPrintReturnSlipArea').innerHTML;
+    const printWindow = window.open('', '_blank', 'width=750,height=800');
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Official Return & Refund Receipt</title>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; margin: 0; }
+                table { width: 100%; border-collapse: collapse; }
+                @media print {
+                    body { padding: 0; }
+                    @page { margin: 10mm; }
+                }
+            </style>
+        </head>
+        <body>
+            ${printContent}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+    }, 350);
+}
+
+function closeReturnSuccessModal() {
+    $('#posReturnSuccessModal').modal('hide');
+    window.location.href = 'pos.php';
 }
 
 function escapeHtml(text) {

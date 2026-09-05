@@ -122,6 +122,12 @@ $supplier_id = $_SESSION['supplier_user']['supplier_id'];
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'returns.php') ) {echo 'active';} ?>">
+                        <a href="returns.php">
+                            <i class="fa fa-undo" style="color: #f87171;"></i> <span style="color: #fca5a5; font-weight: bold;">Return History</span>
+                        </a>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'quotes.php') || ($cur_page == 'quotes-reply.php') ) {echo 'active';} ?>">
                         <a href="quotes.php">
                             <i class="fa fa-file-text-o"></i> <span>RFQ Quotations</span>

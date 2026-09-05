@@ -81,6 +81,15 @@ $stmt = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id = ? AND payme
 $stmt->execute(array($supplier_id, $start_datetime, $end_datetime));
 $sales_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Fetch returns matching date range for this supplier
+$stmt_ret = $pdo->prepare("SELECT r.*, ri.product_name, ri.quantity_returned, ri.refund_amount as item_refund, ri.unit_price as item_unit_price, ri.return_reason, ri.condition, ri.restock_status, ri.sku, ri.item_type, ri.special_order_reference, ri.product_details 
+                           FROM tbl_returns r
+                           JOIN tbl_return_items ri ON r.return_id = ri.return_id
+                           WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?
+                           ORDER BY r.return_id DESC");
+$stmt_ret->execute(array($supplier_id, $start_datetime, $end_datetime));
+$period_returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
+
 // Metrics calculation
 $total_revenue = 0;
 $total_orders_count = count($sales_orders);
@@ -143,7 +152,17 @@ foreach ($sales_orders as $ord) {
     $trend_data[$p_date_key]['orders'] += 1;
 }
 
-$aov = $total_orders_count > 0 ? ($total_revenue / $total_orders_count) : 0;
+// Returns Calculations
+$total_gross_revenue = $total_revenue;
+$total_refunds_amount = 0;
+$total_units_returned = 0;
+foreach ($period_returns as $r_row) {
+    $total_refunds_amount += (float)$r_row['item_refund'];
+    $total_units_returned += (int)$r_row['quantity_returned'];
+}
+$total_net_revenue = max(0, $total_gross_revenue - $total_refunds_amount);
+$net_units_sold = max(0, $total_units_sold - $total_units_returned);
+$aov = $total_orders_count > 0 ? ($total_gross_revenue / $total_orders_count) : 0;
 
 // Sort top products by revenue descending
 uasort($top_products, function($a, $b) {
@@ -164,7 +183,7 @@ $trend_orders_counts = array_column($trend_data, 'orders');
 <style>
 .stat-card {
     border-radius: 8px;
-    padding: 20px 22px;
+    padding: 18px 20px;
     color: #fff;
     margin-bottom: 20px;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
@@ -179,26 +198,30 @@ $trend_orders_counts = array_column($trend_data, 'orders');
     position: absolute;
     right: 15px;
     bottom: 10px;
-    font-size: 60px;
+    font-size: 55px;
     opacity: 0.15;
 }
 .stat-card h3 {
     margin: 0 0 6px 0;
-    font-size: 26px;
-    font-weight: 700;
+    font-size: 24px;
+    font-weight: 800;
 }
 .stat-card p {
     margin: 0;
-    font-size: 13px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     opacity: 0.9;
+    font-weight: 600;
 }
 .bg-gradient-blue {
     background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
 }
 .bg-gradient-green {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+.bg-gradient-red {
+    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
 }
 .bg-gradient-amber {
     background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
@@ -397,35 +420,52 @@ $trend_orders_counts = array_column($trend_data, 'orders');
             <i class="fa fa-clock-o text-primary"></i> Report Period: <span style="color: #0284c7;"><?php echo htmlspecialchars($filter_label); ?></span>
         </h4>
         <p style="margin: 3px 0 0 0; font-size: 13px; color: #64748b;">
-            Showing sales performance and itemized orders between <strong><?php echo date('M d, Y h:i A', strtotime($start_datetime)); ?></strong> and <strong><?php echo date('M d, Y h:i A', strtotime($end_datetime)); ?></strong>
+            Showing sales performance, returns, and itemized transactions between <strong><?php echo date('M d, Y h:i A', strtotime($start_datetime)); ?></strong> and <strong><?php echo date('M d, Y h:i A', strtotime($end_datetime)); ?></strong>
         </p>
     </div>
 
     <!-- Analytics Key Metrics (KPI Cards) -->
     <div class="row">
-        <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="col-md-4 col-sm-6 col-xs-12">
             <div class="stat-card bg-gradient-blue">
                 <i class="fa fa-money icon-bg"></i>
-                <h3>&#8369;<?php echo number_format($total_revenue, 2); ?></h3>
+                <h3>&#8369;<?php echo number_format($total_gross_revenue, 2); ?></h3>
                 <p>Gross Sales Revenue</p>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="col-md-4 col-sm-6 col-xs-12">
+            <div class="stat-card bg-gradient-red">
+                <i class="fa fa-undo icon-bg"></i>
+                <h3>&#8369;<?php echo number_format($total_refunds_amount, 2); ?></h3>
+                <p>Total Returns & Refunds (<?php echo count($period_returns); ?>)</p>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6 col-xs-12">
             <div class="stat-card bg-gradient-green">
+                <i class="fa fa-check-circle icon-bg"></i>
+                <h3>&#8369;<?php echo number_format($total_net_revenue, 2); ?></h3>
+                <p>Net Sales Revenue</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 col-sm-6 col-xs-12">
+            <div class="stat-card bg-gradient-purple">
                 <i class="fa fa-shopping-cart icon-bg"></i>
                 <h3><?php echo number_format($total_orders_count); ?></h3>
-                <p>Total Orders</p>
+                <p>Completed Orders</p>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="col-md-4 col-sm-6 col-xs-12">
             <div class="stat-card bg-gradient-amber">
                 <i class="fa fa-cubes icon-bg"></i>
-                <h3><?php echo number_format($total_units_sold); ?></h3>
-                <p>Products Sold (Units)</p>
+                <h3><?php echo number_format($net_units_sold); ?></h3>
+                <p>Net Units Sold (<?php echo $total_units_sold; ?> sold, <?php echo $total_units_returned; ?> returned)</p>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6 col-xs-12">
-            <div class="stat-card bg-gradient-purple">
+        <div class="col-md-4 col-sm-6 col-xs-12">
+            <div class="stat-card bg-gradient-blue" style="background: linear-gradient(135deg, #334155 0%, #1e293b 100%);">
                 <i class="fa fa-calculator icon-bg"></i>
                 <h3>&#8369;<?php echo number_format($aov, 2); ?></h3>
                 <p>Average Order Value</p>
@@ -448,11 +488,11 @@ $trend_orders_counts = array_column($trend_data, 'orders');
             </div>
         </div>
 
-        <!-- Payment Method Share -->
+        <!-- Payment Method Breakdown Chart -->
         <div class="col-md-4">
             <div class="chart-box">
                 <div class="chart-header">
-                    <span><i class="fa fa-pie-chart text-primary"></i> Payment Methods</span>
+                    <span><i class="fa fa-pie-chart text-success"></i> Payment Channels</span>
                 </div>
                 <div style="position: relative; height: 280px;">
                     <canvas id="paymentMethodChart"></canvas>
@@ -461,41 +501,128 @@ $trend_orders_counts = array_column($trend_data, 'orders');
         </div>
     </div>
 
-    <!-- Top Products Analytics Row -->
+    <!-- Top Products Ranking -->
     <div class="row">
         <div class="col-md-12">
             <div class="chart-box">
                 <div class="chart-header">
-                    <span><i class="fa fa-trophy text-warning"></i> Top Selling Products by Revenue (&#8369;)</span>
+                    <span><i class="fa fa-trophy text-warning"></i> Top Performing Products by Revenue</span>
                 </div>
-                <div style="position: relative; height: 250px;">
+                <div style="position: relative; height: 260px;">
                     <canvas id="topProductsChart"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Itemized "View Sales Report" Data Table -->
+    <!-- Returns Breakdown in this Period -->
+    <?php if (count($period_returns) > 0): ?>
     <div class="row">
         <div class="col-md-12">
-            <div class="box box-info" style="border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <div class="box-header with-border">
-                    <h3 class="box-title" style="font-weight: bold; color: #1e293b;">
-                        <i class="fa fa-table text-primary"></i> Itemized Sales Transactions (<?php echo count($sales_orders); ?>)
+            <div class="box box-danger" style="border-radius: 8px;">
+                <div class="box-header with-border" style="padding: 12px 18px; background-color: #fef2f2;">
+                    <h3 class="box-title" style="font-weight: 700; color: #991b1b; font-size: 16px;">
+                        <i class="fa fa-undo text-danger"></i> Returns & Refunds in this Period (<?php echo count($period_returns); ?> items)
                     </h3>
+                    <div class="box-tools pull-right">
+                        <span class="label label-danger" style="font-size: 12px; font-weight: bold;">
+                            Total Refunded: -&#8369;<?php echo number_format($total_refunds_amount, 2); ?>
+                        </span>
+                    </div>
                 </div>
-                <div class="box-body table-responsive">
-                    <table id="example1" class="table table-bordered table-striped table-hover">
+                <div class="box-body table-responsive" style="padding: 10px 18px;">
+                    <table class="table table-bordered table-hover table-striped" style="font-size: 13px;">
                         <thead>
                             <tr style="background: #f8fafc;">
                                 <th>#</th>
-                                <th>Order Date & Time</th>
-                                <th>Transaction / Order ID</th>
-                                <th>Customer Details</th>
-                                <th>Items Description</th>
+                                <th>Return Ref</th>
+                                <th>Return Date</th>
+                                <th>Original Invoice</th>
+                                <th>Customer</th>
+                                <th>Product / Item</th>
+                                <th class="text-center">Qty Returned</th>
+                                <th class="text-right">Unit Price</th>
+                                <th class="text-right">Refund Amount</th>
+                                <th>Reason</th>
+                                <th>Condition</th>
+                                <th>Restock Action</th>
+                                <th>Refund Method</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $r_idx = 0;
+                            foreach ($period_returns as $pret): 
+                                $r_idx++;
+                                $is_sp = ($pret['item_type'] === 'SPECIAL_ORDER');
+                                $is_rstk = ($pret['restock_status'] === 'RESTOCKED');
+                            ?>
+                            <tr>
+                                <td><?php echo $r_idx; ?></td>
+                                <td><strong style="font-family: monospace; color: #dc2626;"><?php echo htmlspecialchars($pret['return_reference']); ?></strong></td>
+                                <td><?php echo date('M d, Y h:i A', strtotime($pret['return_date'])); ?></td>
+                                <td><strong style="font-family: monospace; color: #0284c7;"><?php echo htmlspecialchars($pret['payment_id']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($pret['customer_name']); ?></td>
+                                <td>
+                                    <?php if ($is_sp): ?>
+                                        <span class="label label-warning" style="background-color: #d97706; font-size: 9px; padding: 1px 4px; font-weight: bold;">SPECIAL ORDER</span><br>
+                                    <?php endif; ?>
+                                    <strong><?php echo htmlspecialchars($pret['product_name']); ?></strong>
+                                    <?php if (!empty($pret['sku'])): ?>
+                                        <span style="font-size: 11px; color: #64748b; font-family: monospace;">(<?php echo htmlspecialchars($pret['sku']); ?>)</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-center font-bold" style="color: #991b1b; font-weight: bold;"><?php echo $pret['quantity_returned']; ?></td>
+                                <td class="text-right">&#8369;<?php echo number_format($pret['item_unit_price'] ?: $pret['unit_price'], 2); ?></td>
+                                <td class="text-right" style="font-weight: bold; color: #dc2626;">-&#8369;<?php echo number_format($pret['item_refund'], 2); ?></td>
+                                <td><?php echo htmlspecialchars($pret['return_reason']); ?></td>
+                                <td><span class="label label-default"><?php echo htmlspecialchars($pret['condition']); ?></span></td>
+                                <td>
+                                    <?php if ($is_rstk): ?>
+                                        <span class="label label-success" style="background: #16a34a;"><i class="fa fa-check"></i> Restocked</span>
+                                    <?php else: ?>
+                                        <span class="label label-default"><i class="fa fa-ban"></i> Not Restocked</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><span class="label label-default"><?php echo htmlspecialchars($pret['refund_method']); ?></span></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: #fef2f2; font-weight: bold;">
+                                <th colspan="8" class="text-right">Total Returns Deducted:</th>
+                                <th class="text-right" style="color: #dc2626; font-size: 14px;">-&#8369;<?php echo number_format($total_refunds_amount, 2); ?></th>
+                                <th colspan="4"></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Itemized Orders Table -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="box box-info" style="border-radius: 8px;">
+                <div class="box-header with-border" style="padding: 12px 18px;">
+                    <h3 class="box-title" style="font-weight: 700; color: #1e293b; font-size: 16px;">
+                        <i class="fa fa-list-alt text-primary"></i> Itemized Sales Orders in Period
+                    </h3>
+                </div>
+                <div class="box-body table-responsive" style="padding: 10px 18px;">
+                    <table id="example1" class="table table-bordered table-hover table-striped" style="font-size: 13px;">
+                        <thead>
+                            <tr style="background: #f8fafc;">
+                                <th>#</th>
+                                <th>Order Date</th>
+                                <th>Transaction / Invoice ID</th>
+                                <th>Customer</th>
+                                <th>Purchased Items</th>
                                 <th class="text-right">Delivery Fee</th>
                                 <th>Payment Method</th>
-                                <th class="text-right">Total Amount</th>
+                                <th class="text-right">Paid Amount</th>
                                 <th class="text-center">Payment Status</th>
                                 <th class="text-center">Action</th>
                             </tr>
@@ -624,10 +751,22 @@ $trend_orders_counts = array_column($trend_data, 'orders');
                         </tbody>
                         <tfoot>
                             <tr style="background: #f1f5f9; font-weight: bold;">
-                                <th colspan="7" class="text-right">Total Summary (<?php echo count($sales_orders); ?> Orders):</th>
-                                <th class="text-right" style="color: #0284c7; font-size: 15px;">&#8369;<?php echo number_format($total_revenue, 2); ?></th>
+                                <th colspan="7" class="text-right">Gross Sales Total (<?php echo count($sales_orders); ?> Orders):</th>
+                                <th class="text-right" style="color: #0284c7; font-size: 15px;">&#8369;<?php echo number_format($total_gross_revenue, 2); ?></th>
                                 <th colspan="2"></th>
                             </tr>
+                            <?php if ($total_refunds_amount > 0): ?>
+                            <tr style="background: #fef2f2; font-weight: bold;">
+                                <th colspan="7" class="text-right" style="color: #991b1b;">Less Returns & Refunds:</th>
+                                <th class="text-right" style="color: #dc2626; font-size: 15px;">-&#8369;<?php echo number_format($total_refunds_amount, 2); ?></th>
+                                <th colspan="2"></th>
+                            </tr>
+                            <tr style="background: #f0fdf4; font-weight: bold;">
+                                <th colspan="7" class="text-right" style="color: #166534; font-size: 15px;">NET SALES REVENUE:</th>
+                                <th class="text-right" style="color: #15803d; font-size: 17px; font-weight: 900;">&#8369;<?php echo number_format($total_net_revenue, 2); ?></th>
+                                <th colspan="2"></th>
+                            </tr>
+                            <?php endif; ?>
                         </tfoot>
                     </table>
                 </div>
@@ -661,7 +800,7 @@ document.addEventListener("DOMContentLoaded", function() {
             labels: trendLabels,
             datasets: [
                 {
-                    label: 'Revenue (₱)',
+                    label: 'Gross Revenue (₱)',
                     data: trendRevenues,
                     borderColor: '#0284c7',
                     backgroundColor: 'rgba(2, 132, 199, 0.1)',

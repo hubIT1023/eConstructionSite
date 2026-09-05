@@ -549,6 +549,7 @@
                 <li><a href="#supplier-orders" class="sidebar-link"><i class="fa fa-box"></i> Paid Orders Workflow</a></li>
                 <li><a href="#supplier-analytics" class="sidebar-link"><i class="fa fa-chart-line"></i> Sales Analytics</a></li>
                 <li><a href="#pos-delivery" class="sidebar-link"><i class="fa fa-map-location-dot"></i> POS Location Delivery</a></li>
+                <li><a href="#pos-return" class="sidebar-link"><i class="fa fa-undo"></i> POS Return Item Workflow</a></li>
             </ul>
         </nav>
 
@@ -988,6 +989,99 @@
                         </li>
                     </ul>
                 </div>
+
+                <!-- 5.6 Return Item Workflow -->
+                <div id="pos-return" class="sub-section">
+                    <div class="sub-title"><i class="fa fa-undo" style="color: #dc2626;"></i> 5.6 Return Item Processing & Workflow</div>
+                    <p>When a customer brings back an item purchased through the POS or online store, the cashier can process an authoritative return and refund directly in the POS without altering past sales history:</p>
+
+                    <div class="mock-ui">
++---------------------------------------------------------------------------------------------------------+
+| [ RETURN / REFUND PROCESSING MODAL ]                                                                    |
++---------------------------------------------------------------------------------------------------------+
+| [ Search Order / Invoice / Customer Name / Phone / Email / Product SKU...                            ] |
+|                                                                                                         |
+| Order: POS-1757064903 | Date: 2026-09-05 | Customer: Juan Dela Cruz (09171234567) | Total: ₱14,500.00   |
+| +-----------------------------------------------------------------------------------------------------+ |
+| | Product: Deformed Steel Bar 16mm (Grade 40) | Sold Qty: 20 | Returned: 0 | Remaining: 20            | |
+| | Unit Price: ₱485.00 | Line Total: ₱9,700.00                              [ RETURN THIS ITEM ]       | |
+| +-----------------------------------------------------------------------------------------------------+ |
+|                                                                                                         |
+| RETURN CONFIGURATION:                                                                                   |
+| Return Qty: [-] [ 5 ] [+] (Max returnable: 20)                                                          |
+| Reason: [ Defective / Damaged Item                     v ]                                              |
+| Item Condition: [ Resellable (Restock to Inventory)    v ] -> RESTOCK ALERT: +5 units added to stock    |
+| Refund Method: [ Original Payment (Cash)               v ]                                              |
+| Refund Calculation: 5 units x ₱485.00 = ₱2,425.00                                                       |
+|                                                                                                         |
+| [ CANCEL ]                                                          [ CONFIRM & PROCESS REFUND ]       |
++---------------------------------------------------------------------------------------------------------+
+                    </div>
+
+                    <ul class="step-list">
+                        <li class="step-item">
+                            <div class="step-title">Step 1: Open Return Modal</div>
+                            <div class="step-desc">Click the red <strong>[ RETURN ]</strong> button located next to the Special Order button in the POS header.</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Step 2: Search Completed Sale</div>
+                            <div class="step-desc">Enter the <strong>Invoice ID / Payment ID</strong> (e.g., <code>POS-1757064903</code>), customer name, phone number, email address, or product SKU. The system instantly lists matching completed orders belonging to your supplier account.</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Step 3: Select Item & Verify Remaining Returnable Limit</div>
+                            <div class="step-desc">The modal displays each line item in the order with its originally purchased quantity, previously returned quantity, and current <strong>Remaining Returnable Quantity</strong>. Items already 100% returned are disabled. Click <strong>"Return This Item"</strong> on the target line item.</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Step 4: Configure Quantity, Reason, Condition & Refund Method</div>
+                            <div class="step-desc">
+                                &bull; <strong>Quantity to Return</strong>: Set within allowed range (<code>1</code> up to <code>Remaining Returnable</code>). Cannot exceed purchased amount.<br>
+                                &bull; <strong>Return Reason</strong>: Select from <em>Defective / Faulty</em>, <em>Wrong Item Supplied</em>, <em>Customer Changed Mind</em>, <em>Damaged in Transit</em>, <em>Quality Not as Expected</em>, or <em>Other Reason</em> (with mandatory details).<br>
+                                &bull; <strong>Item Condition & Restock Logic</strong>:<br>
+                                &nbsp;&nbsp;- <code>Resellable</code> / <code>Unopened / New</code>: Automatically restores stock to catalogue inventory (<code>tbl_product.p_qty</code>).<br>
+                                &nbsp;&nbsp;- <code>Damaged</code> / <code>Defective / Broken</code> / <code>Needs Inspection</code> / <code>Used</code>: Does <strong>NOT</strong> restock to catalogue inventory.<br>
+                                &nbsp;&nbsp;- <code>Special Order</code> items: Always bypass catalogue restock (since they are uncatalogued custom items).<br>
+                                &bull; <strong>Refund Method</strong>: Select Cash, Original Payment Method, Store Credit, or Bank Transfer.<br>
+                                &bull; <strong>Authoritative Server Calculation</strong>: Refund is strictly computed server-side using original recorded purchase price: <code>Refund = Return Qty × Unit Price</code>.
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Step 5: Process Return & Print Return Slip</div>
+                            <div class="step-desc">Click <strong>"Confirm & Process Refund"</strong>. The system generates an official Return Reference (e.g. <code>RET-20260905-9214</code>), executes atomic database persistence, updates stock if condition permits, and renders a printable <strong>Return & Refund Slip</strong> formatted for 80mm thermal receipt printers.</div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- 5.7 Return History & Audit Trail -->
+                <div id="pos-return-history" class="sub-section">
+                    <div class="sub-title"><i class="fa fa-history"></i> 5.7 Return History & Audit Trail (<code>supplier/returns.php</code>)</div>
+                    <p>Suppliers can review and audit all past return transactions by clicking <strong>Return History</strong> in the sidebar or POS header:</p>
+                    <ul class="step-list">
+                        <li class="step-item">
+                            <div class="step-title">KPI Overview Cards</div>
+                            <div class="step-desc">View instant totals: <strong>Total Return Records</strong>, <strong>Total Refund Amount (₱)</strong>, <strong>Restocked Inventory Units</strong>, and <strong>Non-Restocked Units</strong>.</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Detailed Search & Filter</div>
+                            <div class="step-desc">Filter records by date range, refund payment method, or item condition (Resellable vs Damaged).</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Reprint Return Slips</div>
+                            <div class="step-desc">Click <strong>"View Slip"</strong> on any return record in the table to view the full audit breakdown, cashier notes, restock status, and reprint official return slips at any time.</div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- 5.8 Sales Report & Net Sales Integration -->
+                <div id="pos-sales-reports" class="sub-section">
+                    <div class="sub-title"><i class="fa fa-chart-pie"></i> 5.8 Sales Reports & Net Sales Revenue (<code>supplier/sales-report.php</code>)</div>
+                    <p>Returns are fully integrated into financial sales reporting with real-time net calculations:</p>
+                    <ul>
+                        <li><strong>Gross Sales Revenue</strong>: Sum of all completed sales during the selected period (Daily, Weekly, Quarterly, Yearly, or Custom Date Range).</li>
+                        <li><strong>Total Returns & Refunds</strong>: Sum of all processed refunds issued during that exact period.</li>
+                        <li><strong>Net Sales Revenue</strong>: Mathematically computed as <code>Gross Sales - Total Returns</code> to reflect true supplier earnings.</li>
+                        <li><strong>Returns Table Breakdown</strong>: Itemized listing of each return transaction with reference number, customer name, reason, restock badge, and refund amount.</li>
+                    </ul>
+                </div>
             </section>
 
             <!-- SECTION 6: SYSTEM CONFIGURATION & DEPLOYMENT -->
@@ -1012,7 +1106,7 @@
                             <tr>
                                 <td><code>tbl_product</code></td>
                                 <td><code>p_id</code>, <code>ecat_id</code>, <code>supplier_id</code></td>
-                                <td>Product catalog items, prices, stock quantities, and image filenames.</td>
+                                <td>Product catalog items, prices, stock quantities (<code>p_qty</code>), and image filenames.</td>
                             </tr>
                             <tr>
                                 <td><code>tbl_order</code></td>
@@ -1023,6 +1117,16 @@
                                 <td><code>tbl_payment</code></td>
                                 <td><code>id</code>, <code>payment_id</code>, <code>txnid</code>, <code>customer_id</code></td>
                                 <td>Payment ledger, transaction identifiers, payment status, and shipping fees.</td>
+                            </tr>
+                            <tr>
+                                <td><code>tbl_returns</code></td>
+                                <td><code>return_id</code>, <code>return_reference</code>, <code>payment_id</code>, <code>supplier_id</code></td>
+                                <td>Return transaction header recording refund amounts, payment method, customer details, and audit timestamps.</td>
+                            </tr>
+                            <tr>
+                                <td><code>tbl_return_items</code></td>
+                                <td><code>return_item_id</code>, <code>return_id</code>, <code>order_item_id</code>, <code>product_id</code></td>
+                                <td>Itemized return lines recording returned quantities, reason, condition, and inventory restock status.</td>
                             </tr>
                             <tr>
                                 <td><code>tbl_brgy</code></td>
@@ -1050,6 +1154,9 @@ git pull origin master
 # 3. Verify PHP Syntax on Web Container
 docker exec econstructionsite-web php -l /var/www/html/product-category.php
 docker exec econstructionsite-web php -l /var/www/html/supplier/pos.php
+docker exec econstructionsite-web php -l /var/www/html/supplier/pos-return-api.php
+docker exec econstructionsite-web php -l /var/www/html/supplier/returns.php
+docker exec econstructionsite-web php -l /var/www/html/supplier/sales-report.php
 docker exec econstructionsite-web php -l /var/www/html/supplier/order.php
 
 # 4. Database Automated Backup
