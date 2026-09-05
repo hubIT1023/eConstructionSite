@@ -215,12 +215,26 @@ if($success_message != '') {
                            $statement1->execute(array($row['payment_id']));
                            $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
                            foreach ($result1 as $row1) {
-                                echo '<b>Product:</b> '.$row1['product_name'];
-                                echo '<br>(<b>Size:</b> '.$row1['size'];
-                                echo ', <b>Color:</b> '.$row1['color'].')';
-                                echo '<br>(<b>Quantity:</b> '.$row1['quantity'];
-                                echo ', <b>Unit Price:</b> '.$row1['unit_price'].')';
-                                echo '<br><br>';
+                                if (isset($row1['item_type']) && $row1['item_type'] === 'SPECIAL_ORDER') {
+                                    echo '<span class="label label-warning" style="background:#d97706; font-size:10px; font-weight:bold;">SPECIAL ORDER</span><br>';
+                                    echo '<b>Product:</b> '.htmlspecialchars($row1['product_name']);
+                                    if (!empty($row1['product_details'])) {
+                                        echo '<br><span style="font-size:11px; color:#475569;"><b>Details:</b> '.htmlspecialchars($row1['product_details']).'</span>';
+                                    }
+                                    if (!empty($row1['special_order_reference'])) {
+                                        echo '<br><span style="font-size:10px; color:#0284c7; font-family:monospace;"><b>Ref:</b> '.htmlspecialchars($row1['special_order_reference']).'</span>';
+                                    }
+                                    echo '<br>(<b>Quantity:</b> '.$row1['quantity'];
+                                    echo ', <b>Unit Price:</b> &#8369;'.number_format(floatval($row1['unit_price']), 2).')';
+                                    echo '<br><br>';
+                                } else {
+                                    echo '<b>Product:</b> '.$row1['product_name'];
+                                    echo '<br>(<b>Size:</b> '.$row1['size'];
+                                    echo ', <b>Color:</b> '.$row1['color'].')';
+                                    echo '<br>(<b>Quantity:</b> '.$row1['quantity'];
+                                    echo ', <b>Unit Price:</b> &#8369;'.number_format(floatval($row1['unit_price']), 2).')';
+                                    echo '<br><br>';
+                                }
                            }
                            ?>
                         </td>

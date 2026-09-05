@@ -285,16 +285,28 @@ if(empty($clean_order_ids)) {
                                 $item_count = 0;
                                 foreach($items as $item):
                                     $item_count++;
-                                    $line_total = $item['unit_price'] * $item['quantity'];
+                                    $line_total = floatval($item['unit_price']) * intval($item['quantity']);
                                     $subtotal_calc += $line_total;
+                                    $is_so = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER');
                                 ?>
-                                <tr>
+                                <tr <?php echo $is_so ? 'style="background-color: #fffbeb;"' : ''; ?>>
                                     <td><?php echo $item_count; ?></td>
-                                    <td><strong><?php echo htmlspecialchars($item['product_name']); ?></strong></td>
+                                    <td>
+                                        <?php if ($is_so): ?>
+                                            <span class="label label-warning" style="background:#d97706; font-size:9px; font-weight:bold;">SPECIAL ORDER</span><br>
+                                        <?php endif; ?>
+                                        <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
+                                        <?php if ($is_so && !empty($item['product_details'])): ?>
+                                            <div style="font-size:11px; color:#64748b;"><?php echo htmlspecialchars($item['product_details']); ?></div>
+                                        <?php endif; ?>
+                                        <?php if ($is_so && !empty($item['special_order_reference'])): ?>
+                                            <div style="font-size:10px; color:#0284c7; font-family:monospace;">Ref: <?php echo htmlspecialchars($item['special_order_reference']); ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?php echo htmlspecialchars($item['size'] ?: 'N/A'); ?></td>
                                     <td><?php echo htmlspecialchars($item['color'] ?: 'N/A'); ?></td>
                                     <td class="text-center"><?php echo $item['quantity']; ?></td>
-                                    <td class="text-right">&#8369;<?php echo number_format($item['unit_price'], 2); ?></td>
+                                    <td class="text-right">&#8369;<?php echo number_format(floatval($item['unit_price']), 2); ?></td>
                                     <td class="text-right">&#8369;<?php echo number_format($line_total, 2); ?></td>
                                 </tr>
                                 <?php endforeach; ?>

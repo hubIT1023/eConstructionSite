@@ -924,8 +924,38 @@
                     </div>
                 </div>
 
+                <!-- 5.3 Special Order Creation -->
+                <div id="pos-special-order" class="sub-section">
+                    <div class="sub-title"><i class="fa fa-star text-warning"></i> 5.3 Special Order (Manual Product Entry)</div>
+                    <p>When a customer requests an uncatalogued or custom construction item (e.g. customized fabrication, custom dimension pipes, non-standard brackets):</p>
+                    
+                    <ul class="step-list">
+                        <li class="step-item">
+                            <div class="step-title">Click "+ Special Order"</div>
+                            <div class="step-desc">Located right next to the search bar in the <em>Products Available</em> section.</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Fill in Required Item Details</div>
+                            <div class="step-desc">
+                                &bull; <strong>Product Name *</strong>: Enter custom name (e.g. <em>Stainless Steel Pipe</em>).<br>
+                                &bull; <strong>Product Details / Specification</strong>: Multiline field for custom size, thickness, alloy, length, or customer notes.<br>
+                                &bull; <strong>Unit Price *</strong>: Enter negotiated unit price (e.g. <code>₱1,250.00</code>).<br>
+                                &bull; <strong>Quantity *</strong>: Use <code>[-]</code> and <code>[+]</code> to set quantity.
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Review Total & Add to Cart</div>
+                            <div class="step-desc">The modal automatically generates a unique <strong>Special Order Reference</strong> (e.g. <code>SO-20260905-4812</code>) and computes <code>Total Amount = Price × Qty</code>. Click <strong>"Add to Cart"</strong>.</div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">Special Order Cart & Zero Inventory Deduction</div>
+                            <div class="step-desc">The item appears with a bright <strong>[SPECIAL ORDER]</strong> badge. <em>Special orders do NOT deduct stock from existing catalogue inventory.</em></div>
+                        </li>
+                    </ul>
+                </div>
+
                 <div id="pos-delivery" class="sub-section">
-                    <div class="sub-title"><i class="fa fa-map-pin"></i> 5.3 Customer Types & Independent Location Delivery Toggle</div>
+                    <div class="sub-title"><i class="fa fa-map-pin"></i> 5.4 Customer Types & Independent Location Delivery Toggle</div>
                     <ul class="step-list">
                         <li class="step-item">
                             <div class="step-title">Customer Selection</div>
@@ -942,7 +972,7 @@
                 </div>
 
                 <div class="sub-section">
-                    <div class="sub-title"><i class="fa fa-money-bill-wave"></i> 5.4 Finalizing Sale & Receipt Generation</div>
+                    <div class="sub-title"><i class="fa fa-money-bill-wave"></i> 5.5 Finalizing Sale & Receipt Generation</div>
                     <ul class="step-list">
                         <li class="step-item">
                             <div class="step-title">Add Items & Select Variants</div>
@@ -954,7 +984,7 @@
                         </li>
                         <li class="step-item">
                             <div class="step-title">Complete Sale & Print</div>
-                            <div class="step-desc">Click <strong>"Complete Sale & Print Receipt"</strong>. Inventory is instantly deducted, sale record saved, and printable receipt generated.</div>
+                            <div class="step-desc">Click <strong>"Complete Sale & Print Receipt"</strong>. Catalogue product inventory is deducted (Special Orders bypass stock deduction), sale record saved, and printable receipt generated with Special Order badges.</div>
                         </li>
                     </ul>
                 </div>

@@ -156,12 +156,22 @@ if(!isset($_SESSION['customer'])) {
                                              $statement1->execute(array($row['payment_id']));
                                              $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
                                              foreach ($result1 as $row1) {
-                                                 echo '<strong>Product:</strong> '.htmlspecialchars($row1['product_name']);
-                                                 if(!empty($row1['size'])) echo '<br>Size: '.htmlspecialchars($row1['size']);
-                                                 if(!empty($row1['color'])) echo '<br>Color: '.htmlspecialchars($row1['color']);
-                                                 echo '<br>Quantity: '.htmlspecialchars($row1['quantity']);
-                                                 echo '<br>Unit Price: &#8369;'.number_format($row1['unit_price'], 2);
-                                                 echo '<br><br>';
+                                                 if (isset($row1['item_type']) && $row1['item_type'] === 'SPECIAL_ORDER') {
+                                                     echo '<span class="label label-warning" style="background:#d97706; font-size:10px;">SPECIAL ORDER</span><br>';
+                                                     echo '<strong>Product:</strong> '.htmlspecialchars($row1['product_name']);
+                                                     if(!empty($row1['product_details'])) echo '<br><span style="font-size:11px; color:#475569;">Details: '.htmlspecialchars($row1['product_details']).'</span>';
+                                                     if(!empty($row1['special_order_reference'])) echo '<br><span style="font-size:10px; color:#0284c7; font-family:monospace;">Ref: '.htmlspecialchars($row1['special_order_reference']).'</span>';
+                                                     echo '<br>Quantity: '.htmlspecialchars($row1['quantity']);
+                                                     echo '<br>Unit Price: &#8369;'.number_format(floatval($row1['unit_price']), 2);
+                                                     echo '<br><br>';
+                                                 } else {
+                                                     echo '<strong>Product:</strong> '.htmlspecialchars($row1['product_name']);
+                                                     if(!empty($row1['size'])) echo '<br>Size: '.htmlspecialchars($row1['size']);
+                                                     if(!empty($row1['color'])) echo '<br>Color: '.htmlspecialchars($row1['color']);
+                                                     echo '<br>Quantity: '.htmlspecialchars($row1['quantity']);
+                                                     echo '<br>Unit Price: &#8369;'.number_format(floatval($row1['unit_price']), 2);
+                                                     echo '<br><br>';
+                                                 }
                                              }
                                              ?>
                                         </td>

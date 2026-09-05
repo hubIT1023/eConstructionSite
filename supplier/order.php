@@ -215,12 +215,26 @@ if($success_message != '') {
                            $statement1->execute(array($row['payment_id']));
                            $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
                            foreach ($result1 as $row1) {
-                                echo '<b>Product:</b> '.$row1['product_name'];
-                                echo '<br>(<b>Size:</b> '.$row1['size'];
-                                echo ', <b>Color:</b> '.$row1['color'].')';
-                                echo '<br>(<b>Quantity:</b> '.$row1['quantity'];
-                                echo ', <b>Unit Price:</b> '.$row1['unit_price'].')';
-                                echo '<br><br>';
+                                if (isset($row1['item_type']) && $row1['item_type'] === 'SPECIAL_ORDER') {
+                                    echo '<span class="label label-warning" style="background:#d97706; font-size:10px; font-weight:bold;">SPECIAL ORDER</span><br>';
+                                    echo '<b>Product:</b> '.htmlspecialchars($row1['product_name']);
+                                    if (!empty($row1['product_details'])) {
+                                        echo '<br><span style="font-size:11px; color:#475569;"><b>Details:</b> '.htmlspecialchars($row1['product_details']).'</span>';
+                                    }
+                                    if (!empty($row1['special_order_reference'])) {
+                                        echo '<br><span style="font-size:10px; color:#0284c7; font-family:monospace;"><b>Ref:</b> '.htmlspecialchars($row1['special_order_reference']).'</span>';
+                                    }
+                                    echo '<br>(<b>Quantity:</b> '.$row1['quantity'];
+                                    echo ', <b>Unit Price:</b> &#8369;'.number_format(floatval($row1['unit_price']), 2).')';
+                                    echo '<br><br>';
+                                } else {
+                                    echo '<b>Product:</b> '.$row1['product_name'];
+                                    echo '<br>(<b>Size:</b> '.$row1['size'];
+                                    echo ', <b>Color:</b> '.$row1['color'].')';
+                                    echo '<br>(<b>Quantity:</b> '.$row1['quantity'];
+                                    echo ', <b>Unit Price:</b> &#8369;'.number_format(floatval($row1['unit_price']), 2).')';
+                                    echo '<br><br>';
+                                }
                            }
                            ?>
                         </td>
@@ -361,16 +375,28 @@ if($success_message != '') {
                                                         $po_c = 0;
                                                         foreach($po_items as $p_item):
                                                             $po_c++;
-                                                            $p_line = $p_item['unit_price'] * $p_item['quantity'];
+                                                            $p_line = floatval($p_item['unit_price']) * intval($p_item['quantity']);
                                                             $po_subtotal += $p_line;
+                                                            $is_so = (isset($p_item['item_type']) && $p_item['item_type'] === 'SPECIAL_ORDER');
                                                         ?>
-                                                        <tr>
+                                                        <tr <?php echo $is_so ? 'style="background-color: #fffbeb;"' : ''; ?>>
                                                             <td><?php echo $po_c; ?></td>
-                                                            <td><strong><?php echo htmlspecialchars($p_item['product_name']); ?></strong></td>
+                                                            <td>
+                                                                <?php if ($is_so): ?>
+                                                                    <span class="label label-warning" style="background:#d97706; font-size:9px; font-weight:bold;">SPECIAL ORDER</span><br>
+                                                                <?php endif; ?>
+                                                                <strong><?php echo htmlspecialchars($p_item['product_name']); ?></strong>
+                                                                <?php if ($is_so && !empty($p_item['product_details'])): ?>
+                                                                    <div style="font-size:11px; color:#64748b;"><?php echo htmlspecialchars($p_item['product_details']); ?></div>
+                                                                <?php endif; ?>
+                                                                <?php if ($is_so && !empty($p_item['special_order_reference'])): ?>
+                                                                    <div style="font-size:10px; color:#0284c7; font-family:monospace;">Ref: <?php echo htmlspecialchars($p_item['special_order_reference']); ?></div>
+                                                                <?php endif; ?>
+                                                            </td>
                                                             <td><?php echo htmlspecialchars($p_item['size'] ?: '-'); ?></td>
                                                             <td><?php echo htmlspecialchars($p_item['color'] ?: '-'); ?></td>
                                                             <td class="text-center"><?php echo htmlspecialchars($p_item['quantity']); ?></td>
-                                                            <td class="text-right">&#8369;<?php echo number_format($p_item['unit_price'], 2); ?></td>
+                                                            <td class="text-right">&#8369;<?php echo number_format(floatval($p_item['unit_price']), 2); ?></td>
                                                             <td class="text-right">&#8369;<?php echo number_format($p_line, 2); ?></td>
                                                         </tr>
                                                         <?php endforeach; ?>

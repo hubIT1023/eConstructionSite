@@ -272,53 +272,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
 
         // Insert items into tbl_order and update stock
         foreach ($cart_items as $item) {
-            $p_id = intval($item['id']);
-            $p_name = $item['name'];
-            $p_qty = intval($item['qty']);
-            $p_price = floatval($item['price']);
-            $p_size = isset($item['size']) ? $item['size'] : '';
-            $p_color = isset($item['color']) ? $item['color'] : '';
+            $item_type = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER') ? 'SPECIAL_ORDER' : 'STANDARD';
+            $p_qty = max(1, intval($item['qty']));
+            $p_price = max(0, floatval($item['price']));
 
-            $statement_o = $pdo->prepare("INSERT INTO tbl_order (
-                product_id,
-                product_name,
-                size,
-                color,
-                quantity,
-                unit_price,
-                payment_id,
-                supplier_id
-            ) VALUES (?,?,?,?,?,?,?,?)");
-            $statement_o->execute(array(
-                $p_id,
-                $p_name,
-                $p_size,
-                $p_color,
-                strval($p_qty),
-                strval($p_price),
-                $payment_id,
-                $supplier_id
-            ));
+            if ($item_type === 'SPECIAL_ORDER') {
+                $p_id = 0;
+                $p_name = trim($item['name']);
+                $p_details = isset($item['product_details']) ? trim($item['product_details']) : '';
+                $so_ref = !empty($item['special_order_reference']) ? trim($item['special_order_reference']) : ('SO-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)));
+                $p_size = $p_details ? (strlen($p_details) > 95 ? substr($p_details, 0, 95) . '...' : $p_details) : 'Special Order';
+                $p_color = 'Special Order';
 
-            // Decrement Stock
-            $statement_stock = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
-            $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
+                $statement_o = $pdo->prepare("INSERT INTO tbl_order (
+                    product_id,
+                    product_name,
+                    size,
+                    color,
+                    quantity,
+                    unit_price,
+                    payment_id,
+                    supplier_id,
+                    item_type,
+                    special_order_reference,
+                    product_details
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                $statement_o->execute(array(
+                    $p_id,
+                    $p_name,
+                    $p_size,
+                    $p_color,
+                    strval($p_qty),
+                    strval($p_price),
+                    $payment_id,
+                    $supplier_id,
+                    $item_type,
+                    $so_ref,
+                    $p_details
+                ));
 
-            // Automatic inventory & price rollover if stock reached 0 or 1 and (N)Quantity > 10% of (S)Level:
-            // "Quantity = Quantity + (N)Quantity", "(N)Quantity = 0"
-            // If "(C)Price < (N)Price" THEN "(C)Price = (N)Price", If "(C)Price > (N)Price" THEN "(C)Price = (C)Price"
-            $statement_rollover = $pdo->prepare("UPDATE tbl_product 
-                SET p_qty = p_qty + p_new_qty,
-                    p_current_price = CASE 
-                        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric) 
-                        THEN p_new_price 
-                        ELSE p_current_price 
-                    END,
-                    p_new_qty = 0
-                WHERE p_id = ? 
-                  AND (p_qty = 0 OR p_qty = 1) 
-                  AND p_new_qty > (COALESCE(p_s_level, 10) * 0.1)");
-            $statement_rollover->execute(array($p_id));
+                // Special Orders DO NOT deduct inventory from tbl_product!
+            } else {
+                $p_id = intval($item['id']);
+                $p_name = $item['name'];
+                $p_size = isset($item['size']) ? $item['size'] : '';
+                $p_color = isset($item['color']) ? $item['color'] : '';
+
+                $statement_o = $pdo->prepare("INSERT INTO tbl_order (
+                    product_id,
+                    product_name,
+                    size,
+                    color,
+                    quantity,
+                    unit_price,
+                    payment_id,
+                    supplier_id,
+                    item_type,
+                    special_order_reference,
+                    product_details
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                $statement_o->execute(array(
+                    $p_id,
+                    $p_name,
+                    $p_size,
+                    $p_color,
+                    strval($p_qty),
+                    strval($p_price),
+                    $payment_id,
+                    $supplier_id,
+                    'STANDARD',
+                    '',
+                    ''
+                ));
+
+                // Decrement Stock only for standard catalogue products
+                $statement_stock = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
+                $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
+
+                // Automatic inventory & price rollover if stock reached 0 or 1 and (N)Quantity > 10% of (S)Level:
+                // "Quantity = Quantity + (N)Quantity", "(N)Quantity = 0"
+                // If "(C)Price < (N)Price" THEN "(C)Price = (N)Price", If "(C)Price > (N)Price" THEN "(C)Price = (C)Price"
+                $statement_rollover = $pdo->prepare("UPDATE tbl_product 
+                    SET p_qty = p_qty + p_new_qty,
+                        p_current_price = CASE 
+                            WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric) 
+                            THEN p_new_price 
+                            ELSE p_current_price 
+                        END,
+                        p_new_qty = 0
+                    WHERE p_id = ? 
+                      AND (p_qty = 0 OR p_qty = 1) 
+                      AND p_new_qty > (COALESCE(p_s_level, 10) * 0.1)");
+                $statement_rollover->execute(array($p_id));
+            }
         }
 
         // Store receipt details for instant modal popup
@@ -719,7 +765,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     
                     <!-- Search and Filters -->
                     <div class="row" style="margin-bottom: 12px;">
-                        <div class="col-sm-7">
+                        <div class="col-sm-6 col-xs-12" style="margin-bottom: 6px;">
                             <div class="input-group">
                                 <span class="input-group-addon" style="font-size: 16px;"><i class="fa fa-search"></i></span>
                                 <input type="text" id="posSearchInput" class="form-control input-lg" style="height: 42px; font-size: 15px;" placeholder="Search product by name, brand, spec, or SKU..." onkeyup="filterPOSProducts()">
@@ -728,9 +774,12 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 </span>
                             </div>
                         </div>
-                        <div class="col-sm-5 text-right">
-                            <span class="text-muted" style="line-height: 34px; font-size: 13px;">
-                                Products Available: <strong id="productCount"><?php echo count($grouped_products); ?></strong>
+                        <div class="col-sm-6 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13.5px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Create custom/manual order item not in catalogue">
+                                <i class="fa fa-plus-circle"></i> + Special Order
+                            </button>
+                            <span class="text-muted" style="line-height: 42px; font-size: 13px;">
+                                Products: <strong id="productCount"><?php echo count($grouped_products); ?></strong>
                                 <span style="font-size: 11px; color: #64748b;">(<?php echo $total_inventory_items; ?> items)</span>
                             </span>
                         </div>
@@ -1112,6 +1161,106 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     </div>
 </div>
 
+<!-- Special Order Modal -->
+<div class="modal fade" id="specialOrderModal" tabindex="-1" role="dialog" aria-labelledby="soModalLabel" aria-hidden="true" style="z-index: 10060;">
+    <div class="modal-dialog modal-md" role="document">
+        <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
+            
+            <!-- Modal Header -->
+            <div class="modal-header" style="background: #0f172a; color: #fff; border-top-left-radius: 8px; border-top-right-radius: 8px; padding: 15px 20px;">
+                <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.85; font-size: 24px;">&times;</button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="label label-warning" style="background: #d97706; font-size: 11px; font-weight: 800; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fa fa-star"></i> SPECIAL ORDER
+                    </span>
+                    <h4 class="modal-title" style="font-weight: 800; font-size: 18px; margin: 0; color: #fff;">
+                        Special Order
+                    </h4>
+                </div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                    <i class="fa fa-pencil-square-o"></i> Manual Product / Customer Request (Not in Catalogue)
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body" style="padding: 20px 22px; background: #fff;">
+                
+                <!-- Inline Error Alert -->
+                <div id="soModalError" class="alert alert-danger" style="display: none; padding: 10px 14px; margin-bottom: 15px; font-size: 13px; font-weight: 600; border-radius: 6px;">
+                </div>
+
+                <!-- Product Name -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">
+                        Product Name <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" id="soProductName" class="form-control input-lg" style="height: 42px; font-size: 15px; font-weight: 600; border-radius: 6px;" placeholder="e.g. Stainless Steel Pipe, Custom Steel Plate, Special Bracket..." oninput="updateSOTotal(); clearSOError();">
+                </div>
+
+                <!-- Product Details / Specifications -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">
+                        Product Details / Specification <span class="text-muted" style="font-weight: normal; font-size: 11px;">(Size, Dimension, Material, Brand, Model, Customer Requirements)</span>
+                    </label>
+                    <textarea id="soProductDetails" class="form-control" rows="3" style="font-size: 13.5px; border-radius: 6px; resize: vertical;" placeholder="e.g. 304 Stainless Steel Pipe, 2 inch diameter, 2mm thickness, 6 meter length"></textarea>
+                </div>
+
+                <!-- Unit Price & Quantity Row -->
+                <div class="row">
+                    <div class="col-xs-12 col-sm-6">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">
+                                Unit Price (&#8369;) <span class="text-danger">*</span>
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-addon" style="font-weight: 800; font-size: 16px; background: #f8fafc; color: #334155;">&#8369;</span>
+                                <input type="number" step="0.01" min="0" id="soUnitPrice" class="form-control input-lg" style="height: 42px; font-size: 16px; font-weight: 800; color: #1d4ed8;" placeholder="0.00" oninput="updateSOTotal(); clearSOError();">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-6">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">
+                                Quantity <span class="text-danger">*</span>
+                            </label>
+                            <div class="input-group" style="width: 100%;">
+                                <span class="input-group-btn">
+                                    <button type="button" class="btn btn-default" style="font-weight: bold; font-size: 16px; height: 42px; padding: 6px 14px;" onclick="changeSOQty(-1)">-</button>
+                                </span>
+                                <input type="number" id="soQuantity" class="form-control text-center input-lg" style="font-size: 16px; font-weight: 800; height: 42px;" value="1" min="1" oninput="updateSOTotal(); clearSOError();">
+                                <span class="input-group-btn">
+                                    <button type="button" class="btn btn-default" style="font-weight: bold; font-size: 16px; height: 42px; padding: 6px 14px;" onclick="changeSOQty(1)">+</button>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Total & Reference Box -->
+                <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-top: 5px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; display: block;">Special Order Reference:</span>
+                        <strong id="soReferencePreview" style="font-family: monospace; font-size: 13px; color: #0284c7;">SO-...</strong>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 12px; color: #64748b; font-weight: 600; display: block;">Total Amount:</span>
+                        <span style="font-size: 22px; font-weight: 900; color: #047857;">&#8369;<span id="soTotalAmount">0.00</span></span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600;">Close</button>
+                <button type="button" class="btn btn-warning" onclick="submitSpecialOrderToCart()" style="background-color: #d97706; border-color: #b45309; color: #fff; font-weight: 800; padding: 8px 22px; font-size: 15px; border-radius: 4px; box-shadow: 0 2px 6px rgba(217,119,6,0.3);">
+                    <i class="fa fa-cart-plus"></i> Add to Cart
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Success Receipt Modal -->
 <?php if ($pos_success_receipt): ?>
 <div class="modal fade in" id="posSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.6);">
@@ -1171,11 +1320,20 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <tbody>
                         <?php foreach ($pos_success_receipt['items'] as $item): 
                             $item_total = floatval($item['price']) * intval($item['qty']);
+                            $is_special = isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER';
                         ?>
-                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <tr style="border-bottom: 1px solid #f1f5f9; <?php echo $is_special ? 'background-color: #fffbeb;' : ''; ?>">
                             <td style="padding: 6px 4px; font-weight: 500;">
-                                <?php echo htmlspecialchars($item['name']); ?>
-                                <?php if (!empty($item['sku'])): ?>
+                                <?php if ($is_special): ?>
+                                    <span class="label label-warning" style="background-color: #d97706; font-size: 9px; padding: 1px 4px; font-weight: bold; text-transform: uppercase;">SPECIAL ORDER</span><br>
+                                <?php endif; ?>
+                                <strong><?php echo htmlspecialchars($item['name']); ?></strong>
+                                <?php if ($is_special && !empty($item['product_details'])): ?>
+                                    <div style="font-size: 11px; color: #475569; margin-top: 1px;"><?php echo htmlspecialchars($item['product_details']); ?></div>
+                                <?php endif; ?>
+                                <?php if ($is_special && !empty($item['special_order_reference'])): ?>
+                                    <div style="font-size: 10px; color: #0284c7; font-family: monospace;">Ref: <?php echo htmlspecialchars($item['special_order_reference']); ?></div>
+                                <?php elseif (!empty($item['sku'])): ?>
                                     <div style="font-size: 10px; color: #64748b; font-family: monospace;">SKU: <?php echo htmlspecialchars($item['sku']); ?></div>
                                 <?php endif; ?>
                             </td>
@@ -1239,6 +1397,133 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 let cart = [];
 let currentModalGroup = null;
 let currentSelectedVariant = null;
+let currentSORef = '';
+
+// ==========================================
+// SPECIAL ORDER FUNCTIONS
+// ==========================================
+
+function generateSpecialOrderReference() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `SO-${y}${m}${d}-${rand}`;
+}
+
+function openSpecialOrderModal() {
+    currentSORef = generateSpecialOrderReference();
+    document.getElementById('soReferencePreview').innerText = currentSORef;
+    document.getElementById('soProductName').value = '';
+    document.getElementById('soProductDetails').value = '';
+    document.getElementById('soUnitPrice').value = '';
+    document.getElementById('soQuantity').value = '1';
+    document.getElementById('soTotalAmount').innerText = '0.00';
+    clearSOError();
+    
+    $('#specialOrderModal').modal('show');
+    setTimeout(() => {
+        document.getElementById('soProductName').focus();
+    }, 350);
+}
+
+function clearSOError() {
+    const err = document.getElementById('soModalError');
+    if (err) {
+        err.style.display = 'none';
+        err.innerText = '';
+    }
+}
+
+function showSOError(msg) {
+    const err = document.getElementById('soModalError');
+    if (err) {
+        err.innerText = msg;
+        err.style.display = 'block';
+    }
+}
+
+function changeSOQty(delta) {
+    const input = document.getElementById('soQuantity');
+    let val = parseInt(input.value) || 1;
+    val += delta;
+    if (val < 1) val = 1;
+    input.value = val;
+    updateSOTotal();
+}
+
+function updateSOTotal() {
+    const priceInput = document.getElementById('soUnitPrice');
+    const qtyInput = document.getElementById('soQuantity');
+    
+    const price = parseFloat(priceInput.value) || 0;
+    let qty = parseInt(qtyInput.value) || 1;
+    if (qty < 1) qty = 1;
+    
+    const total = Math.max(0, price * qty);
+    document.getElementById('soTotalAmount').innerText = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function submitSpecialOrderToCart() {
+    const nameInput = document.getElementById('soProductName');
+    const detailsInput = document.getElementById('soProductDetails');
+    const priceInput = document.getElementById('soUnitPrice');
+    const qtyInput = document.getElementById('soQuantity');
+    
+    const name = nameInput.value.trim();
+    const details = detailsInput.value.trim();
+    const priceVal = priceInput.value.trim();
+    const price = parseFloat(priceVal);
+    const qty = parseInt(qtyInput.value);
+    
+    // Validations:
+    if (!name) {
+        showSOError('Product Name is required.');
+        nameInput.focus();
+        return;
+    }
+    
+    if (name.length > 250) {
+        showSOError('Product Name is too long (maximum 250 characters).');
+        nameInput.focus();
+        return;
+    }
+    
+    if (priceVal === '' || isNaN(price) || price < 0) {
+        showSOError('Please enter a valid Unit Price (must be 0 or greater).');
+        priceInput.focus();
+        return;
+    }
+    
+    if (isNaN(qty) || qty < 1) {
+        showSOError('Quantity must be at least 1.');
+        qtyInput.focus();
+        return;
+    }
+    
+    const specialOrderItem = {
+        id: 'so_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        item_type: 'SPECIAL_ORDER',
+        special_order_reference: currentSORef || generateSpecialOrderReference(),
+        name: name,
+        base_name: name,
+        product_details: details,
+        spec_label: details || 'Special Order',
+        price: price,
+        qty: qty,
+        stock: 999999
+    };
+    
+    cart.push(specialOrderItem);
+    renderCart();
+    
+    $('#specialOrderModal').modal('hide');
+}
+
+// ==========================================
+// CATALOGUE VARIANT PRODUCT FUNCTIONS
+// ==========================================
 
 // Handle Clicking on a Parent Product Card
 function handleGroupCardClick(element) {
@@ -1431,7 +1716,7 @@ function submitVariantToCart() {
 
 // Add Variant to Cart with Specific Qty
 function addVariantToCart(variant, qty) {
-    const existingIndex = cart.findIndex(item => item.id === variant.id);
+    const existingIndex = cart.findIndex(item => item.id === variant.id && item.item_type !== 'SPECIAL_ORDER');
     if (existingIndex > -1) {
         const potentialQty = cart[existingIndex].qty + qty;
         if (potentialQty <= variant.stock) {
@@ -1446,6 +1731,7 @@ function addVariantToCart(variant, qty) {
         }
         cart.push({
             id: variant.id,
+            item_type: 'STANDARD',
             sku: variant.sku,
             name: variant.name,
             base_name: variant.base_name || variant.name,
@@ -1463,15 +1749,19 @@ function addVariantToCart(variant, qty) {
     renderCart();
 }
 
-function updateCartQty(productId, newQty) {
-    const item = cart.find(i => i.id === productId);
+// ==========================================
+// CART & REGISTER FUNCTIONS
+// ==========================================
+
+function updateCartQty(itemId, newQty) {
+    const item = cart.find(i => i.id === itemId || String(i.id) === String(itemId));
     if (item) {
         newQty = parseInt(newQty);
         if (newQty <= 0) {
-            removeFromCart(productId);
+            removeFromCart(itemId);
             return;
         }
-        if (newQty > item.stock) {
+        if (item.item_type !== 'SPECIAL_ORDER' && newQty > item.stock) {
             alert('Maximum available inventory is ' + item.stock);
             item.qty = item.stock;
         } else {
@@ -1481,8 +1771,8 @@ function updateCartQty(productId, newQty) {
     }
 }
 
-function removeFromCart(productId) {
-    cart = cart.filter(i => i.id !== productId);
+function removeFromCart(itemId) {
+    cart = cart.filter(i => i.id !== itemId && String(i.id) !== String(itemId));
     renderCart();
 }
 
@@ -1503,7 +1793,7 @@ function renderCart() {
             <tr>
                 <td colspan="4" class="text-center text-muted" style="padding: 25px 10px;">
                     <i class="fa fa-shopping-basket fa-2x" style="color: #cbd5e1;"></i>
-                    <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products to select variant and add.</div>
+                    <div style="margin-top: 5px; font-size: 12px;">Cart is empty. Click products or "+ Special Order" to add.</div>
                 </td>
             </tr>`;
         completeBtn.disabled = true;
@@ -1511,37 +1801,56 @@ function renderCart() {
     } else {
         let html = '';
         cart.forEach(item => {
+            const isSpecialOrder = (item.item_type === 'SPECIAL_ORDER');
             const lineTotal = (item.price * item.qty).toFixed(2);
-            let specsArr = [];
-            if (item.spec_label && item.spec_label !== 'Standard') {
-                specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.spec_label)}</span>`);
+            
+            let itemBadge = '';
+            let detailsHtml = '';
+            
+            if (isSpecialOrder) {
+                itemBadge = `<span class="label label-warning" style="background-color: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;"><i class="fa fa-star"></i> SPECIAL ORDER</span>`;
+                if (item.product_details) {
+                    detailsHtml = `<div style="font-size: 11px; color: #475569; background: #fef3c7; border: 1px solid #fde68a; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.product_details)}</div>`;
+                }
             } else {
-                if (item.size) specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.size)}</span>`);
-                if (item.thickness) specsArr.push(`<span style="color: #047857; font-weight: 700; font-size: 11px;">${escapeHtml(item.thickness)}</span>`);
-                if (item.diameter) specsArr.push(`<span style="color: #047857; font-weight: 700; font-size: 11px;">${escapeHtml(item.diameter)}</span>`);
-                if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
+                let specsArr = [];
+                if (item.spec_label && item.spec_label !== 'Standard') {
+                    specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.spec_label)}</span>`);
+                } else {
+                    if (item.size) specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.size)}</span>`);
+                    if (item.thickness) specsArr.push(`<span style="color: #047857; font-weight: 700; font-size: 11px;">${escapeHtml(item.thickness)}</span>`);
+                    if (item.diameter) specsArr.push(`<span style="color: #047857; font-weight: 700; font-size: 11px;">${escapeHtml(item.diameter)}</span>`);
+                    if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
+                }
+                detailsHtml = specsArr.length > 0 ? `<div style="margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
             }
-            let specsHtml = specsArr.length > 0 ? `<div style="margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
+
+            const refOrSku = isSpecialOrder 
+                ? (item.special_order_reference ? `Ref: ${escapeHtml(item.special_order_reference)} | ` : '')
+                : (item.sku ? `SKU: ${escapeHtml(item.sku)} | ` : '');
+
+            const itemIdStr = typeof item.id === 'string' ? `'${item.id}'` : item.id;
 
             html += `
-                <tr>
+                <tr ${isSpecialOrder ? 'style="background-color: #fffbeb;"' : ''}>
                     <td style="padding: 8px 4px;">
+                        ${itemBadge}
                         <strong style="color: #0f172a; font-size: 13px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
-                        ${specsHtml}
+                        ${detailsHtml}
                         <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-top: 2px;">
-                            ${item.sku ? 'SKU: ' + escapeHtml(item.sku) + ' | ' : ''}&#8369;${item.price.toFixed(2)} each
+                            ${refOrSku}&#8369;${item.price.toFixed(2)} each
                         </div>
                     </td>
                     <td style="padding: 8px 4px; text-align: center;">
                         <div class="btn-group" style="display: inline-flex; align-items: center;">
-                            <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${item.id}, ${item.qty - 1})">-</button>
+                            <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${itemIdStr}, ${item.qty - 1})">-</button>
                             <span style="display: inline-block; width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: #0f172a;">${item.qty}</span>
-                            <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${item.id}, ${item.qty + 1})">+</button>
+                            <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${itemIdStr}, ${item.qty + 1})">+</button>
                         </div>
                     </td>
-                    <td style="padding: 8px 4px; text-align: right; font-weight: 800; font-size: 15px; color: #1e40af;">&#8369;${lineTotal}</td>
+                    <td style="padding: 8px 4px; text-align: right; font-weight: 800; font-size: 15px; color: ${isSpecialOrder ? '#b45309' : '#1e40af'};">&#8369;${lineTotal}</td>
                     <td style="padding: 8px 2px; text-align: center;">
-                        <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(${item.id})" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
+                        <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(${itemIdStr})" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
                     </td>
                 </tr>`;
         });
