@@ -26,6 +26,8 @@
 								<th width="60">Quantity</th>
 								<th width="60">(N)Quantity</th>
 								<th width="60">(S)Level</th>
+								<th width="65">(Ca)Price</th>
+								<th width="65">(%)Mark_Up</th>
 								<th>Featured?</th>
 								<th>Active?</th>
 								<th>Category</th>
@@ -57,6 +59,8 @@
 														t1.p_old_price,
 														t1.p_current_price,
 														t1.p_new_price,
+														t1.p_capital_price,
+														t1.p_markup,
 														t1.p_qty,
 														t1.p_new_qty,
 														t1.p_s_level,
@@ -90,6 +94,18 @@
 								$clean_qty = intval(preg_replace('/[^0-9]/', '', strval($row['p_qty'])));
 								$clean_n_qty = (isset($row['p_new_qty']) && $row['p_new_qty'] !== null && $row['p_new_qty'] !== '') ? intval($row['p_new_qty']) : 0;
 								$clean_s_level = (isset($row['p_s_level']) && $row['p_s_level'] !== null && $row['p_s_level'] !== '') ? intval($row['p_s_level']) : 10;
+								$markup_val = (isset($row['p_markup']) && $row['p_markup'] !== null && $row['p_markup'] !== '') ? $row['p_markup'] : '20';
+								$clean_markup = floatval(preg_replace('/[^0-9.]/', '', strval($markup_val)));
+								if ($clean_markup <= 0) {
+									$clean_markup = 20;
+								}
+
+								if (isset($row['p_capital_price']) && $row['p_capital_price'] !== null && $row['p_capital_price'] !== '' && floatval(preg_replace('/[^0-9.]/', '', strval($row['p_capital_price']))) > 0) {
+									$clean_ca_price = floatval(preg_replace('/[^0-9.]/', '', strval($row['p_capital_price'])));
+								} else {
+									$eff_n_price = !empty($row['p_new_price']) ? floatval(preg_replace('/[^0-9.]/', '', strval($row['p_new_price']))) : floatval(preg_replace('/[^0-9.]/', '', strval($row['p_current_price'])));
+									$clean_ca_price = round($eff_n_price / (1 + ($clean_markup / 100)), 2);
+								}
 
 								$qty_style = '';
 								if ($clean_n_qty == 0) {
@@ -112,6 +128,8 @@
 									<td style="<?php echo $qty_style; ?>"><?php echo $row['p_qty']; ?></td>
 									<td><?php echo $clean_n_qty; ?></td>
 									<td><?php echo $clean_s_level; ?></td>
+									<td>&#8369;<?php echo number_format($clean_ca_price, 2); ?></td>
+									<td><?php echo htmlspecialchars($markup_val); ?>%</td>
 									<td>
 										<?php if($row['p_is_featured'] == 1) {echo '<span class="badge badge-success" style="background-color:green;">Yes</span>';} else {echo '<span class="badge badge-success" style="background-color:red;">No</span>';} ?>
 									</td>

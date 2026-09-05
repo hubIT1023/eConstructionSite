@@ -101,8 +101,25 @@ if(isset($_POST['form1'])) {
 		$final_name = 'product-featured-'.$ai_id.'.'.$ext;
         move_uploaded_file( $path_tmp, '../assets/uploads/'.$final_name );
 
-		//Saving data into the main table tbl_product
+        $p_capital_price = isset($_POST['p_capital_price']) ? trim($_POST['p_capital_price']) : '';
+        $p_markup = (isset($_POST['p_markup']) && trim($_POST['p_markup']) !== '') ? trim($_POST['p_markup']) : '20';
+        $clean_markup = floatval(preg_replace('/[^0-9.]/', '', strval($p_markup)));
+        if ($clean_markup <= 0) $clean_markup = 20;
+
+        $submitted_new_price = (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'];
+
+        if ($p_capital_price === '' || floatval(preg_replace('/[^0-9.]/', '', strval($p_capital_price))) <= 0) {
+            $effective_np = !empty($submitted_new_price) ? floatval(preg_replace('/[^0-9.]/', '', strval($submitted_new_price))) : floatval(preg_replace('/[^0-9.]/', '', strval($_POST['p_current_price'])));
+            if ($effective_np > 0) {
+                $p_capital_price = number_format(round($effective_np / (1 + ($clean_markup / 100)), 2), 2, '.', '');
+            } else {
+                $p_capital_price = '0.00';
+            }
+        }
+
+		// Saving data into the main table tbl_product
 		$statement = $pdo->prepare("INSERT INTO tbl_product(
+										p_id,
 										p_name,
 										p_old_price,
 										p_current_price,
@@ -116,9 +133,15 @@ if(isset($_POST['form1'])) {
 										p_total_view,
 										p_is_featured,
 										p_is_active,
-										ecat_id
-									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+										ecat_id,
+										p_new_price,
+										p_new_qty,
+										p_s_level,
+										p_capital_price,
+										p_markup
+									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 		$statement->execute(array(
+                                        $ai_id,
 										$_POST['p_name'],
 										$_POST['p_old_price'],
 										$_POST['p_current_price'],
@@ -132,7 +155,12 @@ if(isset($_POST['form1'])) {
 										0,
 										$_POST['p_is_featured'],
 										$_POST['p_is_active'],
-										$_POST['ecat_id']
+										$_POST['ecat_id'],
+										$submitted_new_price,
+										(isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
+										(isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '') ? intval($_POST['p_s_level']) : 10,
+										$p_capital_price,
+										$p_markup
 									));
 
 		
@@ -237,16 +265,52 @@ if(isset($_POST['form1'])) {
 								<input type="text" name="p_old_price" class="form-control">
 							</div>
 						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Current Price <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+						<div class="form-group" style="background: #f8fafc; padding: 10px 0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+							<label for="" class="col-sm-3 control-label" style="color: #0f172a;">(Ca) Price (Capital Price) <br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Capital Cost in PHP)</span></label>
 							<div class="col-sm-4">
-								<input type="text" name="p_current_price" class="form-control">
+								<input type="text" name="p_capital_price" id="p_capital_price" class="form-control" placeholder="e.g. 100.00">
+								<small class="text-muted"><i class="fa fa-info-circle"></i> Formula: <code>(Ca)Price = (N)Price / (1 + (%)Mark_Up/100)</code></small>
+							</div>
+						</div>
+						<div class="form-group" style="background: #f8fafc; padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
+							<label for="" class="col-sm-3 control-label" style="color: #0f172a;">(%) Mark_Up <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Default: 20%)</span></label>
+							<div class="col-sm-4">
+								<div class="input-group">
+									<input type="text" name="p_markup" id="p_markup" class="form-control" value="20" placeholder="20" required>
+									<span class="input-group-addon" style="font-weight: 700;">%</span>
+								</div>
+								<small class="text-muted"><i class="fa fa-info-circle"></i> Default = 20. Editable per product.</small>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(N) Price (New Price)<br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<div class="col-sm-4">
+								<input type="text" name="p_new_price" id="p_new_price" class="form-control" placeholder="Optional (defaults to (C) Price)">
+								<small class="text-muted"><i class="fa fa-calculator"></i> Formula: <code>(N)Price = (Ca)Price &times; (1 + (%)Mark_Up/100)</code></small>
+							</div>
+						</div>	
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(C) Price (Current Price) <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+							<div class="col-sm-4">
+								<input type="text" name="p_current_price" id="p_current_price" class="form-control" required>
 							</div>
 						</div>	
 						<div class="form-group">
 							<label for="" class="col-sm-3 control-label">Quantity <span>*</span></label>
 							<div class="col-sm-4">
-								<input type="text" name="p_qty" class="form-control">
+								<input type="text" name="p_qty" class="form-control" required>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(N)Quantity (New Quantity)</label>
+							<div class="col-sm-4">
+								<input type="number" name="p_new_qty" class="form-control" value="0">
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="" class="col-sm-3 control-label">(S)Level (Safety Stock Level)</label>
+							<div class="col-sm-4">
+								<input type="number" name="p_s_level" class="form-control" value="10">
 							</div>
 						</div>
 						<div class="form-group">
@@ -373,5 +437,61 @@ if(isset($_POST['form1'])) {
 	</div>
 
 </section>
+
+<script>
+$(document).ready(function() {
+    function cleanNum(val) {
+        if (!val) return 0;
+        var clean = val.toString().replace(/[^0-9.]/g, '');
+        return parseFloat(clean) || 0;
+    }
+
+    // Auto-calculate (N)Price when (Ca)Price changes: (N)Price = (Ca)Price * (1 + markup/100)
+    $('#p_capital_price').on('input keyup change', function() {
+        var ca = cleanNum($(this).val());
+        var markup = cleanNum($('#p_markup').val());
+        if (markup <= 0 && $('#p_markup').val() === '') markup = 20;
+
+        if (ca > 0) {
+            var nPrice = ca * (1 + (markup / 100));
+            $('#p_new_price').val(nPrice.toFixed(2));
+            if (!$('#p_current_price').val() || cleanNum($('#p_current_price').val()) === 0) {
+                $('#p_current_price').val(nPrice.toFixed(2));
+            }
+        }
+    });
+
+    // Auto-calculate when (%)Mark_Up changes
+    $('#p_markup').on('input keyup change', function() {
+        var markup = cleanNum($(this).val());
+        var ca = cleanNum($('#p_capital_price').val());
+        var np = cleanNum($('#p_new_price').val());
+        var cp = cleanNum($('#p_current_price').val());
+
+        if (ca > 0) {
+            var nPrice = ca * (1 + (markup / 100));
+            $('#p_new_price').val(nPrice.toFixed(2));
+        } else if (np > 0) {
+            var caPrice = np / (1 + (markup / 100));
+            $('#p_capital_price').val(caPrice.toFixed(2));
+        } else if (cp > 0) {
+            var caPrice = cp / (1 + (markup / 100));
+            $('#p_capital_price').val(caPrice.toFixed(2));
+        }
+    });
+
+    // Auto-calculate (Ca)Price when (N)Price changes: (Ca)Price = (N)Price / (1 + markup/100)
+    $('#p_new_price').on('input keyup change', function() {
+        var np = cleanNum($(this).val());
+        var markup = cleanNum($('#p_markup').val());
+        if (markup <= 0 && $('#p_markup').val() === '') markup = 20;
+
+        if (np > 0) {
+            var caPrice = np / (1 + (markup / 100));
+            $('#p_capital_price').val(caPrice.toFixed(2));
+        }
+    });
+});
+</script>
 
 <?php require_once('footer.php'); ?>
