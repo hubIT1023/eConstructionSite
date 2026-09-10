@@ -52,7 +52,11 @@ if [ "${PREV_COMMIT}" = "${TARGET_COMMIT}" ]; then
     log "Notice: Production is already at target commit ${TARGET_COMMIT}. Proceeding with verification..."
 else
     log "Checking out target commit ${TARGET_COMMIT}..."
-    git checkout "${TARGET_COMMIT}"
+    if [ "${TARGET_REF}" = "origin/master" ] || [ "${TARGET_REF}" = "master" ]; then
+        git checkout -B master origin/master
+    else
+        git -c advice.detachedHead=false checkout "${TARGET_COMMIT}"
+    fi
 fi
 
 # 4. Run automated database migrations if migrations directory exists
