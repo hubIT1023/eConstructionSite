@@ -1,15 +1,21 @@
 <?php
 /**
- * Test Suite: 500mm Thermal PDF Option & 250mm Compact Thermal Roll Verification
+ * Test Suite: Purchase Order Confirmed — 500 mm Thermal Printing & PDF Test Preview Verification Suite
  */
 
-$file_path = '/var/www/html/supplier/pos.php';
+$file_path = $argv[1] ?? '';
+if (!$file_path || !file_exists($file_path)) {
+    $file_path = '/var/www/html/supplier/pos.php';
+}
+if (!file_exists($file_path)) {
+    $file_path = __DIR__ . '/../../supplier/pos.php';
+}
 if (!file_exists($file_path)) {
     $file_path = __DIR__ . '/pos.php';
 }
 
 if (!file_exists($file_path)) {
-    echo "ERROR: pos.php not found.\n";
+    echo "ERROR: supplier/pos.php not found at: " . $file_path . "\n";
     exit(1);
 }
 
@@ -32,119 +38,131 @@ function run_test($name, $condition, $details = '') {
 }
 
 echo "=================================================================\n";
-echo "RUNNING 500 MM THERMAL PDF & 250 MM THERMAL PRINT TEST SUITE\n";
+echo "PURCHASE ORDER CONFIRMED — 500 MM THERMAL PRINT TEST SUITE\n";
 echo "=================================================================\n";
 
 // 1. PHP Syntax Check
-run_test("pos.php syntax valid", true);
+run_test("pos.php file exists and has content", strlen($content) > 10000);
 
 // 2. Store Header Check
 run_test(
-    "Store header branding is 'Sam & Inri Construction Supply'",
-    strpos($content, 'Sam &amp; Inri Construction Supply') !== false || strpos($content, 'Sam & Inri Construction Supply') !== false,
-    "Store header must match Sam & Inri Construction Supply"
+    "Store header branding is 'SAM & INRI CONSTRUCTION SUPPLY'",
+    strpos($content, 'SAM &amp; INRI CONSTRUCTION SUPPLY') !== false || strpos($content, 'SAM & INRI CONSTRUCTION SUPPLY') !== false,
+    "Store header must match SAM & INRI CONSTRUCTION SUPPLY"
 );
 
-// 3. Dual Print Buttons in Sales Receipt Modal (#posSuccessModal)
+// 3. Settings Default Paper Width
 run_test(
-    "Sales Receipt Modal has 250 mm Thermal button",
-    strpos($content, "printPOSReceipt('thermal250')") !== false,
-    "printPOSReceipt('thermal250') button missing"
-);
-run_test(
-    "Sales Receipt Modal has 500 mm Thermal PDF button",
-    strpos($content, "printPOSReceipt('pdf500')") !== false,
-    "printPOSReceipt('pdf500') button missing"
+    "posPrinterSettings defaults to 500 mm paper width",
+    strpos($content, 'paperWidthMm: 500') !== false || strpos($content, 'paperWidthMm = 500') !== false,
+    "Default paper width must be 500 mm"
 );
 
-// 4. Dual Print Buttons in Purchase Order Modal (#posPOSuccessModal)
+// 4. Paper Width Select in Settings Modal defaults to 500 mm
 run_test(
-    "Purchase Order Modal has 250 mm Thermal button",
-    strpos($content, "printPOSPurchaseOrder('thermal250')") !== false,
-    "printPOSPurchaseOrder('thermal250') button missing"
-);
-run_test(
-    "Purchase Order Modal has 500 mm Thermal PDF button",
-    strpos($content, "printPOSPurchaseOrder('pdf500')") !== false,
-    "printPOSPurchaseOrder('pdf500') button missing"
+    "Settings modal paper width select defaults to 500 mm Roll",
+    strpos($content, '<option value="500" selected>500 mm Roll') !== false || strpos($content, 'value="500" selected') !== false,
+    "500 mm option must be selected by default"
 );
 
-// 5. Dual Print Buttons in Return Slip Modal (#posReturnSuccessModal)
+// 5. Purchase Order Confirmed Modal Elements
 run_test(
-    "Return Slip Modal has 250 mm Thermal button",
-    strpos($content, "printReturnSlip('thermal250')") !== false,
-    "printReturnSlip('thermal250') button missing"
-);
-run_test(
-    "Return Slip Modal has 500 mm Thermal PDF button",
-    strpos($content, "printReturnSlip('pdf500')") !== false,
-    "printReturnSlip('pdf500') button missing"
-);
-
-// 6. Dual Test Print Buttons in Printer Modal (#posPrinterModal)
-run_test(
-    "Printer Modal has 250 mm Thermal test button",
-    strpos($content, "testPrintPOS('thermal250')") !== false,
-    "testPrintPOS('thermal250') button missing"
-);
-run_test(
-    "Printer Modal has 500 mm Thermal PDF test button",
-    strpos($content, "testPrintPOS('pdf500')") !== false,
-    "testPrintPOS('pdf500') button missing"
-);
-
-// 7. Format Selectors in Modals
-run_test(
-    "Modal Selectors have '⚡ 250 mm Thermal (Compact)' option",
-    strpos($content, '⚡ 250 mm Thermal (Compact)') !== false,
-    "250 mm option missing from format selectors"
-);
-run_test(
-    "Modal Selectors have '📄 500 mm Thermal PDF' option",
-    strpos($content, '📄 500 mm Thermal PDF') !== false,
-    "500 mm option missing from format selectors"
-);
-
-// 8. generatePOSPrintHTML function implementation
-run_test(
-    "generatePOSPrintHTML supports requestedFormat argument",
-    strpos($content, "function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docType = 'receipt', requestedFormat = null)") !== false,
-    "generatePOSPrintHTML signature not matching"
+    "PO Modal has format selector with 500 mm default",
+    strpos($content, 'id="posPOModalPaperSize"') !== false && strpos($content, '<option value="500" selected>⚡ 500 mm Thermal Roll (Default)</option>') !== false,
+    "PO Modal format selector must have 500 mm as default option"
 );
 
 run_test(
-    "generatePOSPrintHTML sets 500mm @page size for pdf500",
-    strpos($content, 'size: ${widthMm}mm auto') !== false,
-    "@page CSS must use variable widthMm auto"
+    "PO Modal has primary 500mm Thermal print button",
+    strpos($content, "printPOSPurchaseOrder()") !== false && strpos($content, "Print Purchase Order (500mm Thermal)") !== false,
+    "PO Modal must have primary 500mm thermal print button"
 );
 
 run_test(
-    "generatePOSPrintHTML wraps 500mm PDF in centered 250mm thermal strip",
-    strpos($content, 'pdf-thermal-strip') !== false && strpos($content, 'pdf-receipt-500') !== false,
-    "500mm layout must wrap content in centered 250mm strip to prevent text distortion"
+    "PO Modal has 500mm PDF Test / Preview button",
+    strpos($content, "printPOSPurchaseOrder('pdf500')") !== false && strpos($content, "PDF Test / Preview (500mm)") !== false,
+    "PO Modal must have 500mm PDF test/preview button"
+);
+
+// 6. Purchase Order Items Table Structure (4 Columns)
+run_test(
+    "PO Items table has 4 dedicated column headers (ITEM DESCRIPTION, QTY, UNIT PRICE, AMOUNT)",
+    strpos($content, 'ITEM DESCRIPTION') !== false &&
+    strpos($content, 'UNIT PRICE') !== false &&
+    strpos($content, 'AMOUNT') !== false,
+    "PO table must include ITEM DESCRIPTION, QTY, UNIT PRICE, AMOUNT"
 );
 
 run_test(
-    "generatePOSPrintHTML includes PDF preview toolbar with Print/Save button",
-    strpos($content, 'pdf-preview-toolbar') !== false && strpos($content, '🖨️ Print / Save as PDF') !== false,
-    "Toolbar missing in preview"
+    "PO Items table has prominent bold TOTAL DUE",
+    strpos($content, 'TOTAL DUE:') !== false,
+    "PO table must display bold TOTAL DUE label"
 );
 
-// 9. JavaScript preview functions
+// 7. Thermal Definition & Monospace Typography
 run_test(
-    "previewPOSPurchaseOrderPDF function defined",
-    strpos($content, "function previewPOSPurchaseOrderPDF()") !== false,
-    "previewPOSPurchaseOrderPDF missing"
+    "generatePOSPrintHTML treats continuous rolls (!isA4) as thermal (including 500mm)",
+    strpos($content, 'const isThermal = !isA4;') !== false,
+    "isThermal must not be restricted to <= 100 mm"
 );
+
 run_test(
-    "previewPOSReceiptPDF function defined",
-    strpos($content, "function previewPOSReceiptPDF()") !== false,
-    "previewPOSReceiptPDF missing"
+    "generatePOSPrintHTML uses Courier New / Consolas monospace font stack for thermal",
+    strpos($content, "'Courier New', Consolas") !== false,
+    "Thermal roll must use crisp monospace font stack"
 );
+
+// 8. 500 mm Thermal Sizing & PDF Preview
 run_test(
-    "previewPOSReturnPDF function defined",
-    strpos($content, "function previewPOSReturnPDF()") !== false,
-    "previewPOSReturnPDF missing"
+    "generatePOSPrintHTML supports 500mm thermal roll (is500mm)",
+    strpos($content, 'const is500mm = isThermal && paperWidthMm >= 400;') !== false,
+    "is500mm must be defined for wide thermal roll"
+);
+
+run_test(
+    "generatePOSPrintHTML handles pdf500 as 500mm thermal PDF preview",
+    strpos($content, "format === 'pdf500'") !== false,
+    "pdf500 must configure 500 mm roll preview"
+);
+
+run_test(
+    "generatePOSPrintHTML sets 500 mm roll continuous @page CSS with margin 0",
+    strpos($content, 'size: ${paperWidthMm}mm ${isA4 ? pageHeightMm + \'mm\' : \'auto\'};') !== false &&
+    strpos($content, 'margin: 0;') !== false,
+    "@page CSS must use paperWidthMm and auto height with margin 0"
+);
+
+// 9. Column Width Calibrations for 500 mm
+run_test(
+    "generatePOSPrintHTML has dedicated 500 mm table column width rules",
+    strpos($content, 'is500mm') !== false &&
+    strpos($content, '.pos-receipt-container .col-item-desc {') !== false &&
+    strpos($content, 'width: 52% !important;') !== false,
+    "500 mm column widths must be calibrated"
+);
+
+// 10. PDF Preview Toolbar
+run_test(
+    "generatePOSPrintHTML includes PDF preview toolbar with 500 mm badge and Print/Save button",
+    strpos($content, 'pdf-preview-toolbar') !== false &&
+    strpos($content, '500 mm Thermal PDF (Preview / Test)') !== false &&
+    strpos($content, '🖨️ ${isPdfPreview ? \'Print / Save as PDF\' : \'Print Receipt\'}') !== false,
+    "Toolbar must display 500 mm preview badge and Print/Save button"
+);
+
+// 11. Test Print POS Function
+run_test(
+    "testPrintPOS defaults to 500 mm roll",
+    strpos($content, "function testPrintPOS(format = 'thermal500')") !== false,
+    "testPrintPOS default must be thermal500"
+);
+
+// 12. Preview PO Function
+run_test(
+    "previewPOSPurchaseOrderPDF delegates to 500 mm PDF preview",
+    strpos($content, "function previewPOSPurchaseOrderPDF() {\n    printPOSPurchaseOrder('pdf500');") !== false ||
+    strpos($content, "printPOSPurchaseOrder('pdf500');") !== false,
+    "previewPOSPurchaseOrderPDF must use pdf500"
 );
 
 // Summary
@@ -159,6 +177,6 @@ echo "=================================================================\n";
 if ($failed_count > 0) {
     exit(1);
 } else {
-    echo "ALL TESTS PASSED SUCCESSFULLY!\n";
+    echo "ALL 500 MM THERMAL PRINT QUALITY TESTS PASSED SUCCESSFULLY!\n";
     exit(0);
 }

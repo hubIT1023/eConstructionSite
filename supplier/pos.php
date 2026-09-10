@@ -2521,12 +2521,12 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     <i class="fa fa-file-text-o text-success"></i> Paper Size Preset:
                                 </label>
                                 <select id="posPaperWidth" class="form-control input-sm" style="font-size: 13px; height: 38px; border-radius: 4px; font-weight: 700; color: #0f766e; background-color: #f0fdf4; border-color: #86efac;" onchange="handlePaperWidthChange()">
-                                    <option value="500" selected>500 mm Roll (Wide Thermal Roll)</option>
+                                    <option value="500" selected>500 mm Roll (Wide Thermal Roll - Default)</option>
+                                    <option value="80">80 mm (Standard 3-inch POS Thermal)</option>
+                                    <option value="58">58 mm (Compact 2-inch Thermal)</option>
                                     <option value="210">210 mm (A4 Sheet / Standard PDF)</option>
                                     <option value="400">400 mm (Direct 40 cm Thermal)</option>
                                     <option value="250">250 mm (Compact Thermal)</option>
-                                    <option value="80">80 mm (Standard 3-inch POS Thermal)</option>
-                                    <option value="58">58 mm (Compact 2-inch Thermal)</option>
                                     <option value="custom">Custom Paper Width (mm)...</option>
                                 </select>
                             </div>
@@ -2629,7 +2629,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     <i class="fa fa-check-circle text-success"></i> Dynamic Layout:
                                 </label>
                                 <div id="posCompatibilityBadge" style="padding: 9px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; font-size: 12px; font-weight: 700; color: #15803d; line-height: 1.3;">
-                                    <i class="fa fa-check"></i> <span id="posLayoutDesc">A4 Sheet (210 mm) • Dynamic PDF Content Width: 80 mm (Left-Aligned)</span>
+                                    <i class="fa fa-check"></i> <span id="posLayoutDesc">500 mm Thermal Roll • 450 mm Content (Default)</span>
                                 </div>
                             </div>
                         </div>
@@ -2645,17 +2645,20 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
             </div>
             <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn btn-success btn-sm" onclick="testPrintThermalPaidOrder(80)" style="font-weight: 700; background-color: #10b981; border-color: #059669;" title="Test print Paid Order Receipt on Thermal Roll (80mm/58mm)">
-                        <i class="fa fa-print"></i> Test Thermal Paid Order (80mm)
+                    <button type="button" class="btn btn-primary btn-sm" onclick="testPrintPOS('thermal500')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1;" title="Test print on 500mm Thermal Roll">
+                        <i class="fa fa-print"></i> Test Thermal (500mm)
                     </button>
-                    <button type="button" class="btn btn-info btn-sm" onclick="testPrintPOS('pdfA4')" style="font-weight: 700; background-color: #0e7490; border-color: #0891b2;" title="Test print dynamically adjusted PDF width">
-                        <i class="fa fa-file-pdf-o"></i> Test PDF Print (<span class="pdf-btn-width-label">80mm</span>)
+                    <button type="button" class="btn btn-info btn-sm" onclick="testPrintPOS('pdf500')" style="font-weight: 700; background-color: #0e7490; border-color: #0891b2;" title="Test print 500mm Thermal Roll Layout via PDF Preview">
+                        <i class="fa fa-file-pdf-o"></i> Test PDF (500mm)
                     </button>
-                    <button type="button" class="btn btn-default btn-sm" onclick="testPrintPOS('thermal400')" style="font-weight: 700; background: #fff; border-color: #cbd5e1; color: #334155;" title="Test print on 500mm Roll">
-                        <i class="fa fa-print text-primary"></i> 400 mm Thermal (500mm)
+                    <button type="button" class="btn btn-success btn-sm" onclick="testPrintThermalPaidOrder(80)" style="font-weight: 700; background-color: #10b981; border-color: #059669;" title="Test print Paid Order Receipt on Standard 80mm Thermal Roll">
+                        <i class="fa fa-print"></i> 80mm
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm" onclick="testPrintThermalPaidOrder(58)" style="font-weight: 700; background-color: #059669; border-color: #047857;" title="Test print Paid Order Receipt on Compact 58mm Thermal Roll">
+                        <i class="fa fa-print"></i> 58mm
                     </button>
                     <button type="button" class="btn btn-default btn-sm" onclick="testPrintPOS('custom')" style="font-weight: 700; background: #f8fafc; border-color: #94a3b8; color: #0f172a;" title="Test print with currently adjusted custom settings">
-                        <i class="fa fa-play-circle text-success"></i> Test Current Settings
+                        <i class="fa fa-play-circle text-success"></i> Custom
                     </button>
                 </div>
                 <div>
@@ -2734,13 +2737,13 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     </table>
 
                     <!-- 3. Items Table -->
-                    <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10pt; line-height: 1.3; margin-bottom: 8px;">
+                    <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10pt; line-height: 1.25; margin-bottom: 8px;">
                         <thead>
-                            <tr style="border-top: 1pt solid #000; border-bottom: 1pt solid #000;">
-                                <th style="padding: 3pt 2pt; text-align: left; font-weight: bold; width: 48%;">Item Description</th>
-                                <th style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 14%;">Qty</th>
-                                <th style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 19%;">Price</th>
-                                <th style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 19%;">Amount</th>
+                            <tr style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
+                                <th class="col-item-desc" style="padding: 3pt 2pt; text-align: left; font-weight: bold; width: 48%;">Item Description</th>
+                                <th class="col-qty" style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 14%;">Qty</th>
+                                <th class="col-unit-price" style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 19%;">Price</th>
+                                <th class="col-amount" style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 19%;">Amount</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -2752,8 +2755,8 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 $item_net = isset($item['line_net']) ? floatval($item['line_net']) : max(0, $item_gross - $item_disc);
                                 $is_special = isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER';
                             ?>
-                            <tr style="border-bottom: 1pt dashed #ccc;">
-                                <td style="padding: 3pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
+                            <tr style="border-bottom: 1pt dashed #000;">
+                                <td class="col-item-desc" style="padding: 3pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
                                     <?php if ($is_special): ?>
                                         <span style="font-weight: bold; font-size: 8.5pt; text-transform: uppercase; border: 0.5pt solid #000; padding: 0 2px;">SPECIAL ORDER</span><br>
                                     <?php endif; ?>
@@ -2763,48 +2766,57 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     <?php elseif (!empty($item['variant_details'])): ?>
                                         <div style="font-size: 9pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['variant_details']); ?></div>
                                     <?php endif; ?>
+                                    <div class="item-unit-subprice" style="display: none; font-size: 8pt; color: #000; margin-top: 1px;">
+                                        @ &#8369;<?php echo number_format($item_unit_price, 2); ?><?php if($item_qty > 1) echo ' &times; ' . $item_qty; ?>
+                                    </div>
                                 </td>
-                                <td style="padding: 3pt 2pt; text-align: right; vertical-align: top;"><?php echo $item_qty; ?></td>
-                                <td style="padding: 3pt 2pt; text-align: right; vertical-align: top;"><?php echo number_format($item_unit_price, 2); ?></td>
-                                <td style="padding: 3pt 2pt; text-align: right; vertical-align: top;"><?php echo number_format($item_net, 2); ?></td>
+                                <td class="col-qty" style="padding: 3pt 2pt; text-align: right; vertical-align: top;"><?php echo $item_qty; ?></td>
+                                <td class="col-unit-price" style="padding: 3pt 2pt; text-align: right; vertical-align: top;">&#8369;<?php echo number_format($item_unit_price, 2); ?></td>
+                                <td class="col-amount" style="padding: 3pt 2pt; text-align: right; vertical-align: top;">&#8369;<?php echo number_format($item_net, 2); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                             <tr>
-                                <td colspan="2" style="border-top: 1pt solid #000; padding: 3pt 0;"></td>
-                                <td style="border-top: 1pt solid #000; padding: 3pt 2pt; text-align: right;">Subtotal:</td>
-                                <td style="border-top: 1pt solid #000; padding: 3pt 2pt; text-align: right;">₱<?php echo number_format($pos_success_receipt['gross_subtotal'] ?? $pos_success_receipt['subtotal'], 2); ?></td>
+                                <td class="col-foot-spacer" style="border-top: 1pt dashed #000; padding: 3pt 0;"></td>
+                                <td class="col-unit-price col-foot-spacer2" style="border-top: 1pt dashed #000; padding: 3pt 0;"></td>
+                                <td class="col-foot-label" style="border-top: 1pt dashed #000; padding: 3pt 2pt; text-align: right;">Subtotal:</td>
+                                <td class="col-amount" style="border-top: 1pt dashed #000; padding: 3pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['gross_subtotal'] ?? $pos_success_receipt['subtotal'], 2); ?></td>
                             </tr>
                             <?php if (isset($pos_success_receipt['total_discount_savings']) && $pos_success_receipt['total_discount_savings'] > 0): ?>
                             <tr>
-                                <td colspan="2" style="padding: 2pt 0;"></td>
-                                <td style="padding: 2pt 2pt; text-align: right;">Discount:</td>
-                                <td style="padding: 2pt 2pt; text-align: right;">-₱<?php echo number_format($pos_success_receipt['total_discount_savings'], 2); ?></td>
+                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
+                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
+                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Discount:</td>
+                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">-&#8369;<?php echo number_format($pos_success_receipt['total_discount_savings'], 2); ?></td>
                             </tr>
                             <?php endif; ?>
                             <?php if (isset($pos_success_receipt['delivery_cost']) && $pos_success_receipt['delivery_cost'] > 0): ?>
                             <tr>
-                                <td colspan="2" style="padding: 2pt 0;"></td>
-                                <td style="padding: 2pt 2pt; text-align: right;">Delivery:</td>
-                                <td style="padding: 2pt 2pt; text-align: right;">₱<?php echo number_format($pos_success_receipt['delivery_cost'], 2); ?></td>
+                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
+                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
+                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Delivery:</td>
+                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['delivery_cost'], 2); ?></td>
                             </tr>
                             <?php endif; ?>
-                            <tr style="border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000;">
-                                <td colspan="2" style="padding: 4pt 0;"></td>
-                                <td style="padding: 4pt 2pt; text-align: right; font-size: 12pt; font-weight: bold;">TOTAL:</td>
-                                <td style="padding: 4pt 2pt; text-align: right; font-size: 12pt; font-weight: bold;">₱<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
+                            <tr class="pos-total-row" style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
+                                <td class="col-foot-spacer" style="padding: 4pt 0;"></td>
+                                <td class="col-unit-price col-foot-spacer2" style="padding: 4pt 0;"></td>
+                                <td class="col-foot-label" style="padding: 4pt 2pt; text-align: right; font-size: 12pt; font-weight: bold;">TOTAL:</td>
+                                <td class="col-amount" style="padding: 4pt 2pt; text-align: right; font-size: 12pt; font-weight: bold; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
                             </tr>
                             <?php if (isset($pos_success_receipt['amount_tendered']) && $pos_success_receipt['amount_tendered'] > 0): ?>
                             <tr>
-                                <td colspan="2" style="padding: 2pt 0;"></td>
-                                <td style="padding: 2pt 2pt; text-align: right;">Tendered:</td>
-                                <td style="padding: 2pt 2pt; text-align: right;">₱<?php echo number_format($pos_success_receipt['amount_tendered'], 2); ?></td>
+                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
+                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
+                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Tendered:</td>
+                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['amount_tendered'], 2); ?></td>
                             </tr>
                             <tr>
-                                <td colspan="2" style="padding: 2pt 0;"></td>
-                                <td style="padding: 2pt 2pt; text-align: right;">Change:</td>
-                                <td style="padding: 2pt 2pt; text-align: right;">₱<?php echo number_format($pos_success_receipt['change_amount'], 2); ?></td>
+                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
+                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
+                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Change:</td>
+                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['change_amount'], 2); ?></td>
                             </tr>
                             <?php endif; ?>
                         </tfoot>
@@ -2825,13 +2837,13 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <div style="display: inline-flex; align-items: center; background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px;">
                         <label for="posReceiptModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #475569; margin-right: 6px;">Format:</label>
-                        <select id="posReceiptModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 6px; width: auto; cursor: pointer;" title="Select receipt print format (400mm thermal / 500mm thermal PDF / A4 PDF / 250mm / 80mm / 58mm)">
-                            <option value="400" selected>⚡ 400 mm Thermal (500mm Roll)</option>
+                        <select id="posReceiptModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 6px; width: auto; cursor: pointer;" title="Select receipt print format (80mm / 58mm / A4 PDF / 400mm / 500mm / 250mm)">
+                            <option value="80" selected>🖨️ 80 mm POS Thermal (Standard)</option>
+                            <option value="58">🖨️ 58 mm POS Thermal (Compact)</option>
+                            <option value="210">📄 A4 Sheet / PDF (210mm)</option>
+                            <option value="400">⚡ 400 mm Thermal (500mm Roll)</option>
                             <option value="500">📄 500 mm Roll PDF</option>
-                            <option value="210">📄 A4 PDF / Print (210mm)</option>
                             <option value="250">📄 250 mm Compact</option>
-                            <option value="80">📄 80 mm POS</option>
-                            <option value="58">📄 58 mm Mini</option>
                         </select>
                     </div>
                     <button type="button" class="btn btn-default btn-sm" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 30px; padding: 4px 10px; font-weight: 600; border-color: #cbd5e1;">
@@ -2841,10 +2853,10 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                 <!-- Row 2: Action Buttons (Print, PDF, New Sale) -->
                 <div class="pos-success-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn btn-success btn-sm" onclick="printPOSReceipt('thermal400')" style="font-weight: 700; height: 32px; padding: 5px 14px; font-size: 12.5px; background-color: #10b981; border-color: #059669; border-radius: 4px;">
+                    <button type="button" class="btn btn-success btn-sm" onclick="printPOSReceipt()" style="font-weight: 700; height: 32px; padding: 5px 14px; font-size: 12.5px; background-color: #10b981; border-color: #059669; border-radius: 4px;">
                         <i class="fa fa-print"></i> Print Receipt
                     </button>
-                    <button type="button" class="btn btn-info btn-sm" onclick="printPOSReceipt('pdf500')" style="font-weight: 700; height: 32px; padding: 5px 14px; font-size: 12.5px; background-color: #0e7490; border-color: #0891b2; border-radius: 4px;">
+                    <button type="button" class="btn btn-info btn-sm" onclick="printPOSReceipt('pdf')" style="font-weight: 700; height: 32px; padding: 5px 14px; font-size: 12.5px; background-color: #0e7490; border-color: #0891b2; border-radius: 4px;">
                         <i class="fa fa-file-pdf-o"></i> Generate PDF
                     </button>
                     <button type="button" class="btn btn-default btn-sm" onclick="closeReceiptModal()" style="font-weight: 600; height: 32px; padding: 5px 12px; font-size: 12.5px; border-radius: 4px; border-color: #cbd5e1;">
@@ -2873,14 +2885,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 
                 <!-- 1. Store Header & Title -->
                 <div style="text-align: left; margin-bottom: 8px; border-bottom: 1.5pt solid #000; padding-bottom: 6px; width: 100%;">
-                    <div class="pos-company-header" style="font-size: 12pt; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: visible; color: #000; line-height: 1.2;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
-                    <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_po_success_data['supplier_phone']) ? htmlspecialchars($pos_po_success_data['supplier_phone']) : '09612735733'; ?></div>
-                    <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; color: #000;">PURCHASE ORDER VOUCHER</div>
-                    <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #000;">(UNPAID)</div>
+                    <div class="pos-company-header" style="font-size: 14pt; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: visible; color: #000; line-height: 1.2;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
+                    <div style="font-size: 11pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_po_success_data['supplier_phone']) ? htmlspecialchars($pos_po_success_data['supplier_phone']) : '09612735733'; ?></div>
+                    <div style="font-size: 13pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; color: #000;">PURCHASE ORDER VOUCHER</div>
+                    <div style="font-size: 10.5pt; font-weight: bold; text-transform: uppercase; color: #000;">(UNPAID)</div>
                 </div>
 
                 <!-- 2. PO Metadata (Compact Info Grid) -->
-                <table style="width: 100%; font-size: 12pt; line-height: 1.25; margin-bottom: 8px; border-collapse: collapse; border-bottom: 1.5pt solid #000; padding-bottom: 6px;">
+                <table style="width: 100%; font-size: 12pt; line-height: 1.3; margin-bottom: 8px; border-collapse: collapse; border-bottom: 1.5pt solid #000; padding-bottom: 6px;">
                     <tr>
                         <td style="width: 52%; vertical-align: top; padding: 2px 4px 4px 0;">
                             <div><strong>PO NO:</strong> <span style="font-weight: bold;"><?php echo htmlspecialchars($pos_po_success_data['po_id']); ?></span></div>
@@ -2893,14 +2905,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     </tr>
                 </table>
 
-                <!-- 3. Items Table (4 Essential Columns: ITEM | QTY | PRICE | TOTAL) -->
-                <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12pt; line-height: 1.25; margin-bottom: 8px;">
+                <!-- 3. Items Table (4 Essential Columns: ITEM DESCRIPTION | QTY | UNIT PRICE | AMOUNT) -->
+                <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11.5pt; line-height: 1.25; margin-bottom: 8px;">
                     <thead>
-                        <tr style="border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000;">
-                            <th style="padding: 4pt 2pt; text-align: left; font-weight: bold; width: 46%;">ITEM</th>
-                            <th style="padding: 4pt 2pt; text-align: center; font-weight: bold; width: 14%;">QTY</th>
-                            <th style="padding: 4pt 2pt; text-align: right; font-weight: bold; width: 20%;">PRICE</th>
-                            <th style="padding: 4pt 2pt; text-align: right; font-weight: bold; width: 20%;">TOTAL</th>
+                        <tr style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
+                            <th class="col-item-desc" style="padding: 4pt 2pt; text-align: left; font-weight: bold; width: 52%;">ITEM DESCRIPTION</th>
+                            <th class="col-qty" style="padding: 4pt 2pt; text-align: center; font-weight: bold; width: 12%;">QTY</th>
+                            <th class="col-unit-price" style="padding: 4pt 2pt; text-align: right; font-weight: bold; width: 18%;">UNIT PRICE</th>
+                            <th class="col-amount" style="padding: 4pt 2pt; text-align: right; font-weight: bold; width: 18%;">AMOUNT</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2912,21 +2924,24 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             $item_net = isset($item['line_net']) ? floatval($item['line_net']) : max(0, $item_gross - $item_disc);
                             $is_special = isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER';
                         ?>
-                        <tr style="border-bottom: 0.5pt solid #e5e7eb;">
-                            <td style="padding: 4pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
+                        <tr style="border-bottom: 1pt dashed #000;">
+                            <td class="col-item-desc" style="padding: 4pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
                                 <?php if ($is_special): ?>
                                     <span style="font-weight: bold; font-size: 9.5pt; text-transform: uppercase; border: 0.5pt solid #000; padding: 0 2px;">SPECIAL ORDER</span><br>
                                 <?php endif; ?>
                                 <strong><?php echo htmlspecialchars($item['name']); ?></strong>
                                 <?php if (!empty($item['product_details'])): ?>
-                                    <div style="font-size: 11pt; color: #333; margin-top: 1px;"><?php echo htmlspecialchars($item['product_details']); ?></div>
+                                    <div style="font-size: 10pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['product_details']); ?></div>
                                 <?php elseif (!empty($item['variant_details'])): ?>
-                                    <div style="font-size: 11pt; color: #333; margin-top: 1px;"><?php echo htmlspecialchars($item['variant_details']); ?></div>
+                                    <div style="font-size: 10pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['variant_details']); ?></div>
                                 <?php endif; ?>
+                                <div class="item-unit-subprice" style="display: none; font-size: 8pt; color: #000; margin-top: 1px;">
+                                    @ &#8369;<?php echo number_format($item_unit_price, 2); ?><?php if($item_qty > 1) echo ' &times; ' . $item_qty; ?>
+                                </div>
                             </td>
-                            <td style="padding: 4pt 2pt; text-align: center; vertical-align: top;"><?php echo $item_qty; ?></td>
-                            <td style="padding: 4pt 2pt; text-align: right; vertical-align: top;">₱<?php echo number_format($item_unit_price, 2); ?></td>
-                            <td style="padding: 4pt 2pt; text-align: right; vertical-align: top; font-weight: bold;">₱<?php echo number_format($item_net, 2); ?></td>
+                            <td class="col-qty" style="padding: 4pt 2pt; text-align: center; vertical-align: top;"><?php echo $item_qty; ?></td>
+                            <td class="col-unit-price" style="padding: 4pt 2pt; text-align: right; vertical-align: top;">&#8369;<?php echo number_format($item_unit_price, 2); ?></td>
+                            <td class="col-amount" style="padding: 4pt 2pt; text-align: right; vertical-align: top; font-weight: bold;">&#8369;<?php echo number_format($item_net, 2); ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -2934,44 +2949,49 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <?php $has_savings = isset($pos_po_success_data['total_discount_savings']) && $pos_po_success_data['total_discount_savings'] > 0; ?>
                         <?php if ($has_savings): ?>
                         <tr>
-                            <td colspan="2" style="border-top: 1.5pt solid #000; padding: 4pt 0;"></td>
-                            <td style="border-top: 1.5pt solid #000; padding: 4pt 2pt; text-align: right;">Subtotal:</td>
-                            <td style="border-top: 1.5pt solid #000; padding: 4pt 2pt; text-align: right; font-weight: bold;">₱<?php echo number_format($pos_po_success_data['gross_subtotal'], 2); ?></td>
+                            <td class="col-foot-spacer" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
+                            <td class="col-unit-price col-foot-spacer2" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
+                            <td class="col-foot-label" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right;">Subtotal:</td>
+                            <td class="col-amount" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['gross_subtotal'], 2); ?></td>
                         </tr>
                         <tr>
-                            <td colspan="2" style="padding: 2pt 0;"></td>
-                            <td style="padding: 2pt 2pt; text-align: right; color: #16a34a;">Discount:</td>
-                            <td style="padding: 2pt 2pt; text-align: right; font-weight: bold; color: #16a34a;">-₱<?php echo number_format($pos_po_success_data['total_discount_savings'], 2); ?></td>
+                            <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
+                            <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
+                            <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Discount:</td>
+                            <td class="col-amount" style="padding: 2pt 2pt; text-align: right; font-weight: bold;">-&#8369;<?php echo number_format($pos_po_success_data['total_discount_savings'], 2); ?></td>
                         </tr>
                         <?php else: ?>
                         <tr>
-                            <td colspan="2" style="border-top: 1.5pt solid #000; padding: 4pt 0;"></td>
-                            <td style="border-top: 1.5pt solid #000; padding: 4pt 2pt; text-align: right;">Subtotal:</td>
-                            <td style="border-top: 1.5pt solid #000; padding: 4pt 2pt; text-align: right; font-weight: bold;">₱<?php echo number_format($pos_po_success_data['net_subtotal'], 2); ?></td>
+                            <td class="col-foot-spacer" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
+                            <td class="col-unit-price col-foot-spacer2" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
+                            <td class="col-foot-label" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right;">Subtotal:</td>
+                            <td class="col-amount" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['net_subtotal'], 2); ?></td>
                         </tr>
                         <?php endif; ?>
 
                         <?php if (isset($pos_po_success_data['delivery_cost']) && $pos_po_success_data['delivery_cost'] > 0): ?>
                         <tr>
-                            <td colspan="2" style="padding: 2pt 0;"></td>
-                            <td style="padding: 2pt 2pt; text-align: right;">Delivery:</td>
-                            <td style="padding: 2pt 2pt; text-align: right; font-weight: bold;">₱<?php echo number_format($pos_po_success_data['delivery_cost'], 2); ?></td>
+                            <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
+                            <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
+                            <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Delivery:</td>
+                            <td class="col-amount" style="padding: 2pt 2pt; text-align: right; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['delivery_cost'], 2); ?></td>
                         </tr>
                         <?php endif; ?>
 
-                        <tr style="border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000;">
-                            <td colspan="2" style="padding: 4pt 0;"></td>
-                            <td style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">TOTAL DUE:</td>
-                            <td style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">₱<?php echo number_format($pos_po_success_data['grand_total'], 2); ?></td>
+                        <tr class="pos-total-row" style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
+                            <td class="col-foot-spacer" style="padding: 4pt 0;"></td>
+                            <td class="col-unit-price col-foot-spacer2" style="padding: 4pt 0;"></td>
+                            <td class="col-foot-label" style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">TOTAL DUE:</td>
+                            <td class="col-amount" style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['grand_total'], 2); ?></td>
                         </tr>
                     </tfoot>
                 </table>
 
                 <!-- 4. Footer Notice & Thank You -->
-                <div style="text-align: center; margin-top: 8px; border-top: 1pt dashed #000; padding-top: 6px; font-size: 12pt; line-height: 1.25; width: 100%;">
-                    <div style="font-weight: bold; text-transform: uppercase; font-size: 12pt; margin-bottom: 2px;">*** PROCEED TO CASHIER FOR PAYMENT ***</div>
-                    <div style="font-size: 11pt;">Thank you for your business!</div>
-                    <div style="font-size: 9.5pt; color: #555; margin-top: 2px;">System-Generated Purchase Order Voucher &bull; eConstruction Supply</div>
+                <div style="text-align: center; margin-top: 8px; border-top: 1pt dashed #000; padding-top: 6px; font-size: 11pt; line-height: 1.25; width: 100%;">
+                    <div style="font-weight: bold; text-transform: uppercase; font-size: 11pt; margin-bottom: 2px;">*** PROCEED TO CASHIER FOR PAYMENT ***</div>
+                    <div style="font-size: 10pt;">Thank you for your business!</div>
+                    <div style="font-size: 9pt; color: #000; margin-top: 2px;">System-Generated Purchase Order Voucher &bull; eConstruction Supply</div>
                 </div>
 
             </div>
@@ -2983,30 +3003,30 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <label for="posPOModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
                             <i class="fa fa-sliders text-primary"></i> Print Format:
                         </label>
-                        <select id="posPOModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select print format (400mm thermal / 500mm thermal PDF / 250mm / 80mm / 58mm / A4)">
-                            <option value="400" selected>⚡ 400 mm Thermal (500mm Roll - Left Aligned)</option>
-                            <option value="500">📄 500 mm Thermal PDF (400mm Width)</option>
-                            <option value="250">📄 250 mm Compact Thermal</option>
-                            <option value="80">📄 80 mm POS</option>
-                            <option value="58">📄 58 mm Mini</option>
-                            <option value="210">🖨️ A4 Normal</option>
+                        <select id="posPOModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select print format (500mm / 80mm / 58mm / A4 PDF / 250mm)">
+                            <option value="500" selected>⚡ 500 mm Thermal Roll (Default)</option>
+                            <option value="pdf500">📄 500 mm Thermal PDF (Preview / Test)</option>
+                            <option value="80">🖨️ 80 mm POS Thermal (Standard)</option>
+                            <option value="58">🖨️ 58 mm POS Thermal (Compact)</option>
+                            <option value="210">📄 A4 Sheet / PDF (210mm)</option>
+                            <option value="250">📄 250 mm Compact</option>
                         </select>
                     </div>
                     <div>
                         <button type="button" class="btn btn-default" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 34px; padding: 5px 12px; font-weight: 600; border-color: #cbd5e1; border-radius: 6px;">
-                            <i class="fa fa-cog text-muted"></i>
+                            <i class="fa fa-cog text-muted"></i> Settings
                         </button>
                     </div>
                 </div>
 
-                <!-- Row 2: Action Buttons (400mm Thermal, 400mm Thermal PDF, Continue) -->
+                <!-- Row 2: Action Buttons (Print, PDF, Continue) -->
                 <div class="pos-success-actions" style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; flex-wrap: wrap;">
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" class="btn btn-primary" onclick="printPOSPurchaseOrder('thermal400')" style="background-color: #0284c7; border-color: #0284c7; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(2,132,199,0.3);">
-                            <i class="fa fa-print"></i> 400 mm Thermal (500mm Roll)
+                        <button type="button" class="btn btn-primary" onclick="printPOSPurchaseOrder()" style="background-color: #0284c7; border-color: #0284c7; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(2,132,199,0.3);" title="Direct print to physical 500mm thermal printer">
+                            <i class="fa fa-print"></i> Print Purchase Order (500mm Thermal)
                         </button>
-                        <button type="button" class="btn btn-info" onclick="printPOSPurchaseOrder('pdf500')" style="background-color: #0e7490; border-color: #0891b2; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(14,116,144,0.3);">
-                            <i class="fa fa-file-pdf-o"></i> 400 mm Thermal PDF
+                        <button type="button" class="btn btn-info" onclick="printPOSPurchaseOrder('pdf500')" style="background-color: #0e7490; border-color: #0891b2; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(14,116,144,0.3);" title="Test preview 500mm thermal layout via PDF">
+                            <i class="fa fa-file-pdf-o"></i> PDF Test / Preview (500mm)
                         </button>
                     </div>
 
@@ -4716,7 +4736,7 @@ function savePOSPrinterSettings() {
     
     const widthVal = document.getElementById('posPaperWidth').value;
     if (widthVal === 'custom') {
-        posPrinterSettings.paperWidthMm = Math.max(40, parseInt(document.getElementById('posCustomWidthInput').value, 10) || 500);
+        posPrinterSettings.paperWidthMm = Math.max(40, parseInt(document.getElementById('posCustomWidthInput').value, 10) || 80);
     } else {
         posPrinterSettings.paperWidthMm = parseInt(widthVal, 10) || 500;
     }
@@ -4764,7 +4784,7 @@ function syncModalPaperSizeSelects() {
     const isA4 = (s.printerType === 'normal' || s.paperWidthMm === 210);
     const summaryWidths = document.querySelectorAll('.receipt-summary-width');
     summaryWidths.forEach(el => {
-        el.innerText = isA4 ? (a4W + ' mm') : ((s.paperWidthMm || 500) >= 500 ? '400 mm' : (s.paperWidthMm + ' mm'));
+        el.innerText = isA4 ? (a4W + ' mm') : ((s.paperWidthMm || 500) >= 500 ? '450 mm' : (s.paperWidthMm + ' mm'));
     });
     const summaryPapers = document.querySelectorAll('.receipt-summary-paper');
     summaryPapers.forEach(el => {
@@ -4996,21 +5016,39 @@ function initPOSPrinterDetection(forceRefresh = false) {
 
 function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docType = 'receipt', requestedFormat = null) {
     const s = getPOSPrintSettings();
-    let paperWidthMm = 210;
-    let contentWidthMm = getA4PrintWidthMm();
-    let isA4 = true;
+    let paperWidthMm = (docType === 'po') ? 500 : (s.paperWidthMm || 500);
+    let contentWidthMm = (paperWidthMm >= 450) ? 450 : ((paperWidthMm === 80) ? 72 : ((paperWidthMm === 58) ? 48 : Math.max(40, paperWidthMm - 10)));
+    let isA4 = false;
+    let isPdfPreview = false;
 
-    let isA4PDF = (requestedFormat === 'pdfA4' || requestedFormat === 'a4' || requestedFormat === '210' || requestedFormat === 'pdf' || requestedFormat === 'pdf500');
-    let is400mmThermal = (requestedFormat === 'thermal400' || requestedFormat === '400');
+    let isA4PDF = (requestedFormat === 'pdfA4' || requestedFormat === 'a4' || requestedFormat === '210');
+    let is500mmThermalPDF = (requestedFormat === 'pdf500' || (requestedFormat === 'pdf' && docType === 'po'));
+    let is500mmThermal = (requestedFormat === 'thermal500' || requestedFormat === '500' || requestedFormat === 'thermal400' || requestedFormat === '400');
+    let is80mmThermal = (requestedFormat === 'thermal80' || requestedFormat === '80' || requestedFormat === 'thermal');
+    let is58mmThermal = (requestedFormat === 'thermal58' || requestedFormat === '58');
     let is250mmThermal = (requestedFormat === 'thermal250' || requestedFormat === '250');
 
-    if (isA4PDF) {
+    if (is500mmThermalPDF) {
+        paperWidthMm = 500;
+        contentWidthMm = 450;
+        isA4 = false;
+        isPdfPreview = true;
+    } else if (isA4PDF || (requestedFormat === 'pdf' && docType !== 'po')) {
         paperWidthMm = 210;
         contentWidthMm = getA4PrintWidthMm();
         isA4 = true;
-    } else if (is400mmThermal) {
+        isPdfPreview = true;
+    } else if (is500mmThermal) {
         paperWidthMm = 500;
-        contentWidthMm = 400;
+        contentWidthMm = 450;
+        isA4 = false;
+    } else if (is80mmThermal) {
+        paperWidthMm = 80;
+        contentWidthMm = 72;
+        isA4 = false;
+    } else if (is58mmThermal) {
+        paperWidthMm = 58;
+        contentWidthMm = 48;
         isA4 = false;
     } else if (is250mmThermal) {
         paperWidthMm = 250;
@@ -5018,13 +5056,31 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
         isA4 = false;
     } else if (requestedFormat && !isNaN(parseInt(requestedFormat, 10))) {
         let reqW = parseInt(requestedFormat, 10);
-        if (reqW <= 200) {
+        if (reqW === 210) {
+            paperWidthMm = 210;
+            contentWidthMm = getA4PrintWidthMm();
+            isA4 = true;
+            isPdfPreview = true;
+        } else if (reqW === 80) {
+            paperWidthMm = 80;
+            contentWidthMm = 72;
+            isA4 = false;
+        } else if (reqW === 58) {
+            paperWidthMm = 58;
+            contentWidthMm = 48;
+            isA4 = false;
+        } else if (reqW >= 450) {
+            paperWidthMm = 500;
+            contentWidthMm = 450;
+            isA4 = false;
+        } else if (reqW <= 200) {
             paperWidthMm = 210;
             contentWidthMm = reqW;
             isA4 = true;
+            isPdfPreview = true;
         } else {
             paperWidthMm = reqW;
-            contentWidthMm = (reqW >= 500) ? 400 : Math.max(40, reqW - 20);
+            contentWidthMm = Math.max(40, reqW - 10);
             isA4 = false;
         }
     } else {
@@ -5041,65 +5097,99 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             if (retModalSel && retModalSel.value) selVal = retModalSel.value;
         }
 
-        let chosenWidth = selVal ? parseInt(selVal, 10) : (s.paperWidthMm || 500);
-        if (chosenWidth === 210) {
-            paperWidthMm = 210;
-            contentWidthMm = getA4PrintWidthMm();
-            isA4 = true;
-        } else if (chosenWidth === 500 || chosenWidth === 400) {
+        if (selVal === 'pdf500') {
             paperWidthMm = 500;
-            contentWidthMm = 400;
+            contentWidthMm = 450;
             isA4 = false;
-        } else if (chosenWidth === 250) {
-            paperWidthMm = 250;
-            contentWidthMm = 240;
-            isA4 = false;
-        } else if (chosenWidth <= 200) {
-            paperWidthMm = 210;
-            contentWidthMm = chosenWidth;
-            isA4 = true;
+            isPdfPreview = true;
         } else {
-            paperWidthMm = chosenWidth;
-            contentWidthMm = Math.max(40, chosenWidth - 20);
-            isA4 = false;
+            let defaultWidth = (docType === 'po') ? 500 : (s.paperWidthMm || 500);
+            let chosenWidth = selVal ? parseInt(selVal, 10) : defaultWidth;
+            if (chosenWidth === 210) {
+                paperWidthMm = 210;
+                contentWidthMm = getA4PrintWidthMm();
+                isA4 = true;
+            } else if (chosenWidth >= 450) {
+                paperWidthMm = 500;
+                contentWidthMm = 450;
+                isA4 = false;
+            } else if (chosenWidth === 80) {
+                paperWidthMm = 80;
+                contentWidthMm = 72;
+                isA4 = false;
+            } else if (chosenWidth === 58) {
+                paperWidthMm = 58;
+                contentWidthMm = 48;
+                isA4 = false;
+            } else if (chosenWidth === 250) {
+                paperWidthMm = 250;
+                contentWidthMm = 240;
+                isA4 = false;
+            } else if (chosenWidth <= 200) {
+                paperWidthMm = 210;
+                contentWidthMm = chosenWidth;
+                isA4 = true;
+            } else {
+                paperWidthMm = chosenWidth;
+                contentWidthMm = Math.max(40, chosenWidth - 10);
+                isA4 = false;
+            }
         }
     }
 
-    // Dynamic Header Font Size for Single-Row Company Name (50mm to 200mm)
+    const isThermal = !isA4;
+    const is500mm = isThermal && paperWidthMm >= 400;
+    const is58mm = isThermal && (paperWidthMm <= 65 || contentWidthMm <= 55);
+
+    // Font stack: High-contrast Monospace for thermal receipt rolls, Arial for A4
+    const fontStack = isThermal 
+        ? "'Courier New', Consolas, 'Liberation Mono', monospace" 
+        : "Arial, Helvetica, sans-serif";
+
+    // Dynamic Header Font Size
     let headerFontSizePt = 12;
-    if (contentWidthMm < 55) {
-        headerFontSizePt = 7.2;
+    if (is500mm) {
+        headerFontSizePt = 16.0;
+    } else if (is58mm) {
+        headerFontSizePt = 10.0;
+    } else if (isThermal) {
+        headerFontSizePt = 11.5;
     } else if (contentWidthMm < 65) {
         headerFontSizePt = 8.5;
     } else if (contentWidthMm < 80) {
         headerFontSizePt = 10.0;
-    } else if (contentWidthMm < 95) {
-        headerFontSizePt = 11.0;
     } else {
         headerFontSizePt = 12.0;
     }
 
-    // Dynamic Body and Table font size
+    // Dynamic Body and Total font sizes
     let bodyFontSizePt = '10pt';
-    if (contentWidthMm <= 55) {
-        bodyFontSizePt = '7.5pt';
-    } else if (contentWidthMm <= 65) {
+    let totalFontSizePt = '12pt';
+    if (is500mm) {
+        bodyFontSizePt = '12pt';
+        totalFontSizePt = '15pt';
+    } else if (is58mm) {
         bodyFontSizePt = '8.5pt';
+        totalFontSizePt = '10.5pt';
+    } else if (isThermal) {
+        bodyFontSizePt = '9.5pt';
+        totalFontSizePt = '12pt';
+    } else if (contentWidthMm <= 55) {
+        bodyFontSizePt = '7.5pt';
+        totalFontSizePt = '10.5pt';
     } else if (contentWidthMm <= 80) {
         bodyFontSizePt = '9.5pt';
-    } else if (contentWidthMm <= 120) {
-        bodyFontSizePt = '10pt';
+        totalFontSizePt = '12pt';
     } else {
-        bodyFontSizePt = '10.5pt';
+        bodyFontSizePt = '10pt';
+        totalFontSizePt = '12pt';
     }
 
     // Dynamic height calculation for valid @page size
     let pageHeightMm = isA4 ? 297 : 260;
     const rowMatches = contentHtml.match(/<tr/gi);
     const rowCount = rowMatches ? rowMatches.length : 3;
-    if (!isA4 && rowCount > 4) {
-        pageHeightMm = Math.max(260, 160 + (rowCount * 22));
-    } else if (isA4 && rowCount > 10) {
+    if (isA4 && rowCount > 10) {
         pageHeightMm = Math.max(297, 200 + (rowCount * 18));
     }
 
@@ -5109,9 +5199,13 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
         copiesHtml += '<div class="pos-print-page' + (c > 0 ? ' pos-page-break' : '') + '">' + contentHtml + '</div>';
     }
 
-    // Container margin & padding (strictly Left-Aligned):
+    // Container margin & padding:
     const containerMargin = 'margin: 0 !important; margin-left: 0 !important; margin-right: auto !important;';
-    const containerPadding = (contentWidthMm <= 0) ? '0' : ((contentWidthMm <= 55) ? '1.5mm 1.5mm' : ((contentWidthMm <= 80) ? '2mm 2.5mm' : '4mm 4mm'));
+    const containerPadding = is500mm
+        ? '8mm 12mm'
+        : (is58mm 
+            ? '1mm 1.5mm' 
+            : (isThermal ? '2mm 2.5mm' : ((contentWidthMm <= 80) ? '2mm 2.5mm' : '4mm 4mm')));
 
     let wrappedContent = `
         <div class="pos-print-container pos-receipt-container" style="width: ${contentWidthMm}mm; max-width: ${contentWidthMm}mm; ${containerMargin} padding: ${containerPadding}; text-align: left; box-sizing: border-box; overflow: hidden;">
@@ -5126,51 +5220,58 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
     <title>${docTitle}</title>
     <style>
         * {
-            box-sizing: border-box;
+            box-sizing: border-box !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            ${isThermal ? 'color: #000000 !important; text-shadow: none !important;' : ''}
         }
         @page {
-            size: ${paperWidthMm}mm ${pageHeightMm}mm;
+            size: ${paperWidthMm}mm ${isA4 ? pageHeightMm + 'mm' : 'auto'};
             margin: 0;
         }
         html, body {
-            margin: 0;
-            padding: 0;
-            background: #ffffff;
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: ${bodyFontSizePt};
-            line-height: 1.25;
-            color: #000000;
-            width: ${paperWidthMm}mm;
-            height: auto;
-            min-height: 0;
-            text-align: left;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            font-family: ${fontStack} !important;
+            font-size: ${bodyFontSizePt} !important;
+            line-height: ${isThermal ? '1.2' : '1.25'} !important;
+            color: #000000 !important;
+            width: ${paperWidthMm}mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            text-align: left !important;
+            -webkit-font-smoothing: antialiased;
         }
         table {
             width: 100% !important;
             border-collapse: collapse !important;
             table-layout: fixed !important;
-            font-family: Arial, Helvetica, sans-serif !important;
+            font-family: ${fontStack} !important;
             font-size: ${bodyFontSizePt} !important;
-            line-height: 1.25 !important;
+            line-height: ${isThermal ? '1.2' : '1.25'} !important;
+            color: #000000 !important;
+            font-variant-numeric: tabular-nums !important;
         }
         th, td {
             vertical-align: top !important;
-            font-family: Arial, Helvetica, sans-serif !important;
+            font-family: ${fontStack} !important;
             word-break: break-word !important;
             overflow-wrap: break-word !important;
+            color: #000000 !important;
+            font-variant-numeric: tabular-nums !important;
         }
         
         .pos-company-header {
+            font-family: ${fontStack} !important;
             font-size: ${headerFontSizePt}pt !important;
             font-weight: bold !important;
             text-transform: uppercase !important;
-            white-space: nowrap !important;
+            white-space: ${is58mm ? 'normal' : 'nowrap'} !important;
             overflow: visible !important;
-            text-align: left !important;
+            text-align: ${isThermal ? 'center' : 'left'} !important;
             line-height: 1.2 !important;
-            letter-spacing: 0.2px !important;
+            letter-spacing: ${isThermal ? '0' : '0.2px'} !important;
             color: #000000 !important;
             display: block !important;
         }
@@ -5186,9 +5287,9 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             box-sizing: border-box !important;
             ${containerMargin}
             padding: ${containerPadding} !important;
-            font-family: Arial, Helvetica, sans-serif !important;
+            font-family: ${fontStack} !important;
             font-size: ${bodyFontSizePt} !important;
-            line-height: 1.25 !important;
+            line-height: ${isThermal ? '1.2' : '1.25'} !important;
             color: #000 !important;
             background: #fff !important;
             height: auto !important;
@@ -5196,6 +5297,114 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             text-align: left !important;
             overflow: hidden !important;
         }
+
+        ${isThermal ? `
+        .thermal-center {
+            text-align: center !important;
+        }
+        .pos-receipt-container div, .pos-receipt-container span, .pos-receipt-container p, .pos-receipt-container strong {
+            color: #000000 !important;
+        }
+        .pos-receipt-container tr {
+            font-size: ${bodyFontSizePt} !important;
+            border-color: #000000 !important;
+        }
+        .pos-receipt-container td, .pos-receipt-container th {
+            font-size: ${bodyFontSizePt} !important;
+            border-color: #000000 !important;
+        }
+        .pos-receipt-container .pos-total-row, .pos-receipt-container tr[style*="font-size: 12pt"], .pos-receipt-container tr[style*="font-size: 13pt"] {
+            font-size: ${totalFontSizePt} !important;
+            font-weight: bold !important;
+        }
+        .pos-receipt-container .pos-total-row td, .pos-receipt-container tr[style*="font-size: 12pt"] td, .pos-receipt-container tr[style*="font-size: 13pt"] td {
+            font-size: ${totalFontSizePt} !important;
+            font-weight: bold !important;
+            border-top: 1pt dashed #000000 !important;
+            border-bottom: 1pt dashed #000000 !important;
+        }
+        ${is58mm ? `
+        .pos-receipt-container .col-unit-price {
+            display: none !important;
+        }
+        .pos-receipt-container .col-item-desc {
+            width: 54% !important;
+        }
+        .pos-receipt-container .col-qty {
+            width: 16% !important;
+            text-align: center !important;
+        }
+        .pos-receipt-container .col-amount {
+            width: 30% !important;
+            text-align: right !important;
+        }
+        .pos-receipt-container .item-unit-subprice {
+            display: block !important;
+            font-size: 7.8pt !important;
+            line-height: 1.15 !important;
+            color: #000000 !important;
+        }
+        .pos-receipt-container .col-foot-spacer {
+            display: none !important;
+        }
+        .pos-receipt-container .col-foot-label {
+            width: 70% !important;
+            text-align: right !important;
+        }
+        ` : (is500mm ? `
+        .pos-receipt-container .col-item-desc {
+            width: 52% !important;
+        }
+        .pos-receipt-container .col-qty {
+            width: 12% !important;
+            text-align: center !important;
+        }
+        .pos-receipt-container .col-unit-price {
+            width: 18% !important;
+            text-align: right !important;
+        }
+        .pos-receipt-container .col-amount {
+            width: 18% !important;
+            text-align: right !important;
+        }
+        .pos-receipt-container .item-unit-subprice {
+            display: none !important;
+        }
+        .pos-receipt-container .col-foot-spacer {
+            width: 52% !important;
+        }
+        .pos-receipt-container .col-foot-label {
+            width: 30% !important;
+            text-align: right !important;
+        }
+        ` : `
+        .pos-receipt-container .col-item-desc {
+            width: 46% !important;
+        }
+        .pos-receipt-container .col-qty {
+            width: 14% !important;
+            text-align: center !important;
+        }
+        .pos-receipt-container .col-unit-price {
+            width: 20% !important;
+            text-align: right !important;
+        }
+        .pos-receipt-container .col-amount {
+            width: 20% !important;
+            text-align: right !important;
+        }
+        .pos-receipt-container .item-unit-subprice {
+            display: none !important;
+        }
+        .pos-receipt-container .col-foot-spacer {
+            width: 46% !important;
+        }
+        .pos-receipt-container .col-foot-label {
+            width: 20% !important;
+            text-align: right !important;
+        }
+        `)}
+        ` : ''}
 
         @media screen {
             body {
@@ -5239,7 +5448,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
 
         @media print {
             @page {
-                size: ${paperWidthMm}mm ${pageHeightMm}mm;
+                size: ${paperWidthMm}mm ${isA4 ? pageHeightMm + 'mm' : 'auto'};
                 margin: 0;
             }
             .no-print, .pdf-preview-toolbar {
@@ -5250,9 +5459,9 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
                 padding: 0 !important;
                 width: ${paperWidthMm}mm !important;
                 background: #ffffff !important;
-                font-family: Arial, Helvetica, sans-serif !important;
+                font-family: ${fontStack} !important;
                 font-size: ${bodyFontSizePt} !important;
-                line-height: 1.25 !important;
+                line-height: ${isThermal ? '1.2' : '1.25'} !important;
                 color: #000000 !important;
                 height: auto !important;
                 min-height: 0 !important;
@@ -5279,15 +5488,15 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
     <div class="no-print pdf-preview-toolbar">
         <div style="display: flex; align-items: center; gap: 10px;">
             <span style="background: #0284c7; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; text-transform: uppercase;">
-                ${isA4 ? 'PDF Document (' + contentWidthMm + ' mm)' : paperWidthMm + ' mm Roll'}
+                ${isPdfPreview && paperWidthMm === 500 ? '500 mm Thermal PDF (Preview / Test)' : (isA4 ? 'PDF Document (' + contentWidthMm + ' mm)' : paperWidthMm + ' mm Thermal Roll')}
             </span>
             <span style="font-size: 14px; font-weight: bold;">
-                ${docTitle} (${contentWidthMm}mm &bull; Left Aligned)
+                ${docTitle} (${contentWidthMm}mm &bull; ${isThermal ? 'Thermal Monospace' : 'Left Aligned'})
             </span>
         </div>
         <div style="display: flex; gap: 8px;">
             <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 5px;">
-                🖨️ Print / Save as PDF
+                🖨️ ${isPdfPreview ? 'Print / Save as PDF' : 'Print Receipt'}
             </button>
             <button type="button" onclick="window.close()" style="background: #475569; color: #fff; border: none; padding: 6px 12px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 13px;">
                 ✕ Close
@@ -5608,7 +5817,7 @@ function testPrintThermalPaidOrder(widthMm = 80) {
     executePOSPrintJob(html, true);
 }
 
-function testPrintPOS(format = 'pdfA4') {
+function testPrintPOS(format = 'thermal500') {
     if (format === 'thermal' || format === 'thermal80' || format === 'thermalPaidOrder') {
         testPrintThermalPaidOrder(80);
         return;
@@ -5617,13 +5826,18 @@ function testPrintPOS(format = 'pdfA4') {
         return;
     }
     const s = getPOSPrintSettings();
-    let isA4 = (format === 'pdfA4' || format === 'a4' || format === '210' || format === 'pdf' || format === 'pdf500');
-    let widthMm = getA4PrintWidthMm();
-    let rollMm = 210;
+    let isA4 = (format === 'pdfA4' || format === 'a4' || format === '210');
+    let isPdfPreview = (format === 'pdf500' || format === 'pdf' || format === 'pdfA4' || format === 'a4');
+    let widthMm = 450;
+    let rollMm = 500;
 
     if (isA4) {
         rollMm = 210;
         widthMm = getA4PrintWidthMm();
+    } else if (format === 'pdf500' || format === 'thermal500' || format === '500') {
+        rollMm = 500;
+        widthMm = 450;
+        isA4 = false;
     } else if (format === 'thermal400') {
         rollMm = 500;
         widthMm = 400;
@@ -5632,25 +5846,25 @@ function testPrintPOS(format = 'pdfA4') {
         widthMm = 240;
     } else if (format === 'custom') {
         rollMm = s.paperWidthMm || 500;
-        if (rollMm === 210 || rollMm <= 200) {
+        if (rollMm === 210 || (rollMm <= 200 && rollMm !== 80 && rollMm !== 58)) {
             isA4 = true;
             widthMm = (rollMm <= 200) ? rollMm : getA4PrintWidthMm();
         } else {
-            widthMm = (rollMm >= 500) ? 400 : Math.max(40, rollMm - 8);
+            widthMm = (rollMm >= 500) ? 450 : Math.max(40, rollMm - 8);
         }
     } else {
         rollMm = 500;
-        widthMm = 400;
+        widthMm = 450;
     }
 
-    let headerFontSizePt = (widthMm < 60) ? '8.5pt' : ((widthMm < 75) ? '10pt' : ((widthMm < 90) ? '11pt' : '12pt'));
+    let headerFontSizePt = (widthMm >= 400) ? '16pt' : ((widthMm < 60) ? '8.5pt' : ((widthMm < 75) ? '10pt' : ((widthMm < 90) ? '11pt' : '12pt')));
 
     const testContent = `
         <!-- 1. Store Header & Title -->
         <div style="text-align: left; margin-bottom: 8px; border-bottom: 1.5pt solid #000; padding-bottom: 6px; width: 100%;">
             <div class="pos-company-header" style="font-size: ${headerFontSizePt}; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: visible; color: #000;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
             <div style="font-size: 9.5pt; margin-top: 2px; color: #000;">Tel: 09612735733</div>
-            <div style="font-size: 10.5pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.3px; color: #000;">${isA4 ? 'PDF PRINT TEST (' + widthMm + ' MM WIDTH)' : 'THERMAL TEST (' + widthMm + ' MM / ' + rollMm + ' MM ROLL)'}</div>
+            <div style="font-size: 10.5pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.3px; color: #000;">${isPdfPreview && rollMm === 500 ? '500 MM THERMAL PDF PREVIEW TEST (' + widthMm + ' MM WIDTH / ' + rollMm + ' MM ROLL)' : (isA4 ? 'PDF PRINT TEST (' + widthMm + ' MM WIDTH)' : 'THERMAL TEST (' + widthMm + ' MM / ' + rollMm + ' MM ROLL)')}</div>
             <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; color: #000;">(CALIBRATED &bull; LEFT ALIGNED)</div>
         </div>
 
@@ -5716,13 +5930,15 @@ function testPrintPOS(format = 'pdfA4') {
 
         <!-- 4. Footer -->
         <div style="text-align: left; margin-top: 8px; border-top: 1pt dashed #000; padding-top: 6px; font-size: 9pt; line-height: 1.25; width: 100%;">
-            <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">*** ${isA4 ? 'PDF PRINT WIDTH CALIBRATED (' + widthMm + ' MM)' : widthMm + ' MM THERMAL PRINT CALIBRATED (' + rollMm + ' MM ROLL)'} ***</div>
+            <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">*** ${isPdfPreview && rollMm === 500 ? '500 MM THERMAL PDF PREVIEW (' + widthMm + ' MM WIDTH / ' + rollMm + ' MM ROLL)' : (isA4 ? 'PDF PRINT WIDTH CALIBRATED (' + widthMm + ' MM)' : widthMm + ' MM THERMAL PRINT CALIBRATED (' + rollMm + ' MM ROLL)')} ***</div>
             <div>Print layout is strictly read-only.</div>
             <div style="font-size: 8pt; color: #555; margin-top: 2px;">eConstruction Supply SaaS &bull; Point of Sale Print Engine</div>
         </div>
     `;
 
-    const title = isA4 ? `POS PDF Test (${widthMm}mm Width • Left-Aligned)` : `POS ${widthMm}mm Thermal Test (${rollMm}mm Roll)`;
+    const title = (format === 'pdf500' || (isPdfPreview && rollMm === 500))
+        ? `POS 500mm Thermal PDF Test (${widthMm}mm Width • Roll Preview)`
+        : (isA4 ? `POS PDF Test (${widthMm}mm Width • Left-Aligned)` : `POS ${widthMm}mm Thermal Test (${rollMm}mm Roll)`);
     const html = generatePOSPrintHTML(testContent, title, 'test', format);
     executePOSPrintJob(html, true);
 }
@@ -5731,44 +5947,49 @@ function testPrintA4PDF() {
     testPrintPOS('pdfA4');
 }
 
-function printPOSReceipt(format = 'thermal400') {
+function printPOSReceipt(format = null) {
     const printArea = document.getElementById('posPrintReceiptArea');
     if (!printArea) {
         alert('Receipt print area not found.');
         return;
     }
-    const title = (format === 'pdf500') ? 'Official Sales Receipt (400mm Thermal PDF)' : 'Official Sales Receipt (400mm Thermal)';
+    const isPdf = (format === 'pdf' || format === 'pdf500' || format === 'pdfA4');
+    const title = isPdf ? 'Official Sales Receipt (PDF)' : 'Official Sales Receipt (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'receipt', format);
     executePOSPrintJob(html, true);
 }
 
 function previewPOSReceiptPDF() {
-    printPOSReceipt('pdf500');
+    printPOSReceipt('pdfA4');
 }
 
-function printReturnSlip(format = 'thermal400') {
+function printReturnSlip(format = null) {
     const printArea = document.getElementById('posPrintReturnSlipArea');
     if (!printArea) {
         alert('Return slip print area not found.');
         return;
     }
-    const title = (format === 'pdf500') ? 'Official Return Slip (400mm Thermal PDF)' : 'Official Return Slip (400mm Thermal)';
+    const isPdf = (format === 'pdf' || format === 'pdf500' || format === 'pdfA4');
+    const title = isPdf ? 'Official Return Slip (PDF)' : 'Official Return Slip (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'return', format);
     executePOSPrintJob(html, true);
 }
 
 function previewPOSReturnPDF() {
-    printReturnSlip('pdf500');
+    printReturnSlip('pdfA4');
 }
 
-function printPOSPurchaseOrder(format = 'thermal400') {
+function printPOSPurchaseOrder(format = null) {
     const printArea = document.getElementById('posPrintPOArea');
     if (!printArea) {
         alert('Purchase Order print area not found.');
         return;
     }
-    const title = (format === 'pdf500') ? 'Purchase Order Voucher (400mm Thermal PDF)' : 'Purchase Order Voucher (400mm Thermal)';
-    const html = generatePOSPrintHTML(printArea.innerHTML, title, 'po', format);
+    const isPdf = (format === 'pdf' || format === 'pdf500' || format === 'pdfA4');
+    const title = (format === 'pdf500' || format === 'pdf')
+        ? 'Purchase Order Voucher (500mm Thermal PDF Preview)'
+        : (isPdf ? 'Purchase Order Voucher (PDF)' : 'Purchase Order Voucher (500mm Thermal Roll)');
+    const html = generatePOSPrintHTML(printArea.innerHTML, title, 'po', format || (isPdf ? 'pdf500' : '500'));
     executePOSPrintJob(html, true);
 }
 
