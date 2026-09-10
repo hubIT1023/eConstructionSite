@@ -78,6 +78,11 @@ if(isset($_POST['form1'])) {
 	<div class="container">
 		<div class="row">
 			<div class="col-md-12">
+                <?php if(isset($_SESSION['checkout_error'])): ?>
+                    <div class="alert alert-danger" style="border-radius: 6px; font-size: 14px; margin-bottom: 20px;">
+                        <i class="fa fa-exclamation-triangle"></i> <?php echo htmlspecialchars($_SESSION['checkout_error']); unset($_SESSION['checkout_error']); ?>
+                    </div>
+                <?php endif; ?>
 
                 <?php if(!isset($_SESSION['cart_p_id'])): ?>
                     <?php echo '<h2 class="text-center">Cart is Empty!!</h2></br>'; ?>

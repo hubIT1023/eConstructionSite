@@ -1,0 +1,286 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1480" width="100%" height="100%" style="background:#0b0f19; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="blueCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="amberCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#78350f"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="redCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7f1d1d"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="tealCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="indigoCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="greenCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#065f46"/>
+      <stop offset="100%" stop-color="#022c22"/>
+    </linearGradient>
+    
+    <!-- Filter for subtle drop shadows -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="glowBlue" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#38bdf8" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Background Grid lines -->
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.75" stroke-opacity="0.6"/>
+  </pattern>
+  <rect width="1200" height="1480" fill="#0b0f19"/>
+  <rect width="1200" height="1480" fill="url(#grid)"/>
+
+  <!-- ========================================== -->
+  <!-- HEADER BANNER                              -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 30)" filter="url(#shadow)">
+    <rect width="1120" height="110" rx="12" fill="url(#headerGrad)" stroke="#334155" stroke-width="1.5"/>
+    <!-- Icon Circle -->
+    <circle cx="65" cy="55" r="32" fill="#0284c7" fill-opacity="0.2" stroke="#38bdf8" stroke-width="2"/>
+    <text x="65" y="63" fill="#38bdf8" font-size="26" font-weight="900" text-anchor="middle">₱</text>
+    
+    <text x="115" y="48" fill="#f8fafc" font-size="22" font-weight="800" letter-spacing="0.5">POS ITEM DISCOUNT REQUEST &amp; PAYMENT COMPLETION LIFECYCLE</text>
+    <text x="115" y="74" fill="#94a3b8" font-size="13.5" font-weight="500">Standard Operating Procedure (SOP) • Amount-Based (₱) Calculation • Multi-Tier Approval • Payment Locking Interlock</text>
+    <rect x="980" y="38" width="105" height="34" rx="6" fill="#0369a1" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1.2"/>
+    <text x="1032" y="60" fill="#38bdf8" font-size="12" font-weight="700" text-anchor="middle">SOP v2.4</text>
+  </g>
+
+  <!-- ========================================== -->
+  <!-- STEP 1: CASHIER REQUEST IN ₱               -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 165)" filter="url(#shadow)">
+    <rect width="1120" height="150" rx="10" fill="url(#blueCardGrad)" stroke="#3b82f6" stroke-width="1.5"/>
+    <!-- Step Badge -->
+    <rect x="20" y="20" width="85" height="28" rx="6" fill="#2563eb"/>
+    <text x="62" y="39" fill="#ffffff" font-size="12.5" font-weight="800" text-anchor="middle">STEP 1</text>
+    
+    <text x="120" y="40" fill="#60a5fa" font-size="17" font-weight="800">CASHIER DISCOUNT REQUEST IN PESOS (₱)</text>
+    <text x="25" y="75" fill="#e2e8f0" font-size="13.5">
+      • Cashier selects item in POS cart &amp; clicks <tspan fill="#38bdf8" font-weight="700">"% Discount"</tspan> to open modal <tspan fill="#94a3b8">(#posDiscountModal)</tspan>.
+    </text>
+    <text x="25" y="98" fill="#e2e8f0" font-size="13.5">
+      • Enters discount as a <tspan fill="#facc15" font-weight="700">fixed Peso amount (₱)</tspan> with optional cashier remarks.
+    </text>
+
+    <!-- Formula Sub-box -->
+    <rect x="620" y="20" width="480" height="110" rx="6" fill="#0f172a" fill-opacity="0.85" stroke="#1e40af" stroke-width="1"/>
+    <text x="635" y="44" fill="#93c5fd" font-size="11.5" font-weight="700">AUTOMATIC REAL-TIME RECALCULATION FORMULAS:</text>
+    <text x="635" y="68" fill="#f8fafc" font-size="12.5" font-family="monospace">Gross Total = Unit Price × Quantity</text>
+    <text x="635" y="90" fill="#38bdf8" font-size="12.5" font-family="monospace">Equivalent % = (Requested ₱ ÷ Gross Total) × 100</text>
+    <text x="635" y="112" fill="#4ade80" font-size="12.5" font-family="monospace">Net Line Total = Gross Total - Requested ₱</text>
+  </g>
+
+  <!-- Flow Arrow 1 -->
+  <path d="M 600 315 L 600 345" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+  <circle cx="600" cy="330" r="4" fill="#38bdf8"/>
+
+  <!-- ========================================== -->
+  <!-- STEP 2: STORE POLICY TIER CLASSIFICATION   -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 350)" filter="url(#shadow)">
+    <rect width="1120" height="195" rx="10" fill="url(#headerGrad)" stroke="#475569" stroke-width="1.5"/>
+    
+    <!-- Step Badge -->
+    <rect x="20" y="20" width="85" height="28" rx="6" fill="#0284c7"/>
+    <text x="62" y="39" fill="#ffffff" font-size="12.5" font-weight="800" text-anchor="middle">STEP 2</text>
+    <text x="120" y="40" fill="#38bdf8" font-size="17" font-weight="800">AUTOMATED STORE POLICY TIER EVALUATION</text>
+
+    <!-- Branch 1: Normal -->
+    <g transform="translate(20, 60)">
+      <rect width="345" height="115" rx="8" fill="#0c4a6e" fill-opacity="0.4" stroke="#0284c7" stroke-width="1.2"/>
+      <rect x="12" y="12" width="130" height="22" rx="4" fill="#0284c7"/>
+      <text x="77" y="27" fill="#ffffff" font-size="11" font-weight="800" text-anchor="middle">NORMAL DISCOUNT</text>
+      <text x="12" y="55" fill="#f8fafc" font-size="13" font-weight="700">Threshold: ≤ Normal Max (10%)</text>
+      <text x="12" y="75" fill="#7dd3fc" font-size="12.5">Initial Status: <tspan fill="#38bdf8" font-weight="800">PENDING</tspan></text>
+      <text x="12" y="97" fill="#e2e8f0" font-size="11.5">Approver: <tspan fill="#facc15" font-weight="700">Supervisor OR Admin/Mgr</tspan></text>
+    </g>
+
+    <!-- Branch 2: Escalated -->
+    <g transform="translate(385, 60)">
+      <rect width="345" height="115" rx="8" fill="#78350f" fill-opacity="0.3" stroke="#d97706" stroke-width="1.2"/>
+      <rect x="12" y="12" width="145" height="22" rx="4" fill="#d97706"/>
+      <text x="84" y="27" fill="#ffffff" font-size="11" font-weight="800" text-anchor="middle">SPECIAL / ESCALATED</text>
+      <text x="12" y="55" fill="#f8fafc" font-size="13" font-weight="700">Threshold: &gt; 10% &amp; ≤ Absolute (20%)</text>
+      <text x="12" y="75" fill="#fde68a" font-size="12.5">Initial Status: <tspan fill="#fbbf24" font-weight="800">ESCALATED</tspan></text>
+      <text x="12" y="97" fill="#e2e8f0" font-size="11.5">Approver: <tspan fill="#f87171" font-weight="700">Admin / Manager ONLY</tspan></text>
+    </g>
+
+    <!-- Branch 3: Prohibited -->
+    <g transform="translate(750, 60)">
+      <rect width="350" height="115" rx="8" fill="#7f1d1d" fill-opacity="0.3" stroke="#ef4444" stroke-width="1.2"/>
+      <rect x="12" y="12" width="135" height="22" rx="4" fill="#dc2626"/>
+      <text x="79" y="27" fill="#ffffff" font-size="11" font-weight="800" text-anchor="middle">PROHIBITED TIER</text>
+      <text x="12" y="55" fill="#f8fafc" font-size="13" font-weight="700">Threshold: &gt; Absolute Max (&gt; 20%)</text>
+      <text x="12" y="75" fill="#fca5a5" font-size="12.5">System Action: <tspan fill="#ef4444" font-weight="800">HARD BLOCKED</tspan></text>
+      <text x="12" y="97" fill="#fca5a5" font-size="11.5">API Code: <tspan font-family="monospace">DISCOUNT_PROHIBITED</tspan></text>
+    </g>
+  </g>
+
+  <!-- Flow Arrow 2 -->
+  <path d="M 600 545 L 600 575" stroke="#f59e0b" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <circle cx="600" cy="560" r="4" fill="#f59e0b"/>
+
+  <!-- ========================================== -->
+  <!-- STEP 3: REAL-TIME PAYMENT LOCKING          -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 580)" filter="url(#shadow)">
+    <rect width="1120" height="165" rx="10" fill="url(#amberCardGrad)" stroke="#f59e0b" stroke-width="1.5"/>
+    
+    <!-- Step Badge -->
+    <rect x="20" y="20" width="85" height="28" rx="6" fill="#d97706"/>
+    <text x="62" y="39" fill="#ffffff" font-size="12.5" font-weight="800" text-anchor="middle">STEP 3</text>
+    <text x="120" y="40" fill="#fbbf24" font-size="17" font-weight="800">REAL-TIME POS PAYMENT LOCKING INTERLOCK</text>
+
+    <g transform="translate(25, 60)">
+      <!-- Warning Alert Box -->
+      <rect width="660" height="85" rx="6" fill="#451a03" fill-opacity="0.7" stroke="#b45309" stroke-width="1"/>
+      <text x="20" y="32" fill="#fbbf24" font-size="13.5" font-weight="700">⚠️ ACTIVE SECURITY INTERLOCK (#posPaymentLockedNotice):</text>
+      <text x="20" y="55" fill="#fef3c7" font-size="12.5">
+        • <tspan font-weight="700">Amount Tendered</tspan> input is disabled.
+      </text>
+      <text x="20" y="73" fill="#fef3c7" font-size="12.5">
+        • <tspan font-weight="700">"Complete Sale &amp; Print Receipt"</tspan> button is hard-locked with lock icon 🔒.
+      </text>
+    </g>
+
+    <!-- Cashier Options Box -->
+    <g transform="translate(710, 60)">
+      <rect width="385" height="85" rx="6" fill="#0f172a" fill-opacity="0.8" stroke="#64748b" stroke-width="1"/>
+      <text x="16" y="28" fill="#94a3b8" font-size="12" font-weight="700">CASHIER AVAILABLE ACTIONS:</text>
+      <text x="16" y="50" fill="#e2e8f0" font-size="12">Option A: <tspan fill="#60a5fa">Wait for Approver decision</tspan></text>
+      <text x="16" y="70" fill="#e2e8f0" font-size="12">Option B: <tspan fill="#f87171">Click "Cancel Discount" to unlock immediately</tspan></text>
+    </g>
+  </g>
+
+  <!-- Flow Arrow 3 -->
+  <path d="M 600 745 L 600 775" stroke="#10b981" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <circle cx="600" cy="760" r="4" fill="#10b981"/>
+
+  <!-- ========================================== -->
+  <!-- STEP 4: APPROVER DECISION                  -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 780)" filter="url(#shadow)">
+    <rect width="1120" height="195" rx="10" fill="url(#tealCardGrad)" stroke="#10b981" stroke-width="1.5"/>
+    
+    <!-- Step Badge -->
+    <rect x="20" y="20" width="85" height="28" rx="6" fill="#059669"/>
+    <text x="62" y="39" fill="#ffffff" font-size="12.5" font-weight="800" text-anchor="middle">STEP 4</text>
+    <text x="120" y="40" fill="#34d399" font-size="17" font-weight="800">APPROVER REVIEW &amp; DECISION (IN-POS MODAL OR AUDIT PORTAL)</text>
+
+    <!-- Action 1: Approve -->
+    <g transform="translate(20, 60)">
+      <rect width="345" height="115" rx="8" fill="#064e3b" fill-opacity="0.6" stroke="#10b981" stroke-width="1.2"/>
+      <rect x="12" y="12" width="130" height="22" rx="4" fill="#10b981"/>
+      <text x="77" y="27" fill="#ffffff" font-size="11" font-weight="800" text-anchor="middle">1. DIRECT APPROVE</text>
+      <text x="12" y="55" fill="#f8fafc" font-size="12.5" font-weight="700">Approves requested ₱ amount</text>
+      <text x="12" y="75" fill="#a7f3d0" font-size="12">Status: <tspan fill="#34d399" font-weight="800">APPROVED</tspan></text>
+      <text x="12" y="97" fill="#e2e8f0" font-size="11.5">Applies approved discount % to line</text>
+    </g>
+
+    <!-- Action 2: Modify -->
+    <g transform="translate(385, 60)">
+      <rect width="345" height="115" rx="8" fill="#1e3a8a" fill-opacity="0.4" stroke="#3b82f6" stroke-width="1.2"/>
+      <rect x="12" y="12" width="140" height="22" rx="4" fill="#2563eb"/>
+      <text x="82" y="27" fill="#ffffff" font-size="11" font-weight="800" text-anchor="middle">2. MODIFY IN PESOS (₱)</text>
+      <text x="12" y="55" fill="#f8fafc" font-size="12.5" font-weight="700">Approver enters revised ₱ disc</text>
+      <text x="12" y="75" fill="#93c5fd" font-size="12">Status: <tspan fill="#60a5fa" font-weight="800">APPROVED_MODIFIED</tspan></text>
+      <text x="12" y="97" fill="#e2e8f0" font-size="11.5">Recalculates approved % &amp; net price</text>
+    </g>
+
+    <!-- Action 3: Reject -->
+    <g transform="translate(750, 60)">
+      <rect width="350" height="115" rx="8" fill="#7f1d1d" fill-opacity="0.4" stroke="#ef4444" stroke-width="1.2"/>
+      <rect x="12" y="12" width="130" height="22" rx="4" fill="#dc2626"/>
+      <text x="77" y="27" fill="#ffffff" font-size="11" font-weight="800" text-anchor="middle">3. REJECT REQUEST</text>
+      <text x="12" y="55" fill="#f8fafc" font-size="12.5" font-weight="700">Approver enters required reason</text>
+      <text x="12" y="75" fill="#fca5a5" font-size="12">Status: <tspan fill="#f87171" font-weight="800">REJECTED</tspan></text>
+      <text x="12" y="97" fill="#e2e8f0" font-size="11.5">Line item reverts to standard price</text>
+    </g>
+  </g>
+
+  <!-- Flow Arrow 4 -->
+  <path d="M 600 975 L 600 1005" stroke="#6366f1" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <circle cx="600" cy="990" r="4" fill="#6366f1"/>
+
+  <!-- ========================================== -->
+  <!-- STEP 5: REAL-TIME POLLING SYNC             -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 1010)" filter="url(#shadow)">
+    <rect width="1120" height="155" rx="10" fill="url(#indigoCardGrad)" stroke="#6366f1" stroke-width="1.5"/>
+    
+    <!-- Step Badge -->
+    <rect x="20" y="20" width="85" height="28" rx="6" fill="#4f46e5"/>
+    <text x="62" y="39" fill="#ffffff" font-size="12.5" font-weight="800" text-anchor="middle">STEP 5</text>
+    <text x="120" y="40" fill="#a5b4fc" font-size="17" font-weight="800">REAL-TIME POLLING SYNCHRONIZATION &amp; CART UPDATE</text>
+
+    <text x="25" y="75" fill="#e2e8f0" font-size="13.5">
+      • POS background poller (<tspan font-family="monospace" fill="#818cf8">/supplier/pos-discount-api.php?action=poll_status</tspan>) checks active requests every <tspan fill="#facc15" font-weight="700">3.5 seconds</tspan>.
+    </text>
+    <text x="25" y="98" fill="#e2e8f0" font-size="13.5">
+      • Cart item badges update dynamically: <tspan fill="#4ade80" font-weight="700">Green (Approved)</tspan> or <tspan fill="#60a5fa" font-weight="700">Blue (Modified)</tspan>, original price struck-through.
+    </text>
+    <text x="25" y="121" fill="#e2e8f0" font-size="13.5">
+      • <tspan fill="#34d399" font-weight="800">PAYMENT UNLOCKED:</tspan> Once all cart items are resolved, <tspan fill="#fde68a">#posPaymentLockedNotice</tspan> clears and payment input unlocks automatically!
+    </text>
+  </g>
+
+  <!-- Flow Arrow 5 -->
+  <path d="M 600 1165 L 600 1195" stroke="#10b981" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <circle cx="600" cy="1180" r="4" fill="#10b981"/>
+
+  <!-- ========================================== -->
+  <!-- STEP 6: AUTHORITATIVE CHECKOUT & RECEIPT   -->
+  <!-- ========================================== -->
+  <g transform="translate(40, 1200)" filter="url(#shadow)">
+    <rect width="1120" height="230" rx="10" fill="url(#greenCardGrad)" stroke="#10b981" stroke-width="1.5"/>
+    
+    <!-- Step Badge -->
+    <rect x="20" y="20" width="85" height="28" rx="6" fill="#059669"/>
+    <text x="62" y="39" fill="#ffffff" font-size="12.5" font-weight="800" text-anchor="middle">STEP 6</text>
+    <text x="120" y="40" fill="#6ee7b7" font-size="17" font-weight="800">AUTHORITATIVE CHECKOUT FINALIZATION &amp; THERMAL RECEIPT</text>
+
+    <!-- Checklist column 1 -->
+    <g transform="translate(25, 65)">
+      <text x="0" y="18" fill="#f8fafc" font-size="13.5" font-weight="700">🔒 BACKEND SERVER VALIDATION &amp; AUDITING:</text>
+      <text x="15" y="42" fill="#d1fae5" font-size="13">• Cashier tenders cash &amp; submits <tspan font-family="monospace" fill="#6ee7b7">POST complete_sale</tspan>.</text>
+      <text x="15" y="65" fill="#d1fae5" font-size="13">• Server re-verifies <tspan font-family="monospace" fill="#6ee7b7">tbl_discount_requests</tspan> (Blocks sale if any discount is pending).</text>
+      <text x="15" y="88" fill="#d1fae5" font-size="13">• Database linkage: <tspan font-family="monospace" fill="#6ee7b7">tbl_discount_requests.payment_id = payment_id</tspan>.</text>
+      <text x="15" y="111" fill="#d1fae5" font-size="13">• Creates records in <tspan font-family="monospace" fill="#6ee7b7">tbl_payment</tspan> &amp; <tspan font-family="monospace" fill="#6ee7b7">tbl_order</tspan>, decrements shelf inventory.</text>
+    </g>
+
+    <!-- Thermal Receipt Preview Card -->
+    <g transform="translate(730, 20)">
+      <rect width="365" height="190" rx="6" fill="#ffffff" filter="url(#shadow)"/>
+      <text x="182" y="26" fill="#0f172a" font-size="12" font-weight="800" text-anchor="middle">*** THERMAL RECEIPT PREVIEW ***</text>
+      <line x1="20" y1="36" x2="345" y2="36" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3 3"/>
+      
+      <text x="25" y="56" fill="#334155" font-size="11.5" font-family="monospace">Deformed Steel Bar 10mm (x2)   ₱500.00</text>
+      <text x="40" y="74" fill="#16a34a" font-size="11.5" font-family="monospace" font-weight="700">Discount Approved (10.0%)     -₱50.00</text>
+      <text x="25" y="92" fill="#334155" font-size="11.5" font-family="monospace">Portland Cement 40kg (x1)      ₱200.00</text>
+      
+      <line x1="20" y1="102" x2="345" y2="102" stroke="#cbd5e1" stroke-width="1"/>
+      
+      <text x="25" y="120" fill="#475569" font-size="11.5" font-family="monospace">GROSS SUB-TOTAL:               ₱700.00</text>
+      <text x="25" y="138" fill="#16a34a" font-size="12" font-family="monospace" font-weight="800">TOTAL DISCOUNT SAVINGS:       -₱50.00</text>
+      <text x="25" y="158" fill="#0f172a" font-size="13" font-family="monospace" font-weight="900">NET GRAND TOTAL:               ₱650.00</text>
+      <text x="25" y="176" fill="#475569" font-size="11.5" font-family="monospace">AMOUNT TENDERED: ₱700.00 | CHANGE: ₱50.00</text>
+    </g>
+  </g>
+
+</svg>

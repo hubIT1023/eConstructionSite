@@ -27,6 +27,11 @@ if(!isset($_SESSION['cart_p_id'])) {
     <div class="container">
         <div class="row">
             <div class="col-md-12">
+                <?php if(isset($_SESSION['checkout_error'])): ?>
+                    <div class="alert alert-danger" style="border-radius: 6px; font-size: 14px; margin-bottom: 20px;">
+                        <i class="fa fa-exclamation-triangle"></i> <?php echo htmlspecialchars($_SESSION['checkout_error']); unset($_SESSION['checkout_error']); ?>
+                    </div>
+                <?php endif; ?>
                 
                 <?php if(!isset($_SESSION['customer'])): ?>
                     <p>
@@ -183,7 +188,11 @@ if(!isset($_SESSION['cart_p_id'])) {
                             }
                         }
                         if (empty($cart_supplier_ids)) {
-                            $cart_supplier_ids = [1];
+                            if (isset($_SESSION['supplier_id']) && (int)$_SESSION['supplier_id'] > 0) {
+                                $cart_supplier_ids = [(int)$_SESSION['supplier_id']];
+                            } else {
+                                $cart_supplier_ids = [1];
+                            }
                         }
 
                         // Calculate total delivery cost across suppliers
@@ -413,6 +422,13 @@ if(!isset($_SESSION['cart_p_id'])) {
                                         $cart_supplier_ids[] = $p_row['supplier_id'];
                                     }
                                 }
+                                if (empty($cart_supplier_ids)) {
+                                    if (isset($_SESSION['supplier_id']) && (int)$_SESSION['supplier_id'] > 0) {
+                                        $cart_supplier_ids = [(int)$_SESSION['supplier_id']];
+                                    } else {
+                                        $cart_supplier_ids = [1];
+                                    }
+                                }
 
                                 $cart_suppliers = [];
                                 foreach ($cart_supplier_ids as $sup_id) {
@@ -490,10 +506,40 @@ if(!isset($_SESSION['cart_p_id'])) {
                                              <?php endforeach; ?>
                                          </div>
 
-                                         <div class="col-md-12 form-group" style="margin-top: 10px;">
-                                             <input type="submit" class="btn btn-primary" value="Send Purchase Order" name="form_otc" style="background-color: #0284c7; border-color: #0284c7; font-size: 16px; padding: 10px 20px;">
-                                         </div>
-                                     </form>
+                                          <div class="col-md-12 form-group" style="margin-top: 10px;">
+                                              <input type="submit"
+                                                     class="btn btn-primary"
+                                                     id="btn_send_po"
+                                                     style="background-color: #0284c7;
+                                                            border-color: #0284c7;
+                                                            font-size: 16px;
+                                                            padding: 10px 20px;"
+                                                     value="Send Purchase Order"
+                                                     name="form_otc">
+                                          </div>
+                                      </form>
+
+                                      <script>
+                                      document.addEventListener('DOMContentLoaded', function() {
+                                          var otcForm = document.getElementById('otc_form');
+                                          if (otcForm) {
+                                              var isSubmitting = false;
+                                              otcForm.addEventListener('submit', function(e) {
+                                                  if (isSubmitting) {
+                                                      e.preventDefault();
+                                                      return false;
+                                                  }
+                                                  isSubmitting = true;
+                                                  var btn = document.getElementById('btn_send_po');
+                                                  if (btn) {
+                                                      btn.value = 'Submitting Purchase Order...';
+                                                      btn.style.opacity = '0.7';
+                                                      btn.style.cursor = 'not-allowed';
+                                                  }
+                                              });
+                                          }
+                                      });
+                                      </script>
 
                                      <script>
                                      function updateDeliveryOption() {

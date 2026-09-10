@@ -19,6 +19,7 @@
 								<th>Business Contact</th>
 								<th>Address</th>
 								<th>SaaS Subscription Plan</th>
+								<th>Storage & Data Usage</th>
 								<th>Platform Commission (%)</th>
 								<th>Status</th>
 								<th>Joined Date</th>
@@ -33,6 +34,9 @@
 							$result = $statement->fetchAll(PDO::FETCH_ASSOC);
 							foreach ($result as $row) {
 								$i++;
+                                $storage = get_tenant_storage_stats($pdo, $row['supplier_id']);
+                                $s_pct = $storage['used_pct'];
+                                $s_bar_color = ($s_pct >= 90) ? 'progress-bar-danger' : (($s_pct >= 70) ? 'progress-bar-warning' : 'progress-bar-success');
 								?>
 								<tr>
 									<td><?php echo $i; ?></td>
@@ -54,6 +58,22 @@
                                         ?>
                                         <span class="label label-warning" style="background-color: #F59E0B; font-weight: bold;"><?php echo htmlspecialchars($row['supplier_plan']); ?></span><br>
                                         <small style="color: #64748b; font-weight: 600;"><i class="fa fa-users"></i> <?php echo $pos_count; ?> / <?php echo $max_u; ?> POS Users</small>
+                                    </td>
+									<td style="min-width: 170px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                            <strong style="color: #1e293b; font-size: 13px;"><?php echo htmlspecialchars($storage['formatted_usage']); ?></strong>
+                                            <span class="label <?php echo ($s_pct >= 90) ? 'label-danger' : (($s_pct >= 70) ? 'label-warning' : 'label-success'); ?>" style="font-size: 10px; padding: 2px 5px;">
+                                                <?php echo $s_pct; ?>%
+                                            </span>
+                                        </div>
+                                        <div class="progress progress-xs" style="margin: 0 0 4px 0; background: #e2e8f0; height: 6px; border-radius: 3px;">
+                                            <div class="progress-bar <?php echo $s_bar_color; ?>" style="width: <?php echo max(2, $s_pct); ?>%"></div>
+                                        </div>
+                                        <div style="font-size: 11px; color: #64748b; line-height: 1.3;">
+                                            <div><i class="fa fa-file-image-o text-info"></i> Media: <strong><?php echo $storage['formatted_file_usage']; ?></strong> (<?php echo $storage['total_files']; ?> files)</div>
+                                            <div><i class="fa fa-database text-warning"></i> Data: <strong><?php echo $storage['formatted_db_usage']; ?></strong> (<?php echo $storage['db_records_total']; ?> rows)</div>
+                                            <div style="color: #059669; font-weight: 600;"><i class="fa fa-hdd-o"></i> Quota: <?php echo htmlspecialchars($storage['formatted_max']); ?></div>
+                                        </div>
                                     </td>
 									<td><strong><?php echo htmlspecialchars($row['supplier_commission']); ?>%</strong></td>
 									<td>

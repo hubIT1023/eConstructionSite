@@ -3,6 +3,7 @@ ob_start();
 session_start();
 include("../../admin/inc/config.php");
 include("../../admin/inc/functions.php");
+ensure_supplier_user_schema($pdo);
 
 // Getting all language variables into array as global variable
 $i=1;
@@ -15,10 +16,20 @@ foreach ($result as $row) {
 }
 
 if( !isset($_REQUEST['msg']) ) {
-    if (empty($_SESSION['cart_p_id'])) {
+    if (empty($_SESSION['cart_p_id']) || !isset($_SESSION['customer'])) {
+        $_SESSION['checkout_error'] = "Purchase Order submission was unsuccessful. Please review your order and try again.";
         header('location: ../../checkout.php');
         exit;
     }
+
+    // Server-side Duplicate Submission Protection
+    $cart_sig = md5(serialize($_SESSION['cart_p_id']) . serialize($_SESSION['cart_p_qty']) . (isset($_SESSION['customer']['cust_id']) ? $_SESSION['customer']['cust_id'] : '0'));
+    if (isset($_SESSION['last_otc_submission_hash']) && $_SESSION['last_otc_submission_hash'] === $cart_sig && isset($_SESSION['last_otc_submission_time']) && (time() - $_SESSION['last_otc_submission_time']) < 15) {
+        header('location: ../../customer-order.php');
+        exit;
+    }
+    $_SESSION['last_otc_submission_hash'] = $cart_sig;
+    $_SESSION['last_otc_submission_time'] = time();
 
     $payment_date = date('Y-m-d H:i:s');
     $otc_delivery_option = isset($_POST['otc_delivery_option']) ? $_POST['otc_delivery_option'] : 'exclude';
@@ -51,10 +62,17 @@ if( !isset($_REQUEST['msg']) ) {
     foreach($_SESSION['cart_p_id'] as $key => $value) {
         $i++;
         $p_id = $value;
-        $statement_sup = $pdo->prepare("SELECT supplier_id FROM tbl_product WHERE p_id=?");
-        $statement_sup->execute(array($p_id));
-        $p_row = $statement_sup->fetch(PDO::FETCH_ASSOC);
-        $sup_id = $p_row ? $p_row['supplier_id'] : 1; // Fallback to 1
+        $sup_id = 1;
+        if ($p_id > 0) {
+            $statement_sup = $pdo->prepare("SELECT supplier_id FROM tbl_product WHERE p_id=?");
+            $statement_sup->execute(array($p_id));
+            $p_row = $statement_sup->fetch(PDO::FETCH_ASSOC);
+            if ($p_row && !empty($p_row['supplier_id'])) {
+                $sup_id = (int)$p_row['supplier_id'];
+            }
+        } elseif (isset($_SESSION['supplier_id']) && (int)$_SESSION['supplier_id'] > 0) {
+            $sup_id = (int)$_SESSION['supplier_id'];
+        }
 
         if (!isset($supplier_cart[$sup_id])) {
             $supplier_cart[$sup_id] = [];
@@ -83,9 +101,24 @@ if( !isset($_REQUEST['msg']) ) {
     // Process order for each supplier
     $created_payment_ids = [];
     foreach ($supplier_cart as $sup_id => $items) {
-        $payment_id = 'PO-' . date('Ymd') . '-' . rand(1000, 9999);
-        $txnid = $payment_id;
-        $created_payment_ids[] = $payment_id;
+        // Check if completing an existing Purchase Order sent from supplier/checkout.php
+        $existing_po_id = isset($_SESSION['current_po_id']) ? $_SESSION['current_po_id'] : null;
+        $existing_payment = null;
+        if ($existing_po_id) {
+            $stmt_chk = $pdo->prepare("SELECT id, payment_id, supplier_id, paid_amount FROM tbl_payment WHERE payment_id = ? AND supplier_id = ?");
+            $stmt_chk->execute(array($existing_po_id, $sup_id));
+            $existing_payment = $stmt_chk->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if ($existing_payment) {
+            $payment_id = $existing_payment['payment_id'];
+            $txnid = $payment_id;
+            $created_payment_ids[] = $payment_id;
+        } else {
+            $payment_id = 'PO-' . date('Ymd') . '-' . rand(1000, 9999);
+            $txnid = $payment_id;
+            $created_payment_ids[] = $payment_id;
+        }
         
         // Calculate subtotal for this supplier
         $sup_subtotal = 0;
@@ -132,45 +165,109 @@ if( !isset($_REQUEST['msg']) ) {
         $statement_sup_info->execute(array($sup_id));
         $supplier = $statement_sup_info->fetch(PDO::FETCH_ASSOC);
 
-        // Insert into tbl_payment
-        $statement = $pdo->prepare("INSERT INTO tbl_payment (   
-                                customer_id,
-                                customer_name,
-                                customer_email,
-                                payment_date,
-                                txnid, 
-                                paid_amount,
-                                card_number,
-                                card_cvv,
-                                card_month,
-                                card_year,
-                                bank_transaction_info,
-                                payment_method,
-                                payment_status,
-                                shipping_status,
+        if ($existing_payment) {
+            // Update existing payment record without inserting duplicates
+            $statement = $pdo->prepare("UPDATE tbl_payment SET 
+                                    customer_id = ?,
+                                    customer_name = ?,
+                                    customer_email = ?,
+                                    payment_date = ?,
+                                    paid_amount = ?,
+                                    bank_transaction_info = ?,
+                                    payment_method = 'Over the Counter',
+                                    payment_status = 'Awaiting for Payment',
+                                    shipping_status = 'Pending'
+                                    WHERE id = ?");
+            $statement->execute(array(
+                $_SESSION['customer']['cust_id'],
+                $_SESSION['customer']['cust_name'],
+                $_SESSION['customer']['cust_email'],
+                $payment_date,
+                number_format($sup_total, 2, '.', ''),
+                $order_note,
+                $existing_payment['id']
+            ));
+        } else {
+            // Insert into tbl_payment for new order
+            $statement = $pdo->prepare("INSERT INTO tbl_payment (   
+                                    customer_id,
+                                    customer_name,
+                                    customer_email,
+                                    payment_date,
+                                    txnid, 
+                                    paid_amount,
+                                    card_number,
+                                    card_cvv,
+                                    card_month,
+                                    card_year,
+                                    bank_transaction_info,
+                                    payment_method,
+                                    payment_status,
+                                    shipping_status,
+                                    payment_id,
+                                    supplier_id
+                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            $statement->execute(array(
+                                    $_SESSION['customer']['cust_id'],
+                                    $_SESSION['customer']['cust_name'],
+                                    $_SESSION['customer']['cust_email'],
+                                    $payment_date,
+                                    $txnid,
+                                    number_format($sup_total, 2, '.', ''),
+                                    '', 
+                                    '',
+                                    '', 
+                                    '',
+                                    $order_note,
+                                    'Over the Counter',
+                                    'Awaiting for Payment',
+                                    'Pending',
+                                    $payment_id,
+                                    $sup_id
+                                ));
+
+            // Insert into tbl_order and update stock for new order
+            foreach ($items as $item) {
+                $statement = $pdo->prepare("INSERT INTO tbl_order (
+                                product_id,
+                                product_name,
+                                size, 
+                                color,
+                                quantity, 
+                                unit_price, 
                                 payment_id,
-                                supplier_id
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        $statement->execute(array(
-                                $_SESSION['customer']['cust_id'],
-                                $_SESSION['customer']['cust_name'],
-                                $_SESSION['customer']['cust_email'],
-                                $payment_date,
-                                $txnid,
-                                $sup_total,
-                                '', 
-                                '',
-                                '', 
-                                '',
-                                $order_note,
-                                'Over the Counter',
-                                'Awaiting for Payment',
-                                'Pending',
+                                supplier_id,
+                                item_type
+                                ) 
+                                VALUES (?,?,?,?,?,?,?,?,?)");
+                $statement->execute(array(
+                                $item['p_id'],
+                                $item['p_name'],
+                                $item['size'],
+                                $item['color'],
+                                strval($item['qty']),
+                                strval($item['price']),
                                 $payment_id,
-                                $sup_id
+                                $sup_id,
+                                'STANDARD'
                             ));
 
-        // Insert into tbl_order and update stock
+                // Update Stock
+                if ($item['p_id'] > 0) {
+                    $current_qty = 0;
+                    for($j=0; $j<count($arr_p_id); $j++) {
+                        if($arr_p_id[$j] == $item['p_id']) {
+                            $current_qty = $arr_p_qty[$j];
+                            break;
+                        }
+                    }
+                    $final_quantity = max(0, $current_qty - $item['qty']);
+                    $statement = $pdo->prepare("UPDATE tbl_product SET p_qty=? WHERE p_id=?");
+                    $statement->execute(array($final_quantity, $item['p_id']));
+                }
+            }
+        }
+
         $order_list_html = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
                                 <thead>
                                     <tr>
@@ -185,38 +282,6 @@ if( !isset($_REQUEST['msg']) ) {
                                 <tbody>';
 
         foreach ($items as $item) {
-            $statement = $pdo->prepare("INSERT INTO tbl_order (
-                            product_id,
-                            product_name,
-                            size, 
-                            color,
-                            quantity, 
-                            unit_price, 
-                            payment_id
-                            ) 
-                            VALUES (?,?,?,?,?,?,?)");
-            $statement->execute(array(
-                            $item['p_id'],
-                            $item['p_name'],
-                            $item['size'],
-                            $item['color'],
-                            $item['qty'],
-                            $item['price'],
-                            $payment_id
-                        ));
-
-            // Update Stock
-            $current_qty = 0;
-            for($j=0; $j<count($arr_p_id); $j++) {
-                if($arr_p_id[$j] == $item['p_id']) {
-                    $current_qty = $arr_p_qty[$j];
-                    break;
-                }
-            }
-            $final_quantity = $current_qty - $item['qty'];
-            $statement = $pdo->prepare("UPDATE tbl_product SET p_qty=? WHERE p_id=?");
-            $statement->execute(array($final_quantity, $item['p_id']));
-
             $item_subtotal = $item['price'] * $item['qty'];
             $order_list_html .= '<tr>
                                     <td>' . htmlspecialchars($item['p_name']) . '</td>
@@ -294,9 +359,11 @@ if( !isset($_REQUEST['msg']) ) {
     unset($_SESSION['cart_p_current_price']);
     unset($_SESSION['cart_p_name']);
     unset($_SESSION['cart_p_featured_photo']);
+    unset($_SESSION['current_po_id']);
 
     $_SESSION['last_po_ids'] = $created_payment_ids;
-    header('location: ../../purchase-order-receipt.php?order_id=' . urlencode(implode(',', $created_payment_ids)));
+    $_SESSION['po_success_message'] = "Your Purchase Order (Reference: " . implode(', ', $created_payment_ids) . ") has been submitted successfully! Please proceed to the store to settle payment and claim your items.";
+    header('location: ../../customer-order.php');
     exit;
 }
 ?>

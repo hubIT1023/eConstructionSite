@@ -1,10 +1,40 @@
-# Environment configuration files
-.env
+# ==============================================================================
+# eConstruction Supply - Production-Safe .gitignore
+# ==============================================================================
 
-# Composer dependencies (if any added later)
+# Environment & Secrets (NEVER commit real credentials)
+.env
+.env.*
+*.env
+
+# Application Logs & Runtime Files
+*.log
+emails.log
+deployments.log
+
+# Diagnostics, Transcripts & Development Scratch
+scratch/
+transcript*.jsonl
+local_*.txt
+droplet_*.txt
+
+# Archive, Backup & Dump Files
+*.tar.gz
+*.sql.gz
+*.bak
+*.backup
+backups/
+
+# Vendor Dependencies (if Composer is added later)
 /vendor/
 
-# IDE and Editor directories
+# Temporary & Cache Directories
+/cache/
+/tmp/
+caddy_data/
+caddy_config/
+
+# IDE & OS Generated Files
 .idea/
 .vscode/
 *.suo
@@ -12,8 +42,5 @@
 *.njsproj
 *.sln
 *.swp
-
-# Docker data/logs (if created locally)
-caddy_data/
-caddy_config/
-*.log
+.DS_Store
+Thumbs.db

@@ -287,9 +287,10 @@ foreach ($result as $row) {
 				<ul>
 					
 					<?php
-					if(isset($_SESSION['customer'])) {
+					$is_authenticated_customer = isset($_SESSION['customer']) && !empty($_SESSION['customer']['cust_id']) && ((int)$_SESSION['customer']['cust_id'] > 0);
+					if($is_authenticated_customer) {
 						?>
-						<li><i class="fa fa-user"></i> <?php echo LANG_VALUE_13; ?> <?php echo $_SESSION['customer']['cust_name']; ?></li>
+						<li><i class="fa fa-user"></i> <?php echo LANG_VALUE_13; ?> <?php echo htmlspecialchars($_SESSION['customer']['cust_name']); ?></li>
 						<li><a href="dashboard.php"><i class="fa fa-home"></i> <?php echo LANG_VALUE_89; ?></a></li>
 						<?php
 					} else {
@@ -394,7 +395,7 @@ foreach ($result as $row) {
 							<li><a href="about.php">About</a></li>
 							<li><a href="contact.php">Contact</a></li>
 							<li><a href="cart.php">Cart</a></li>
-							<?php if(isset($_SESSION['customer'])): ?>
+							<?php if(isset($_SESSION['customer']) && !empty($_SESSION['customer']['cust_id']) && ((int)$_SESSION['customer']['cust_id'] > 0)): ?>
 								<li><a href="dashboard.php">Dashboard</a></li>
 							<?php else: ?>
 								<li><a href="login.php">Login</a></li>

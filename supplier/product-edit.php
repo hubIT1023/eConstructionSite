@@ -124,21 +124,63 @@ if(isset($_POST['form1'])) {
             }            
         }
 
-        $p_capital_price = isset($_POST['p_capital_price']) ? trim($_POST['p_capital_price']) : '';
-        $p_markup = (isset($_POST['p_markup']) && trim($_POST['p_markup']) !== '') ? trim($_POST['p_markup']) : '20';
-        $clean_markup = floatval(preg_replace('/[^0-9.]/', '', strval($p_markup)));
-        if ($clean_markup <= 0) $clean_markup = 20;
+        // 1. Authoritative existing values from DB record & inputs
+        $existing_c_price = floatval(preg_replace('/[^0-9.]/', '', strval($product['p_current_price'])));
+        $orig_q = max(0, intval(preg_replace('/[^0-9]/', '', strval($_POST['p_qty']))));
+        $orig_nq = isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '' ? max(0, intval($_POST['p_new_qty'])) : 0;
+        $s_level = isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '' ? max(0, intval($_POST['p_s_level'])) : 10;
 
-        $submitted_new_price = (isset($_POST['p_new_price']) && $_POST['p_new_price'] !== '') ? $_POST['p_new_price'] : $_POST['p_current_price'];
+        // 2. Parse & sanitize Capital Price (Ca) and Mark-Up (₱)
+        $ca_input = isset($_POST['p_capital_price']) ? trim($_POST['p_capital_price']) : '0';
+        $p_capital_price_val = max(0, floatval(preg_replace('/[^0-9.]/', '', strval($ca_input))));
 
-        if ($p_capital_price === '' || floatval(preg_replace('/[^0-9.]/', '', strval($p_capital_price))) <= 0) {
-            $effective_np = !empty($submitted_new_price) ? floatval(preg_replace('/[^0-9.]/', '', strval($submitted_new_price))) : floatval(preg_replace('/[^0-9.]/', '', strval($_POST['p_current_price'])));
-            if ($effective_np > 0) {
-                $p_capital_price = number_format(round($effective_np / (1 + ($clean_markup / 100)), 2), 2, '.', '');
-            } else {
-                $p_capital_price = '0.00';
-            }
+        $mu_input = isset($_POST['p_markup']) ? trim($_POST['p_markup']) : '0';
+        $p_markup_val = max(0, floatval(preg_replace('/[^0-9.]/', '', strval($mu_input))));
+
+        // 3. New Price (N): Ca + Mark-Up, or manual custom price if provided
+        $default_n_price = round($p_capital_price_val + $p_markup_val, 2);
+        $np_input = isset($_POST['p_new_price']) ? trim($_POST['p_new_price']) : '';
+        if ($np_input !== '' && is_numeric(preg_replace('/[^0-9.]/', '', $np_input))) {
+            $submitted_np = max(0, floatval(preg_replace('/[^0-9.]/', '', $np_input)));
+            $n_price_val = ($submitted_np > 0) ? $submitted_np : $default_n_price;
+        } else {
+            $n_price_val = $default_n_price;
         }
+
+        // 4. Evaluate Price Rules (using original Q and original NQ)
+        // Priority 1: IF Q < 6 AND NQ > 5 -> C = N
+        // Priority 2: ELSE IF C < N AND Q < 5 AND NQ > 5 -> C = N
+        // Priority 3: ELSE IF C > N AND Q > 5 -> C remains unchanged (C = C)
+        // Default: ELSE -> C remains unchanged (or initial N if C <= 0)
+        if ($orig_q < 6 && $orig_nq > 5) {
+            $final_current_price_val = $n_price_val;
+        } elseif ($existing_c_price < $n_price_val && $orig_q < 5 && $orig_nq > 5) {
+            $final_current_price_val = $n_price_val;
+        } elseif ($existing_c_price > $n_price_val && $orig_q > 5) {
+            $final_current_price_val = $existing_c_price;
+        } else {
+            $final_current_price_val = ($existing_c_price > 0) ? $existing_c_price : $n_price_val;
+        }
+
+        // 5. Evaluate Inventory Quantity Update Rule
+        // Strictly: IF Q < 2 AND NQ > 1 -> Q = Q + NQ, NQ = 0
+        // Otherwise (Q >= 2 or NQ <= 1) -> Q = Q, NQ = NQ
+        if ($orig_q < 2 && $orig_nq > 1) {
+            $final_q_val = $orig_q + $orig_nq;
+            $final_nq_val = 0;
+        } else {
+            $final_q_val = $orig_q;
+            $final_nq_val = $orig_nq;
+        }
+
+        // Format for database storage
+        $p_capital_price = number_format($p_capital_price_val, 2, '.', '');
+        $p_markup = number_format($p_markup_val, 2, '.', '');
+        $p_new_price = number_format($n_price_val, 2, '.', '');
+        $p_current_price = number_format($final_current_price_val, 2, '.', '');
+        $p_qty_save = strval($final_q_val);
+        $p_new_qty_save = $final_nq_val;
+        $p_s_level_save = $s_level;
 
         if($path == '') {
         	$statement = $pdo->prepare("UPDATE tbl_product SET 
@@ -170,8 +212,8 @@ if(isset($_POST['form1'])) {
         	$statement->execute(array(
         							$_POST['p_name'],
         							$_POST['p_old_price'],
-        							$_POST['p_current_price'],
-        							$_POST['p_qty'],
+        							$p_current_price,
+        							$p_qty_save,
         							$_POST['p_description'],
         							$_POST['p_short_description'],
         							$_POST['p_feature'],
@@ -186,9 +228,9 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_delivery_estimate'],
                                     $_POST['p_pdf'],
                                     $_POST['p_sku'],
-                                    $submitted_new_price,
-                                    (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
-                                    (isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '') ? intval($_POST['p_s_level']) : 10,
+                                    $p_new_price,
+                                    $p_new_qty_save,
+                                    $p_s_level_save,
                                     $p_capital_price,
                                     $p_markup,
         							$_REQUEST['id']
@@ -230,8 +272,8 @@ if(isset($_POST['form1'])) {
         	$statement->execute(array(
         							$_POST['p_name'],
         							$_POST['p_old_price'],
-        							$_POST['p_current_price'],
-        							$_POST['p_qty'],
+        							$p_current_price,
+        							$p_qty_save,
         							$final_name,
         							$_POST['p_description'],
         							$_POST['p_short_description'],
@@ -247,9 +289,9 @@ if(isset($_POST['form1'])) {
                                     $_POST['p_delivery_estimate'],
                                     $_POST['p_pdf'],
                                     $_POST['p_sku'],
-                                    $submitted_new_price,
-                                    (isset($_POST['p_new_qty']) && $_POST['p_new_qty'] !== '') ? intval($_POST['p_new_qty']) : 0,
-                                    (isset($_POST['p_s_level']) && $_POST['p_s_level'] !== '') ? intval($_POST['p_s_level']) : 10,
+                                    $p_new_price,
+                                    $p_new_qty_save,
+                                    $p_s_level_save,
                                     $p_capital_price,
                                     $p_markup,
         							$_REQUEST['id']
@@ -294,21 +336,26 @@ if(isset($_POST['form1'])) {
 $p_name = $product['p_name'];
 $p_old_price = $product['p_old_price'];
 $p_current_price = $product['p_current_price'];
-$p_new_price = isset($product['p_new_price']) ? $product['p_new_price'] : '';
 $p_capital_price = isset($product['p_capital_price']) ? $product['p_capital_price'] : '';
-$p_markup = (isset($product['p_markup']) && $product['p_markup'] !== null && $product['p_markup'] !== '') ? $product['p_markup'] : '20';
-if ($p_markup === '') {
-    $p_markup = '20';
-}
-$clean_mu_calc = floatval(preg_replace('/[^0-9.]/', '', strval($p_markup)));
-if ($clean_mu_calc <= 0) $clean_mu_calc = 20;
+$p_markup = (isset($product['p_markup']) && $product['p_markup'] !== null && $product['p_markup'] !== '') ? $product['p_markup'] : '';
 
-if (empty($p_capital_price) || floatval(preg_replace('/[^0-9.]/', '', strval($p_capital_price))) <= 0) {
-    $eff_np_calc = !empty($p_new_price) ? floatval(preg_replace('/[^0-9.]/', '', strval($p_new_price))) : floatval(preg_replace('/[^0-9.]/', '', strval($p_current_price)));
-    if ($eff_np_calc > 0) {
-        $p_capital_price = number_format(round($eff_np_calc / (1 + ($clean_mu_calc / 100)), 2), 2, '.', '');
-    }
+$clean_cp = floatval(preg_replace('/[^0-9.]/', '', strval($p_current_price)));
+$clean_ca = ($p_capital_price !== '') ? floatval(preg_replace('/[^0-9.]/', '', strval($p_capital_price))) : 0;
+$clean_mu = ($p_markup !== '') ? floatval(preg_replace('/[^0-9.]/', '', strval($p_markup))) : 0;
+
+if ($clean_ca <= 0 && $clean_cp > 0) {
+    $clean_ca = round($clean_cp * 0.8, 2);
+    $clean_mu = round($clean_cp - $clean_ca, 2);
+    $p_capital_price = number_format($clean_ca, 2, '.', '');
+    $p_markup = number_format($clean_mu, 2, '.', '');
+} elseif ($clean_mu <= 0 && $clean_ca > 0 && $clean_cp >= $clean_ca) {
+    $clean_mu = round($clean_cp - $clean_ca, 2);
+    $p_markup = number_format($clean_mu, 2, '.', '');
 }
+
+$clean_np = round($clean_ca + $clean_mu, 2);
+$p_new_price = (isset($product['p_new_price']) && floatval(preg_replace('/[^0-9.]/', '', strval($product['p_new_price']))) > 0) ? number_format(floatval(preg_replace('/[^0-9.]/', '', strval($product['p_new_price']))), 2, '.', '') : number_format($clean_np, 2, '.', '');
+$p_current_price = number_format($clean_cp, 2, '.', '');
 $p_qty = $product['p_qty'];
 $p_new_qty = isset($product['p_new_qty']) ? $product['p_new_qty'] : 0;
 $p_s_level = isset($product['p_s_level']) ? $product['p_s_level'] : 10;
@@ -485,52 +532,85 @@ foreach ($result as $row) {
 								<input type="text" name="p_old_price" class="form-control" value="<?php echo htmlspecialchars($p_old_price); ?>">
 							</div>
 						</div>
-						<div class="form-group" style="background: #f8fafc; padding: 10px 0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
-							<label for="" class="col-sm-3 control-label" style="color: #0f172a;">(Ca) Price (Capital Price) <br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Capital Cost in PHP)</span></label>
-							<div class="col-sm-4">
-								<input type="text" name="p_capital_price" id="p_capital_price" class="form-control" value="<?php echo htmlspecialchars($p_capital_price); ?>" placeholder="e.g. 100.00">
-								<small class="text-muted"><i class="fa fa-info-circle"></i> Formula: <code>(Ca)Price = (N)Price / (1 + (%)Mark_Up/100)</code></small>
-							</div>
-						</div>
-						<div class="form-group" style="background: #f8fafc; padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
-							<label for="" class="col-sm-3 control-label" style="color: #0f172a;">(%) Mark_Up <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Default: 20%)</span></label>
+						<!-- Authoritative Existing Current Price for Client Comparison -->
+						<input type="hidden" id="p_existing_current_price" value="<?php echo htmlspecialchars($p_current_price); ?>">
+
+						<!-- Capital Price (Ca) -->
+						<div class="form-group" style="background: #f8fafc; padding: 12px 0; border-top: 1.5px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+							<label for="p_capital_price" class="col-sm-3 control-label" style="color: #0f172a;">Capital Price (Ca) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Original / Base Capital Cost)</span></label>
 							<div class="col-sm-4">
 								<div class="input-group">
-									<input type="text" name="p_markup" id="p_markup" class="form-control" value="<?php echo htmlspecialchars($p_markup); ?>" placeholder="20" required>
-									<span class="input-group-addon" style="font-weight: 700;">%</span>
+									<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1d4ed8; font-size: 15px;">₱</span>
+									<input type="number" step="0.01" min="0" name="p_capital_price" id="p_capital_price" class="form-control" value="<?php echo htmlspecialchars($p_capital_price); ?>" placeholder="e.g. 100.00" required style="font-weight: 600;">
 								</div>
-								<small class="text-muted"><i class="fa fa-info-circle"></i> Default = 20. Editable per product.</small>
+								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-info-circle"></i> Original / base capital cost (Ca) of the product per unit.</small>
 							</div>
 						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">(N) Price (New Price)<br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+
+						<!-- Mark-Up (₱) (Fixed Peso Amount) -->
+						<div class="form-group" style="background: #f8fafc; padding: 12px 0; border-bottom: 1.5px solid #e2e8f0;">
+							<label for="p_markup" class="col-sm-3 control-label" style="color: #0f172a;">Mark-Up (₱) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Fixed Peso Amount)</span></label>
 							<div class="col-sm-4">
-								<input type="text" name="p_new_price" id="p_new_price" class="form-control" value="<?php echo htmlspecialchars($p_new_price); ?>" placeholder="Optional (defaults to (C) Price)">
-								<small class="text-muted"><i class="fa fa-calculator"></i> Formula: <code>(N)Price = (Ca)Price &times; (1 + (%)Mark_Up/100)</code></small>
+								<div class="input-group">
+									<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1d4ed8; font-size: 15px;">₱</span>
+									<input type="number" step="0.01" min="0" name="p_markup" id="p_markup" class="form-control" value="<?php echo htmlspecialchars($p_markup); ?>" placeholder="e.g. 20.00" required style="font-weight: 600;">
+								</div>
+								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-info-circle"></i> Fixed peso amount (₱) added to Capital Price (not a percentage).</small>
+							</div>
+						</div>
+
+						<!-- New Price (N) - Automatically Calculated or Manually Editable -->
+						<div class="form-group" style="background: #f0fdf4; padding: 12px 0; border-bottom: 1px solid #bbf7d0;">
+							<label for="p_new_price" class="col-sm-3 control-label" style="color: #166534;">New Price (N) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#15803d;">(Calculated or Manual Edit)</span></label>
+							<div class="col-sm-4">
+								<div class="input-group">
+									<span class="input-group-addon" style="font-weight: 700; background: #dcfce7; color: #166534; font-size: 15px;">₱</span>
+									<input type="number" step="0.01" min="0" name="p_new_price" id="p_new_price" class="form-control" value="<?php echo htmlspecialchars($p_new_price); ?>" required style="font-weight: 700; font-size: 15px; color: #166534;">
+								</div>
+								<small style="color: #15803d; font-size: 11px;"><i class="fa fa-calculator"></i> Auto-calculates as <code>N = Ca + ₱ Mark-Up</code>, or enter custom manual price.</small>
 							</div>
 						</div>	
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">(C) Price (Current Price) <span>*</span><br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+
+						<!-- Current Price (C) - Result after Price Rule -->
+						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #e2e8f0;">
+							<label for="p_current_price" class="col-sm-3 control-label" style="color: #0f172a;">Current Price (C) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Result after Price Rule)</span></label>
 							<div class="col-sm-4">
-								<input type="text" name="p_current_price" id="p_current_price" class="form-control" value="<?php echo htmlspecialchars($p_current_price); ?>" required>
+								<div class="input-group">
+									<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1e40af; font-size: 15px;">₱</span>
+									<input type="text" name="p_current_price" id="p_current_price" class="form-control" value="<?php echo htmlspecialchars($p_current_price); ?>" required style="font-weight: 800; font-size: 16px; color: #1e40af; background-color: #f8fafc;" readonly>
+								</div>
+								<div id="p_price_rule_notice" style="font-size: 11.5px; margin-top: 6px; font-weight: 600;"></div>
 							</div>
 						</div>	
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Quantity in Stock (Current) <span>*</span></label>
+
+						<!-- Quantity in Stock (Current) (Q) -->
+						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
+							<label for="p_qty" class="col-sm-3 control-label">Quantity in Stock (Current) (Q) <span>*</span></label>
 							<div class="col-sm-4">
-								<input type="text" name="p_qty" class="form-control" value="<?php echo htmlspecialchars($p_qty); ?>" required>
+								<div class="input-group">
+									<input type="number" min="0" name="p_qty" id="p_qty" class="form-control" value="<?php echo htmlspecialchars($p_qty); ?>" required style="font-weight: 700; font-size: 15px;">
+									<span class="input-group-addon" id="p_stock_alert_badge" style="font-weight: 700; font-size: 12px; border-radius: 0 4px 4px 0;"></span>
+								</div>
+								<div id="p_stock_alert_desc" style="font-size: 11.5px; margin-top: 5px; font-weight: 600;"></div>
 							</div>
 						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">(N)Quantity (New Quantity)</label>
+
+						<!-- (N)Quantity (New Quantity) (NQ) -->
+						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; background: #fafafa;">
+							<label for="p_new_qty" class="col-sm-3 control-label">(N)Quantity (New Quantity) (NQ)</label>
 							<div class="col-sm-4">
-								<input type="number" name="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>">
+								<input type="number" min="0" name="p_new_qty" id="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>" style="font-weight: 600;">
+								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-cubes"></i> Incoming replenishment stock. Trigger: <code>Q &lt; 2 AND NQ &gt; 1</code> or <code>Q &lt; 6 AND NQ &gt; 5</code> rolls NQ into Q.</small>
+								<div id="p_qty_rule_notice" style="font-size: 11.5px; margin-top: 4px; font-weight: 600;"></div>
 							</div>
 						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">(S)Level (Safety Stock Level)</label>
+
+						<!-- Safety Stock Level (S) -->
+						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
+							<label for="p_s_level" class="col-sm-3 control-label">Safety Stock Level (S) <span>*</span></label>
 							<div class="col-sm-4">
-								<input type="number" name="p_s_level" class="form-control" value="<?php echo htmlspecialchars($p_s_level); ?>">
+								<input type="number" min="0" name="p_s_level" id="p_s_level" class="form-control" value="<?php echo htmlspecialchars($p_s_level); ?>" style="font-weight: 600;">
+								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-shield"></i> Threshold buffer: RED if <code>Q &lt; 50% of S</code>, ORANGE if <code>50% &le; Q &lt; 80% of S</code>, NORMAL if <code>Q &ge; 80% of S</code>.</small>
 							</div>
 						</div>
 						<div class="form-group">
@@ -702,51 +782,107 @@ $(document).ready(function() {
         return parseFloat(clean) || 0;
     }
 
-    // Auto-calculate (N)Price when (Ca)Price changes: (N)Price = (Ca)Price * (1 + markup/100)
-    $('#p_capital_price').on('input keyup change', function() {
-        var ca = cleanNum($(this).val());
-        var markup = cleanNum($('#p_markup').val());
-        if (markup <= 0 && $('#p_markup').val() === '') markup = 20;
+    function cleanInt(val) {
+        if (!val) return 0;
+        var clean = val.toString().replace(/[^0-9]/g, '');
+        return parseInt(clean, 10) || 0;
+    }
 
-        if (ca > 0) {
-            var nPrice = ca * (1 + (markup / 100));
-            $('#p_new_price').val(nPrice.toFixed(2));
-            if (!$('#p_current_price').val() || cleanNum($('#p_current_price').val()) === 0) {
-                $('#p_current_price').val(nPrice.toFixed(2));
+    function evaluateRulesLive() {
+        var ca = cleanNum($('#p_capital_price').val());
+        var markup = cleanNum($('#p_markup').val());
+        var existingC = cleanNum($('#p_existing_current_price').val());
+        var manualN = cleanNum($('#p_new_price').val());
+        var q = cleanInt($('#p_qty').val());
+        var nq = cleanInt($('#p_new_qty').val());
+        var s = cleanInt($('#p_s_level').val());
+        if (s <= 0) s = 10;
+
+        // 1. New Price (N)
+        var calcN = Math.round((ca + markup) * 100) / 100;
+        var nPrice = (manualN > 0) ? manualN : calcN;
+        if (document.activeElement && document.activeElement.id !== 'p_new_price' && manualN <= 0) {
+            $('#p_new_price').val(calcN.toFixed(2));
+            nPrice = calcN;
+        }
+
+        // 2. Price Rule evaluation (using original Q and NQ)
+        var resultingC = existingC;
+        var priceNotice = $('#p_price_rule_notice');
+
+        if (q < 6 && nq > 5) {
+            resultingC = nPrice;
+            priceNotice.html('<span style="color: #047857;"><i class="fa fa-check-circle"></i> <strong>Low Stock Replenishment Rule (Q &lt; 6 &amp; NQ &gt; 5):</strong> Current Price will update to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>');
+        } else if (existingC < nPrice && q < 5 && nq > 5) {
+            resultingC = nPrice;
+            priceNotice.html('<span style="color: #047857;"><i class="fa fa-check-circle"></i> <strong>Low Stock Rule (C &lt; N &amp; Q &lt; 5 &amp; NQ &gt; 5):</strong> Current Price will update to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>');
+        } else if (existingC > nPrice && q > 5) {
+            resultingC = existingC;
+            priceNotice.html('<span style="color: #d97706;"><i class="fa fa-shield"></i> <strong>Price Protected (C &gt; N &amp; Q &gt; 5):</strong> Current Price retained unchanged at <strong>₱' + existingC.toFixed(2) + '</strong>.</span>');
+        } else {
+            if (existingC > 0) {
+                resultingC = existingC;
+                priceNotice.html('<span class="text-muted"><i class="fa fa-info-circle"></i> Current Price retained at ₱' + existingC.toFixed(2) + '. Updates to New Price (₱' + nPrice.toFixed(2) + ') upon low-stock replenishment (Q &lt; 6 &amp; NQ &gt; 5).</span>');
+            } else {
+                resultingC = nPrice;
+                priceNotice.html('<span class="text-success"><i class="fa fa-info-circle"></i> Initial Price set to New Price ₱' + resultingC.toFixed(2) + '.</span>');
             }
         }
-    });
+        $('#p_current_price').val(resultingC.toFixed(2));
 
-    // Auto-calculate when (%)Mark_Up changes
-    $('#p_markup').on('input keyup change', function() {
-        var markup = cleanNum($(this).val());
+        // 3. Quantity Rule evaluation
+        var qtyNotice = $('#p_qty_rule_notice');
+        if (q < 2 && nq > 1) {
+            var expectedQ = q + nq;
+            qtyNotice.html('<span style="color: #047857;"><i class="fa fa-refresh"></i> <strong>Inventory Transfer Triggered (Q &lt; 2 &amp; NQ &gt; 1):</strong> Upon saving, ' + nq + ' units will be transferred into stock (Q: ' + q + ' &rarr; <strong>' + expectedQ + '</strong>, NQ &rarr; <strong>0</strong>).</span>');
+        } else if (q >= 2 && nq > 0) {
+            qtyNotice.html('<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity (Quantity transfer does NOT trigger because Q &ge; 2).</span>');
+        } else if (nq > 0) {
+            qtyNotice.html('<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity.</span>');
+        } else {
+            qtyNotice.html('');
+        }
+
+        // 4. Stock Alert calculation (evaluated on expected final Q against S)
+        var alertQ = (q < 2 && nq > 1) ? (q + nq) : q;
+        var halfS = 0.50 * s;
+        var eightyS = 0.80 * s;
+        var badge = $('#p_stock_alert_badge');
+        var desc = $('#p_stock_alert_desc');
+
+        if (alertQ < halfS) {
+            // RED: Q < 50% of S (Priority 1)
+            badge.css({'background-color': '#ef4444', 'color': '#ffffff'}).html('<i class="fa fa-exclamation-triangle"></i> RED ALERT');
+            desc.html('<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-exclamation-circle"></i> Critical Depletion (Q &lt; 50% &times; S): Stock (' + alertQ + ') &lt; 50% of Safety Level (' + s + '). Replenishment urgently required.</span>');
+            $('#p_qty').css({'border-color': '#ef4444', 'background-color': '#fef2f2'});
+        } else if (alertQ < eightyS) {
+            // ORANGE: 50% <= Q < 80% of S (Priority 2)
+            badge.css({'background-color': '#f97316', 'color': '#ffffff'}).html('<i class="fa fa-exclamation-circle"></i> ORANGE ALERT');
+            desc.html('<span style="color: #ea580c; font-weight: 700;"><i class="fa fa-warning"></i> Low Stock Warning (50% &le; Q &lt; 80% &times; S): Stock (' + alertQ + ') is between 50% and 80% of Safety Level (' + s + ').</span>');
+            $('#p_qty').css({'border-color': '#f97316', 'background-color': '#fff7ed'});
+        } else {
+            // NORMAL: Q >= 80% of S (Priority 3)
+            badge.css({'background-color': '#10b981', 'color': '#ffffff'}).html('<i class="fa fa-check"></i> NORMAL');
+            desc.html('<span style="color: #059669; font-weight: 600;"><i class="fa fa-check-circle"></i> Acceptable Stock (Q &ge; 80% &times; S): Stock (' + alertQ + ') &ge; 80% of Safety Level (' + s + ').</span>');
+            $('#p_qty').css({'border-color': '#cbd5e1', 'background-color': '#ffffff'});
+        }
+    }
+
+    // Event listeners
+    $('#p_capital_price, #p_markup').on('input keyup change', function() {
         var ca = cleanNum($('#p_capital_price').val());
-        var np = cleanNum($('#p_new_price').val());
-        var cp = cleanNum($('#p_current_price').val());
-
-        if (ca > 0) {
-            var nPrice = ca * (1 + (markup / 100));
-            $('#p_new_price').val(nPrice.toFixed(2));
-        } else if (np > 0) {
-            var caPrice = np / (1 + (markup / 100));
-            $('#p_capital_price').val(caPrice.toFixed(2));
-        } else if (cp > 0) {
-            var caPrice = cp / (1 + (markup / 100));
-            $('#p_capital_price').val(caPrice.toFixed(2));
-        }
-    });
-
-    // Auto-calculate (Ca)Price when (N)Price changes: (Ca)Price = (N)Price / (1 + markup/100)
-    $('#p_new_price').on('input keyup change', function() {
-        var np = cleanNum($(this).val());
         var markup = cleanNum($('#p_markup').val());
-        if (markup <= 0 && $('#p_markup').val() === '') markup = 20;
-
-        if (np > 0) {
-            var caPrice = np / (1 + (markup / 100));
-            $('#p_capital_price').val(caPrice.toFixed(2));
-        }
+        var calcN = Math.round((ca + markup) * 100) / 100;
+        $('#p_new_price').val(calcN.toFixed(2));
+        evaluateRulesLive();
     });
+
+    $('#p_new_price, #p_qty, #p_new_qty, #p_s_level').on('input keyup change', function() {
+        evaluateRulesLive();
+    });
+
+    // Initial evaluation on load
+    evaluateRulesLive();
 });
 </script>
 

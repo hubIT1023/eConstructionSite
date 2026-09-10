@@ -186,6 +186,12 @@ if(!isset($_SESSION['user'])) {
 			          </a>
 			        </li>
 
+			        <li class="treeview <?php if( ($cur_page == 'dev-documentation.php') ) {echo 'active';} ?>">
+			          <a href="dev-documentation.php">
+			            <i class="fa fa-code"></i> <span>dev Documentation</span>
+			          </a>
+			        </li>
+
       			</ul>
     		</section>
   		</aside>

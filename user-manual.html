@@ -549,7 +549,10 @@
                 <li><a href="#supplier-orders" class="sidebar-link"><i class="fa fa-box"></i> Paid Orders Workflow</a></li>
                 <li><a href="#supplier-analytics" class="sidebar-link"><i class="fa fa-chart-line"></i> Sales Analytics</a></li>
                 <li><a href="#pos-delivery" class="sidebar-link"><i class="fa fa-map-location-dot"></i> POS Location Delivery</a></li>
+                <li><a href="#pos-discount-hierarchy" class="sidebar-link"><i class="fa fa-shield-halved"></i> Discount Approvals Hierarchy</a></li>
                 <li><a href="#pos-return" class="sidebar-link"><i class="fa fa-undo"></i> POS Return Item Workflow</a></li>
+                <li><a href="#pos-order-placement-workflow" class="sidebar-link"><i class="fa fa-clipboard-check"></i> Order Placement &amp; Collection</a></li>
+                <li><a href="#pos-po-cashier-procedure" class="sidebar-link"><i class="fa fa-file-invoice-dollar"></i> PO Creation &amp; Cashier Flow</a></li>
             </ul>
         </nav>
 
@@ -791,19 +794,83 @@
                 </div>
 
                 <div class="sub-section">
-                    <div class="sub-title"><i class="fa fa-boxes-stacked"></i> 4.1 Product Catalog & Automatic Variant Parsing</div>
-                    <p>When creating product variants in <code>supplier/product-add.php</code>, use standard construction delimiters. The system's intelligent parser automatically extracts size, thickness, color, rating, and length to group them into 1 Parent Product Card.</p>
+                    <div class="sub-title"><i class="fa fa-boxes-stacked"></i> 4.1 Step-by-Step Guide: Adding & Configuring Products by Category (<code>supplier/product-add.php</code> & <code>supplier/product-edit.php</code>)</div>
+                    <p>Follow these detailed steps to create and configure products so they are properly categorized and automatically grouped into single Master Cards with multi-size chips in the POS:</p>
                     
-                    <div class="callout callout-success">
-                        <i class="fa fa-check-circle"></i>
-                        <div>
-                            <strong>Recommended Naming Conventions:</strong><br>
-                            &bull; <code>Tubular - 2" x 3" (t = 1.2, Orange)</code><br>
-                            &bull; <code>Angle Bar - 1 1/2" x 1 1/2" (t = 3/16, Green)</code><br>
-                            &bull; <code>Deformed Bar 16mm (D = 16 mm, Blue)</code><br>
-                            &bull; <code>Rotary Hammer 850W (220V)</code>
-                        </div>
-                    </div>
+                    <ul class="step-list">
+                        <li class="step-item">
+                            <div class="step-title">Step 1: Select 3-Tier Category Hierarchy</div>
+                            <div class="step-desc">
+                                &bull; <strong>Top Level Category</strong>: Select the master department (e.g. <em>Building Materials, Infrastructure & Utilities, Tools & Safety</em>).<br>
+                                &bull; <strong>Mid Level Category</strong>: Populates dynamically (e.g. <em>Steel & Metal, Concrete & Cement, Roofing & Wall, Plumbing & Pipes, Power Tools</em>).<br>
+                                &bull; <strong>End Level Category</strong>: Select the specific category (e.g. <em>Nails, Tubular Steel, Angle Bars, C-Purlins, GI Pipes, Rebar & Mesh, Plywood, Phenolic & Hardiflex, Paints</em>).<br>
+                                &bull; <strong>+ New Category Button</strong>: Click to create and link a new category on the fly if not found.
+                            </div>
+                        </li>
+
+                        <li class="step-item">
+                            <div class="step-title">Step 2: Follow Standard Naming Convention for POS Multi-Size Grouping</div>
+                            <div class="step-desc">
+                                To enable the POS terminal to group all sizes under one master card, use standard naming formats:
+                                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-top: 6px; font-size: 13px;">
+                                    • <strong>Nails</strong>: <code>Common Nail 2" (1kg)</code>, <code>Finishing Nail 1 1/2" (1/2kg)</code><br>
+                                    • <strong>Tubular Steel</strong>: <code>Tubular Steel - 2" x 4" (t = 1.5)</code>, <code>Tubular Steel - 1" x 1" (t = 1.2) Stainless</code><br>
+                                    • <strong>Angle Bars</strong>: <code>Angle Bar - 1 1/2" x 1 1/2" (t = 3/16") Green</code><br>
+                                    • <strong>C-Purlins</strong>: <code>C-Purlins 2" x 4" (t = 1.2)</code><br>
+                                    • <strong>GI Pipes</strong>: <code>GI Pipe 2" #40 (Schedule 40)</code><br>
+                                    • <strong>Plywood & Boards</strong>: <code>Marine Plywood 1/2" (Local)</code>, <code>Hardiflex Board 4.5mm</code><br>
+                                    • <strong>Cement & Paint</strong>: <code>Portland Cement (40kg Bag)</code>, <code>Flat Latex Paint White (1 Gallon)</code>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step-item">
+                            <div class="step-title">Step 3: Select Pre-Registered Construction Sizes (<code>tbl_size</code>)</div>
+                            <div class="step-desc">
+                                Under <strong>"Select Size"</strong>, select one or multiple applicable dimensions (e.g. <code>2" x 4" (t = 1.5)</code>, <code>1/2" #40</code>, <code>1/4 kg</code>, <code>16 mm</code>). The multi-select dropdown allows quick typing search across all 144 registered construction sizes.
+                            </div>
+                        </li>
+
+                        <li class="step-item">
+                            <div class="step-title">Step 4: Configure Pricing, Fixed ₱ Mark-Up & Price Rule Logic</div>
+                            <div class="step-desc">
+                                &bull; <strong>(Ca) Capital Price (<code>p_capital_price</code>)</strong>: Original/base capital cost of the product per unit in Pesos (₱).<br>
+                                &bull; <strong>(₱) Mark-Up Amount (<code>p_markup</code>)</strong>: Fixed monetary profit margin in Pesos (₱), <strong>NOT a percentage</strong> (e.g. <code>₱20.00</code>, NOT <code>20%</code>).<br>
+                                &bull; <strong>(N) New Price (<code>p_new_price</code>)</strong>: Proposed new selling price, auto-calculated by default as:
+                                <div style="background: #f0fdf4; border: 1px dashed #16a34a; padding: 6px 12px; border-radius: 4px; color: #166534; font-weight: 700; margin: 6px 0;">
+                                    Formula: (N) Price = (Ca) Capital Price + (₱) Mark-Up Amount (or enter custom manual override)
+                                </div>
+                                &bull; <strong>(C) Current Price (<code>p_current_price</code>)</strong>: Selling price after applying the Price Rule in sequential execution order:
+                                <div style="background: #eff6ff; border: 1px dashed #3b82f6; padding: 8px 12px; border-radius: 4px; color: #1e3a8a; font-weight: 600; margin: 6px 0; font-size: 13px;">
+                                    <strong>Price Rule Execution Order:</strong><br>
+                                    1. <strong>Low Stock Replenishment</strong>: If <code>Quantity &lt; 6 AND (N)Quantity &gt; 5</code> &rarr; <code>(C) Current Price = (N) New Price</code>.<br>
+                                    2. <strong>Price Protection from Decrease</strong>: Else if <code>Current Price &gt; New Price AND Quantity &gt; 5</code> &rarr; <code>(C) Current Price = Existing (C) Current Price</code>.<br>
+                                    3. <strong>Default Rule</strong>: Else &rarr; <code>(C) Current Price = Existing (C) Current Price</code> (retains current selling price).
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step-item">
+                            <div class="step-title">Step 5: Quantity Addition Rule & Dynamic Stock Alert Badges</div>
+                            <div class="step-desc">
+                                &bull; <strong>Quantity in Stock (Current) (Q) (<code>p_qty</code>)</strong>: Available sellable inventory on hand.<br>
+                                &bull; <strong>(N)Quantity (New Quantity) (NQ) (<code>p_new_qty</code>)</strong>: Staged replenishment / incoming quantity in reserve.<br>
+                                &bull; <strong>(S)Level (Safety Stock Level) (S) (<code>p_s_level</code>)</strong>: Buffer stock threshold (default: <code>10</code>).<br>
+                                &bull; <strong>Quantity Addition Rule</strong>:
+                                <div style="background: #fdf4ff; border: 1px dashed #c084fc; padding: 8px 12px; border-radius: 4px; color: #6b21a8; font-weight: 600; margin: 6px 0; font-size: 13px;">
+                                    If <code>Quantity &lt; 2 AND (N)Quantity &gt; 1</code>:<br>
+                                    &rarr; <code>Quantity = Quantity + (N)Quantity</code>, and <code>(N)Quantity = 0</code>.<br>
+                                    <em>Note: If Quantity &ge; 2 or (N)Quantity &le; 1, quantity transfer does NOT trigger.</em>
+                                </div>
+                                &bull; <strong>Stock Color Alerts</strong> (evaluated on final Quantity against (S)Level):
+                                <div style="margin-top: 6px; font-size: 13px;">
+                                    <span class="badge" style="background-color: #ef4444; color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 700;"><i class="fa fa-exclamation-triangle"></i> RED (Critical Alert)</span> &mdash; <strong>Priority 1:</strong> <code>Quantity &lt; 50% of (S)Level</code> (Stock is dangerously low).<br>
+                                    <span class="badge" style="background-color: #f97316; color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 700; margin-top: 4px; display: inline-block;"><i class="fa fa-warning"></i> ORANGE (Warning Alert)</span> &mdash; <strong>Priority 2:</strong> <code>50% &le; Quantity &lt; 80% of (S)Level</code> (Stock is below normal buffer).<br>
+                                    <span class="badge" style="background-color: #10b981; color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 700; margin-top: 4px; display: inline-block;"><i class="fa fa-check"></i> NORMAL</span> &mdash; <strong>Priority 3:</strong> <code>Quantity &ge; 80% of (S)Level</code> (Adequate stock level).
+                                </div>
+                            </div>
+                        </li>
+                    </ul>
                 </div>
 
                 <!-- 4.2 Order Management & Paid Orders -->
@@ -990,9 +1057,71 @@
                     </ul>
                 </div>
 
-                <!-- 5.6 Return Item Workflow -->
+                <!-- 5.6 Role-Based POS Discount Approval Hierarchy & Payment Locking Workflow -->
+                <div id="pos-discount-hierarchy" class="sub-section">
+                    <div class="sub-title"><i class="fa fa-shield-halved" style="color: #0d9488;"></i> 5.6 Role-Based POS Discount Approval Hierarchy &amp; Payment Locking Workflow</div>
+                    <p>To prevent arbitrary price slashing, eliminate fraud, and protect profit margins, POS Item Discounts are strictly governed by an automated <strong>Amount-Based (₱) Approval Engine</strong> with <strong>Real-Time Payment Locking</strong>:</p>
+
+                    <!-- Vector Diagram Image -->
+                    <div style="background: #0b0f19; border: 1.5px solid #1e293b; border-radius: 8px; padding: 12px; text-align: center; margin: 16px 0; box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
+                        <a href="assets/uploads/pos-discount-lifecycle.svg" target="_blank" title="Click to view full size vector diagram">
+                            <img src="assets/uploads/pos-discount-lifecycle.svg" alt="POS Item Discount Request &amp; Payment Completion Lifecycle" style="width: 100%; max-width: 1000px; height: auto; border-radius: 6px; display: inline-block;">
+                        </a>
+                        <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
+                            <i class="fa fa-search-plus"></i> <em>Click diagram to view full size HD vector graphic</em>
+                        </div>
+                    </div>
+
+                    <ul class="step-list">
+                        <li class="step-item">
+                            <div class="step-title">1. Fixed Amount-Based Entry (₱ Pesos) &amp; Live Recalculation</div>
+                            <div class="step-desc">
+                                Cashiers enter discount requests as an <strong>actual monetary Peso amount (₱)</strong>, not a percentage.
+                                <br>&bull; <em>Gross Total:</em> <code>Unit Price × Quantity</code>
+                                <br>&bull; <em>Equivalent %:</em> <code>(Discount Amount ÷ Gross Total) × 100%</code>
+                                <br>&bull; <em>Final Net Price:</em> <code>Gross Total - Requested Discount (₱)</code>
+                                <br>&bull; <em>Example:</em> Gross Total = <code>₱250.00 × 2 = ₱500.00</code>, Discount Amount = <code>₱50.00</code> &rarr; Final Net Price = <strong>₱450.00</strong> (Calculated: <code>10.00%</code>).
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">2. Store Limits &amp; Tier Routing</div>
+                            <div class="step-desc">
+                                Configured in <a href="https://econstruction-supply.site/supplier/discount-settings.php" target="_blank"><code>supplier/discount-settings.php</code></a>:
+                                <br>&bull; <strong>Normal Discount (&le; Normal Max, e.g. 10.00%)</strong>: Routed to Supervisor OR Admin/Manager (Status: <span style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-weight: 700;">PENDING</span>).
+                                <br>&bull; <strong>Escalated Special Discount (> Normal Max &amp; &le; Absolute Max, e.g. 10.01% - 20.00%)</strong>: Flagged with amber alert, routed to Admin/Manager only (Status: <span style="background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px; font-weight: 700;">ESCALATED</span>).
+                                <br>&bull; <strong>Prohibited (> Absolute Max, e.g. > 20.00% or &ge; Gross)</strong>: Hard-blocked by the terminal and API (<code>DISCOUNT_PROHIBITED</code>).
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">3. Strict POS Payment Locking Before Checkout</div>
+                            <div class="step-desc">
+                                While any item discount in the cart is <span style="background: #fef3c7; color: #92400e; padding: 1px 5px; border-radius: 3px; font-weight: 700;">PENDING</span> or <span style="background: #fee2e2; color: #991b1b; padding: 1px 5px; border-radius: 3px; font-weight: 700;">ESCALATED</span>:
+                                <br>&bull; The <strong>Amount Tendered</strong> input and <strong>"Complete Sale &amp; Print Receipt"</strong> button are locked/disabled.
+                                <br>&bull; An amber warning banner (<code>#posPaymentLockedNotice</code>) alerts the cashier to wait for approval.
+                                <br>&bull; The cashier can click <em>"Cancel Discount"</em> on the cart item to immediately restore catalog pricing and unlock checkout.
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">4. In-Terminal Quick Queue &amp; Dedicated Approvals Portal</div>
+                            <div class="step-desc">
+                                Approvers can review requests via:
+                                <br>&bull; <strong>In-POS Approvals Modal:</strong> Click the top <em>"Approvals"</em> button with live pending count badge.
+                                <br>&bull; <strong>Dedicated Portal:</strong> Open <a href="https://econstruction-supply.site/supplier/discount-approvals.php" target="_blank"><code>supplier/discount-approvals.php</code></a>.
+                                <br>&bull; Approvers can <strong>Approve</strong>, <strong>Modify (Adjust ₱ Amount)</strong>, or <strong>Reject</strong> with required reason audit logging.
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="step-title">5. Real-Time Polling &amp; Checkout Finalization</div>
+                            <div class="step-desc">
+                                The POS automatically polls every 3.5 seconds. Once approved, the cart badge turns green/blue, net prices apply, and payment controls unlock. During checkout submission, the server independently validates <code>tbl_discount_requests</code>, writes the sale, decrements stock, and links the discount record to the generated <code>payment_id</code>.
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- 5.7 Return Item Workflow -->
                 <div id="pos-return" class="sub-section">
-                    <div class="sub-title"><i class="fa fa-undo" style="color: #dc2626;"></i> 5.6 Return Item Processing & Workflow</div>
+                    <div class="sub-title"><i class="fa fa-undo" style="color: #dc2626;"></i> 5.7 Return Item Processing & Workflow</div>
                     <p>When a customer brings back an item purchased through the POS or online store, the cashier can process an authoritative return and refund directly in the POS without altering past sales history:</p>
 
                     <div class="mock-ui">
@@ -1051,9 +1180,9 @@
                     </ul>
                 </div>
 
-                <!-- 5.7 Return History & Audit Trail -->
+                <!-- 5.8 Return History & Audit Trail -->
                 <div id="pos-return-history" class="sub-section">
-                    <div class="sub-title"><i class="fa fa-history"></i> 5.7 Return History & Audit Trail (<code>supplier/returns.php</code>)</div>
+                    <div class="sub-title"><i class="fa fa-history"></i> 5.8 Return History & Audit Trail (<code>supplier/returns.php</code>)</div>
                     <p>Suppliers can review and audit all past return transactions by clicking <strong>Return History</strong> in the sidebar or POS header:</p>
                     <ul class="step-list">
                         <li class="step-item">
@@ -1071,9 +1200,9 @@
                     </ul>
                 </div>
 
-                <!-- 5.8 Sales Report & Net Sales Integration -->
+                <!-- 5.9 Sales Report & Net Sales Integration -->
                 <div id="pos-sales-reports" class="sub-section">
-                    <div class="sub-title"><i class="fa fa-chart-pie"></i> 5.8 Sales Reports & Net Sales Revenue (<code>supplier/sales-report.php</code>)</div>
+                    <div class="sub-title"><i class="fa fa-chart-pie"></i> 5.9 Sales Reports & Net Sales Revenue (<code>supplier/sales-report.php</code>)</div>
                     <p>Returns are fully integrated into financial sales reporting with real-time net calculations:</p>
                     <ul>
                         <li><strong>Gross Sales Revenue</strong>: Sum of all completed sales during the selected period (Daily, Weekly, Quarterly, Yearly, or Custom Date Range).</li>
@@ -1082,6 +1211,314 @@
                         <li><strong>Returns Table Breakdown</strong>: Itemized listing of each return transaction with reference number, customer name, reason, restock badge, and refund amount.</li>
                     </ul>
                 </div>
+            
+                <!-- 5.8 POS ORDER PLACEMENT -> PAYMENT -> CUSTOMER COLLECTION WORKFLOW -->
+                <div id="pos-order-placement-workflow" class="sub-section" style="border-top: 2px dashed var(--border-color); padding-top: 25px; margin-top: 25px;">
+                    <div class="sub-title" style="color: #0369a1; font-size: 18px; font-weight: 800;">
+                        <i class="fa fa-clipboard-check" style="color: #0284c7;"></i> 5.8 POS Order Placement &rarr; Payment &rarr; Customer Collection Workflow
+                    </div>
+                    <p style="font-size: 14.5px; color: #334155; line-height: 1.7; margin-bottom: 18px;">
+                        The platform enforces a strict 4-stage operational separation between <strong>order preparation</strong> (Order Processing Staff), <strong>payment confirmation</strong> (Cashier), and <strong>physical collection</strong> (Yard Staff / Customer):
+                    </p>
+
+                    <!-- Visual Infographic Diagram -->
+                    <div style="background: #0f172a; border: 2px solid #1e293b; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0 28px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.2);">
+                        <a href="assets/uploads/pos_order_workflow_diagram.jpg" target="_blank" title="Click to view full size high-resolution diagram">
+                            <img src="assets/uploads/pos_order_workflow_diagram.jpg" alt="POS Order Placement, Payment, and Customer Collection Workflow" style="width: 100%; max-width: 1050px; height: auto; border-radius: 8px; display: inline-block; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
+                        </a>
+                        <div style="margin-top: 10px; font-size: 12.5px; color: #94a3b8;">
+                            <i class="fa fa-search-plus text-info"></i> <em>Click diagram to view full high-resolution workflow infographic</em>
+                        </div>
+                    </div>
+
+                    <!-- 4-Stage Interactive Step Cards -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                        
+                        <!-- Step 1 Card -->
+                        <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 18px; position: relative;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                                <span style="background: #2563eb; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 20px; text-transform: uppercase;">Step 1</span>
+                                <i class="fa fa-user-pen" style="font-size: 20px; color: #2563eb;"></i>
+                            </div>
+                            <h4 style="font-size: 15px; font-weight: 800; color: #1e3a8a; margin-bottom: 8px;">1. Order Preparation</h4>
+                            <div style="font-size: 12px; color: #1e40af; font-weight: 700; margin-bottom: 8px;">Actor: Order Processing Staff</div>
+                            <p style="font-size: 12.5px; color: #334155; line-height: 1.5; margin-bottom: 10px;">
+                                Staff selects/creates customer, adds products, variants, quantities, and applies authorized discounts.
+                            </p>
+                            <div style="background: #ffffff; border: 1px dashed #93c5fd; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; color: #1e3a8a;">
+                                <strong>Status:</strong> PENDING PAYMENT<br>
+                                <strong>Payment:</strong> UNPAID (Open PO)
+                            </div>
+                        </div>
+
+                        <!-- Step 2 Card -->
+                        <div style="background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 10px; padding: 18px; position: relative;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                                <span style="background: #ea580c; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 20px; text-transform: uppercase;">Step 2</span>
+                                <i class="fa fa-clipboard-check" style="font-size: 20px; color: #ea580c;"></i>
+                            </div>
+                            <h4 style="font-size: 15px; font-weight: 800; color: #9a3412; margin-bottom: 8px;">2. Cashier Review</h4>
+                            <div style="font-size: 12px; color: #c2410c; font-weight: 700; margin-bottom: 8px;">Actor: Cashier</div>
+                            <p style="font-size: 12.5px; color: #334155; line-height: 1.5; margin-bottom: 10px;">
+                                Cashier opens the Pending PO queue, inspects itemized lines, discounts, and confirms order directly with customer.
+                            </p>
+                            <div style="background: #ffffff; border: 1px dashed #fdba74; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; color: #9a3412;">
+                                <strong>Action:</strong> Review Order Items<br>
+                                <strong>Verification:</strong> Customer Confirmed
+                            </div>
+                        </div>
+
+                        <!-- Step 3 Card -->
+                        <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 18px; position: relative;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                                <span style="background: #16a34a; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 20px; text-transform: uppercase;">Step 3</span>
+                                <i class="fa fa-cash-register" style="font-size: 20px; color: #16a34a;"></i>
+                            </div>
+                            <h4 style="font-size: 15px; font-weight: 800; color: #14532d; margin-bottom: 8px;">3. Payment &amp; "PAID"</h4>
+                            <div style="font-size: 12px; color: #15803d; font-weight: 700; margin-bottom: 8px;">Actor: Cashier</div>
+                            <p style="font-size: 12.5px; color: #334155; line-height: 1.5; margin-bottom: 10px;">
+                                Customer pays (Cash/Card). Cashier clicks green <strong>"PAID"</strong> button. Backend validates and prints thermal receipt.
+                            </p>
+                            <div style="background: #ffffff; border: 1px dashed #86efac; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; color: #14532d;">
+                                <strong>Status:</strong> READY FOR COLLECTION<br>
+                                <strong>Payment:</strong> PAID (No Double Pay)
+                            </div>
+                        </div>
+
+                        <!-- Step 4 Card -->
+                        <div style="background: #faf5ff; border: 1.5px solid #e9d5ff; border-radius: 10px; padding: 18px; position: relative;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                                <span style="background: #9333ea; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 20px; text-transform: uppercase;">Step 4</span>
+                                <i class="fa fa-truck-ramp-box" style="font-size: 20px; color: #9333ea;"></i>
+                            </div>
+                            <h4 style="font-size: 15px; font-weight: 800; color: #6b21a8; margin-bottom: 8px;">4. Customer Collection</h4>
+                            <div style="font-size: 12px; color: #7e22ce; font-weight: 700; margin-bottom: 8px;">Actor: Yard Staff / Cashier</div>
+                            <p style="font-size: 12.5px; color: #334155; line-height: 1.5; margin-bottom: 10px;">
+                                Customer collects goods. Staff clicks <strong>"Mark as Collected"</strong> after checking order is paid.
+                            </p>
+                            <div style="background: #ffffff; border: 1px dashed #d8b4fe; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; color: #6b21a8;">
+                                <strong>Status:</strong> COLLECTED / DONE<br>
+                                <strong>Audit:</strong> Logged in tbl_activity
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Role Boundaries Table -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 15px;">
+                        <div style="background: #f8fafc; padding: 10px 16px; font-weight: 800; font-size: 13.5px; color: #1e293b; border-bottom: 1px solid #e2e8f0;">
+                            <i class="fa fa-shield-halved text-primary"></i> Strict Role Separation &amp; Server-Side Enforcement Matrix
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table" style="margin-bottom: 0; font-size: 12.5px;">
+                                <thead>
+                                    <tr>
+                                        <th>Workflow Action</th>
+                                        <th style="text-align: center;">Order Processing Staff</th>
+                                        <th style="text-align: center;">Cashier</th>
+                                        <th style="text-align: center;">Yard / Collection Staff</th>
+                                        <th style="text-align: center;">Store Manager / Admin</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Create Order Items &amp; Place Open PO</strong></td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;">—</td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Review Pending PO &amp; Confirm With Customer</strong></td>
+                                        <td style="text-align: center;">Optional</td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;">—</td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Accept Customer Payment &amp; Press "PAID"</strong></td>
+                                        <td style="text-align: center;"><span style="color: #dc2626; font-weight: 800;"><i class="fa fa-ban"></i> PROHIBITED</span></td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;"><span style="color: #dc2626; font-weight: 800;"><i class="fa fa-ban"></i> PROHIBITED</span></td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Print Official PAID Thermal Receipt</strong></td>
+                                        <td style="text-align: center;">Draft Only</td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;">Optional</td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Release Goods &amp; Mark as Collected</strong></td>
+                                        <td style="text-align: center;">Optional</td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                        <td style="text-align: center;"><span style="color: #16a34a; font-weight: 800;">YES</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            
+                <!-- 5.9 POS ORDER PROCESSING -> PURCHASE ORDER -> CASHIER PAYMENT PROCEDURE -->
+                <div id="pos-po-cashier-procedure" class="sub-section" style="border-top: 2px dashed var(--border-color); padding-top: 25px; margin-top: 25px;">
+                    <div class="sub-title" style="color: #0f766e; font-size: 18px; font-weight: 800;">
+                        <i class="fa fa-file-invoice-dollar" style="color: #0d9488;"></i> 5.9 POS Order Processing &rarr; Purchase Order &rarr; Cashier Payment Procedure
+                    </div>
+                    <p style="font-size: 14.5px; color: #334155; line-height: 1.7; margin-bottom: 18px;">
+                        This standard operating procedure defines how <strong>Order Processing Staff</strong> prepares orders, edits items during checkout, generates a <strong>Purchase Order Reference</strong>, dispatches the PO to the <strong>Cashier's Receive Order Dashboard</strong>, and how the <strong>Cashier</strong> accepts payment and authorizes collection:
+                    </p>
+
+                    <!-- Visual Infographic Diagram -->
+                    <div style="background: #0f172a; border: 2px solid #1e293b; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0 28px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.2);">
+                        <a href="assets/uploads/pos_po_cashier_workflow_diagram.jpg" target="_blank" title="Click to view full size high-resolution flowchart">
+                            <img src="assets/uploads/pos_po_cashier_workflow_diagram.jpg" alt="POS Order Processing to Purchase Order to Cashier Payment Procedure" style="width: 100%; max-width: 1050px; height: auto; border-radius: 8px; display: inline-block; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
+                        </a>
+                        <div style="margin-top: 10px; font-size: 12.5px; color: #94a3b8;">
+                            <i class="fa fa-search-plus text-teal"></i> <em>Click diagram to view full high-resolution 5-stage procedure flowchart</em>
+                        </div>
+                    </div>
+
+                    <!-- 5-Stage Interactive Procedure Cards -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 24px;">
+                        
+                        <!-- Stage 1 Card -->
+                        <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 16px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="background: #2563eb; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 20px;">STAGE 1</span>
+                                <i class="fa fa-boxes-stacked" style="font-size: 18px; color: #2563eb;"></i>
+                            </div>
+                            <h4 style="font-size: 14px; font-weight: 800; color: #1e3a8a; margin-bottom: 6px;">Order Preparation</h4>
+                            <div style="font-size: 11.5px; color: #1e40af; font-weight: 700; margin-bottom: 6px;">Order Staff (/supplier/pos.php)</div>
+                            <p style="font-size: 12px; color: #475569; line-height: 1.5; margin-bottom: 8px;">
+                                Select product cards &amp; variants. Add items to <strong>Current Sale</strong> card. Click <strong>"Proceed to Checkout"</strong>.
+                            </p>
+                        </div>
+
+                        <!-- Stage 2 Card -->
+                        <div style="background: #f0fdfa; border: 1.5px solid #99f6e4; border-radius: 10px; padding: 16px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="background: #0d9488; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 20px;">STAGE 2</span>
+                                <i class="fa fa-cart-shopping" style="font-size: 18px; color: #0d9488;"></i>
+                            </div>
+                            <h4 style="font-size: 14px; font-weight: 800; color: #115e59; margin-bottom: 6px;">Checkout &amp; PO Edit</h4>
+                            <div style="font-size: 11.5px; color: #0f766e; font-weight: 700; margin-bottom: 6px;">Supplier Checkout</div>
+                            <p style="font-size: 12px; color: #475569; line-height: 1.5; margin-bottom: 8px;">
+                                Review items, edit quantities, add/remove items with live recalculation. Click <strong>[SEND PURCHASE ORDER]</strong>.
+                            </p>
+                        </div>
+
+                        <!-- Stage 3 Card -->
+                        <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 16px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="background: #d97706; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 20px;">STAGE 3</span>
+                                <i class="fa fa-file-lines" style="font-size: 18px; color: #d97706;"></i>
+                            </div>
+                            <h4 style="font-size: 14px; font-weight: 800; color: #92400e; margin-bottom: 6px;">PO Sent &amp; Receipt</h4>
+                            <div style="font-size: 11.5px; color: #b45309; font-weight: 700; margin-bottom: 6px;">UNPAID Reference</div>
+                            <p style="font-size: 12px; color: #475569; line-height: 1.5; margin-bottom: 8px;">
+                                Generates unique <code>PO-YYYYMMDD-XXXXX</code> and prints <strong>Unpaid PO Receipt</strong>. Dispatches to Cashier Dashboard.
+                            </p>
+                        </div>
+
+                        <!-- Stage 4 Card -->
+                        <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 16px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="background: #16a34a; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 20px;">STAGE 4</span>
+                                <i class="fa fa-cash-register" style="font-size: 18px; color: #16a34a;"></i>
+                            </div>
+                            <h4 style="font-size: 14px; font-weight: 800; color: #14532d; margin-bottom: 6px;">Cashier &amp; [PAID]</h4>
+                            <div style="font-size: 11.5px; color: #15803d; font-weight: 700; margin-bottom: 6px;">Cashier Station</div>
+                            <p style="font-size: 12px; color: #475569; line-height: 1.5; margin-bottom: 8px;">
+                                Cashier opens PO from Receive Dashboard, confirms with customer, collects payment, clicks <strong>[PAID]</strong>, prints Tax Invoice.
+                            </p>
+                        </div>
+
+                        <!-- Stage 5 Card -->
+                        <div style="background: #faf5ff; border: 1.5px solid #e9d5ff; border-radius: 10px; padding: 16px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="background: #9333ea; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 20px;">STAGE 5</span>
+                                <i class="fa fa-truck-ramp-box" style="font-size: 18px; color: #9333ea;"></i>
+                            </div>
+                            <h4 style="font-size: 14px; font-weight: 800; color: #6b21a8; margin-bottom: 6px;">Customer Collection</h4>
+                            <div style="font-size: 11.5px; color: #7e22ce; font-weight: 700; margin-bottom: 6px;">Yard / Counter Staff</div>
+                            <p style="font-size: 12px; color: #475569; line-height: 1.5; margin-bottom: 8px;">
+                                Customer collects items. Staff clicks <strong>"Mark as Collected"</strong> after checking payment is <code>PAID</code>.
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <!-- Mock UI: Supplier Order Checkout Card -->
+                    <div style="margin: 20px 0;">
+                        <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 8px;">
+                            <i class="fa fa-laptop-code text-teal"></i> Supplier Order Checkout Interface (Live In-Place Item Editing)
+                        </div>
+                        <div class="mock-ui" style="font-size: 12px; line-height: 1.4;">
++---------------------------------------------------------------------------------------------------------+
+|                                    SUPPLIER ORDER CHECKOUT                                              |
++---------------------------------------------------------------------------------------------------------+
+| CUSTOMER: Juan Dela Cruz (Trade Contractor #CUST-0082)                                                  |
+| CONTACT: +63 917 123 4567 | ADDRESS: Barangay San Isidro, Santa Barbara, Iloilo                         |
++---------------------------------------------------------------------------------------------------------+
+| ORDER ITEMS & CART REVIEW:                                                                              |
+|                                                                                                         |
+| 1. Portland Cement 40kg (Type 1P)           Qty: [-] [ 20 ] [+] @ ₱245.00/ea     Line: ₱4,900.00 [x]   |
+| 2. Deformed Steel Bar 12mm (Grade 40)       Qty: [-] [ 15 ] [+] @ ₱310.00/ea     Line: ₱4,650.00 [x]   |
+| 3. Tubular Steel 2"x3" (t=1.2mm)            Qty: [-] [  8 ] [+] @ ₱680.00/ea     Line: ₱5,440.00 [x]   |
+|                                                                                                         |
+| [ + Add Another Item ]   [ Clear Cart ]                                                                 |
++---------------------------------------------------------------------------------------------------------+
+| Subtotal:                                                                              ₱14,990.00       |
+| Approved Contractor Trade Discount (5.00%):                                              -₱749.50       |
+| Barangay Delivery Fee:                                                                   +₱250.00       |
+| GRAND TOTAL DUE:                                                                       ₱14,490.50       |
++---------------------------------------------------------------------------------------------------------+
+| [ CANCEL ]                                                          [ SEND PURCHASE ORDER &gt;&gt; ]          |
++---------------------------------------------------------------------------------------------------------+
+                        </div>
+                    </div>
+
+                    <!-- Comparison Table: PO Receipt vs. Payment Receipt -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 20px;">
+                        <div style="background: #f8fafc; padding: 12px 18px; font-weight: 800; font-size: 14px; color: #0f172a; border-bottom: 1px solid #e2e8f0;">
+                            <i class="fa fa-receipt text-primary"></i> Critical Distinction: Purchase Order Receipt vs. Official Payment Receipt
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table" style="margin-bottom: 0; font-size: 13px;">
+                                <thead>
+                                    <tr>
+                                        <th>Document Type</th>
+                                        <th>Generated When</th>
+                                        <th>Generated By</th>
+                                        <th>Payment Status</th>
+                                        <th>Legal &amp; Operational Purpose</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Purchase Order Receipt</strong><br><span class="label label-warning">PO Reference</span></td>
+                                        <td>Immediately after clicking <code>[SEND PURCHASE ORDER]</code></td>
+                                        <td>Order Processing Staff</td>
+                                        <td><span class="label label-danger">UNPAID</span></td>
+                                        <td>Customer reference slip to present to the cashier counter. <em>Does not authorize goods release.</em></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Official Payment Receipt</strong><br><span class="label label-success">Tax Invoice</span></td>
+                                        <td>After cashier accepts funds and clicks <code>[PAID]</code></td>
+                                        <td>Authorized Cashier</td>
+                                        <td><span class="label label-success">PAID</span></td>
+                                        <td>Official proof of financial transaction. <em>Authorizes warehouse yard staff to release materials.</em></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
             </section>
 
             <!-- SECTION 6: SYSTEM CONFIGURATION & DEPLOYMENT -->

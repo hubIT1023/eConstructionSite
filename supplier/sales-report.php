@@ -90,11 +90,22 @@ switch ($filter_type) {
 // -------------------------------------------------------------
 // 2. Load catalog product financial map (Capital Price & Markup)
 // -------------------------------------------------------------
-$stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE supplier_id = ?");
-$stmt_prod_map->execute(array($supplier_id));
+ensure_supplier_user_schema($pdo);
 $products_map = [];
-while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
-    $products_map[$prow['p_id']] = $prow;
+try {
+    $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE supplier_id = ?");
+    $stmt_prod_map->execute(array($supplier_id));
+    while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
+        $products_map[$prow['p_id']] = $prow;
+    }
+} catch (Exception $e) {
+    try {
+        $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price FROM tbl_product WHERE supplier_id = ?");
+        $stmt_prod_map->execute(array($supplier_id));
+        while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
+            $products_map[$prow['p_id']] = $prow;
+        }
+    } catch (Exception $e2) {}
 }
 
 // Helper: Calculate item financials (Revenue, Unit Capital, Total Cost, Profit, Markup)
@@ -148,12 +159,17 @@ if (!function_exists('get_period_financial_metrics')) {
         $stmt_pay->execute(array($supplier_id, $start_dt, $end_dt));
         $orders = $stmt_pay->fetchAll(PDO::FETCH_ASSOC);
 
-        $stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.quantity_returned, ri.refund_amount, ri.unit_price as item_unit_price 
-                                   FROM tbl_returns r
-                                   JOIN tbl_return_items ri ON r.return_id = ri.return_id
-                                   WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?");
-        $stmt_ret->execute(array($supplier_id, $start_dt, $end_dt));
-        $returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
+        $returns = [];
+        try {
+            $stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.quantity_returned, ri.refund_amount, ri.unit_price as item_unit_price 
+                                       FROM tbl_returns r
+                                       JOIN tbl_return_items ri ON r.return_id = ri.return_id
+                                       WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?");
+            $stmt_ret->execute(array($supplier_id, $start_dt, $end_dt));
+            $returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $returns = [];
+        }
 
         $gross_sales = 0.0;
         $total_cost = 0.0;
@@ -239,13 +255,18 @@ $stmt->execute(array($supplier_id, $start_datetime, $end_datetime));
 $sales_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch returns matching date range for this supplier
-$stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.product_name, ri.quantity_returned, ri.refund_amount as item_refund, ri.unit_price as item_unit_price, ri.return_reason, ri.condition, ri.restock_status, ri.sku, ri.item_type, ri.special_order_reference, ri.product_details 
-                           FROM tbl_returns r
-                           JOIN tbl_return_items ri ON r.return_id = ri.return_id
-                           WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?
-                           ORDER BY r.return_id DESC");
-$stmt_ret->execute(array($supplier_id, $start_datetime, $end_datetime));
-$period_returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
+$period_returns = [];
+try {
+    $stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.product_name, ri.quantity_returned, ri.refund_amount as item_refund, ri.unit_price as item_unit_price, ri.return_reason, ri.condition, ri.restock_status, ri.sku, ri.item_type, ri.special_order_reference, ri.product_details 
+                               FROM tbl_returns r
+                               JOIN tbl_return_items ri ON r.return_id = ri.return_id
+                               WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?
+                               ORDER BY r.return_id DESC");
+    $stmt_ret->execute(array($supplier_id, $start_datetime, $end_datetime));
+    $period_returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $period_returns = [];
+}
 
 // Period detailed metrics
 $total_gross_revenue = 0;

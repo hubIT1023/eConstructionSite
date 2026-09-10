@@ -26,6 +26,12 @@ if(!isset($_SESSION['customer'])) {
             <div class="col-md-12">
                 <div class="user-content">
                     <h3><?php echo LANG_VALUE_25; ?></h3>
+                    <?php if(isset($_SESSION['po_success_message'])): ?>
+                        <div class="alert alert-success" style="border-radius: 6px; font-size: 15px; margin-bottom: 20px; background-color: #ecfdf5; border-color: #a7f3d0; color: #065f46; padding: 15px 20px;">
+                            <i class="fa fa-check-circle" style="font-size: 18px; margin-right: 8px;"></i>
+                            <?php echo htmlspecialchars($_SESSION['po_success_message']); unset($_SESSION['po_success_message']); ?>
+                        </div>
+                    <?php endif; ?>
                     <div class="table-responsive">
                         <table class="table table-bordered table-striped table-hover">
                             <thead>

@@ -166,11 +166,11 @@ if(empty($clean_order_ids)) {
             <div class="col-md-12">
                 
                 <div class="alert-success-custom no-print">
-                    <h4 style="margin: 0 0 5px 0; font-weight: bold; color: #047857;">
-                        <i class="fa fa-check-circle"></i> Purchase Order Created Successfully!
+                    <h4 style="margin: 0 0 6px 0; font-weight: bold; color: #047857; font-size: 16.5px;">
+                        <i class="fa fa-check-circle"></i> Your Purchase Order Successfully Submitted. Please Go to the cashier for payment.
                     </h4>
                     <p style="margin: 0; font-size: 14px;">
-                        Thank you for your order. Please present your <strong>Transaction ID</strong> when settling payment and collecting your items at the supplier store.
+                        Thank you for your order. Please present your <strong>Purchase Order Voucher / Transaction ID</strong> when settling payment and collecting your items at the cashier.
                     </p>
                 </div>
 

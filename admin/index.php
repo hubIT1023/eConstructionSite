@@ -1,7 +1,11 @@
 <?php require_once('header.php'); ?>
 
-<section class="content-header">
+<section class="content-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
 	<h1>SaaS Platform Administration Dashboard</h1>
+	<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+		<a href="../user-manual.html" target="_blank" class="btn btn-default btn-sm" style="font-weight: 700;"><i class="fa fa-book"></i> Interactive User Manual</a>
+		<a href="dev-documentation.php" class="btn btn-primary btn-sm" style="font-weight: 700;"><i class="fa fa-code"></i> Developer Documentation</a>
+	</div>
 </section>
 
 <?php

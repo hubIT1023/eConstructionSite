@@ -13,17 +13,25 @@ $stmt_cnt = $pdo->prepare("SELECT COUNT(*) as pos_count FROM tbl_supplier_user W
 $stmt_cnt->execute(array($supplier_id));
 $current_pos_count = (int)$stmt_cnt->fetch(PDO::FETCH_ASSOC)['pos_count'];
 
+$storage_stats = get_tenant_storage_stats($pdo, $supplier_id);
+
 // Handle updates
 if(isset($_POST['form_edit_supplier'])) {
     $plan = trim($_POST['supplier_plan']);
     $commission = floatval($_POST['supplier_commission']);
     $status = trim($_POST['supplier_status']);
     $max_pos_users = isset($_POST['max_pos_users']) ? intval($_POST['max_pos_users']) : 3;
+    $max_storage_mb = isset($_POST['max_storage_mb']) ? intval($_POST['max_storage_mb']) : 2048;
 
-    // Determine default limit by plan if not manually set
+    // Determine default limits by plan if not manually set
+    $plan_limits = ['Starter' => 3, 'Professional' => 10, 'Enterprise' => 50];
+    $plan_storage = ['Starter' => 500, 'Professional' => 2048, 'Enterprise' => 10240];
+    
     if ($max_pos_users <= 0) {
-        $plan_limits = ['Starter' => 3, 'Professional' => 10, 'Business' => 25, 'Enterprise' => 50];
         $max_pos_users = isset($plan_limits[$plan]) ? $plan_limits[$plan] : 3;
+    }
+    if ($max_storage_mb <= 0) {
+        $max_storage_mb = isset($plan_storage[$plan]) ? $plan_storage[$plan] : 2048;
     }
 
     // Downgrade Safety Check: Block downgrade if active users exceed target limit
@@ -32,8 +40,8 @@ if(isset($_POST['form_edit_supplier'])) {
                          "The requested limit allows only <strong>{$max_pos_users} POS Users</strong>.<br>" .
                          "Please have the supplier reduce or suspend unnecessary POS users before downgrading their plan allowance.";
     } else {
-        $statement = $pdo->prepare("UPDATE tbl_supplier SET supplier_plan = ?, max_pos_users = ?, supplier_commission = ?, supplier_status = ? WHERE supplier_id = ?");
-        $statement->execute(array($plan, $max_pos_users, $commission, $status, $supplier_id));
+        $statement = $pdo->prepare("UPDATE tbl_supplier SET supplier_plan = ?, max_pos_users = ?, max_storage_mb = ?, supplier_commission = ?, supplier_status = ? WHERE supplier_id = ?");
+        $statement->execute(array($plan, $max_pos_users, $max_storage_mb, $commission, $status, $supplier_id));
 
         // If status is suspended, we also suspend their users
         if ($status == 'Suspended' || $status == 'Pending') {
@@ -44,7 +52,9 @@ if(isset($_POST['form_edit_supplier'])) {
             $statement_usr->execute(array($supplier_id));
         }
 
-        $success_message = "Supplier SaaS configuration and POS user limit updated successfully!";
+        $success_message = "Supplier SaaS configuration, POS user limit, and storage quota updated successfully!";
+        // Reload storage stats
+        $storage_stats = get_tenant_storage_stats($pdo, $supplier_id);
     }
 }
 
@@ -59,6 +69,7 @@ if (!$supplier) {
 }
 
 $current_max_users = isset($supplier['max_pos_users']) && (int)$supplier['max_pos_users'] > 0 ? (int)$supplier['max_pos_users'] : 3;
+$current_max_storage = isset($supplier['max_storage_mb']) && (int)$supplier['max_storage_mb'] > 0 ? (int)$supplier['max_storage_mb'] : 2048;
 ?>
 
 <section class="content-header">
@@ -114,12 +125,25 @@ $current_max_users = isset($supplier['max_pos_users']) && (int)$supplier['max_po
                         </div>
 
                         <div class="form-group">
+                            <label for="" class="col-sm-3 control-label">Current Storage & Data</label>
+                            <div class="col-sm-8" style="padding-top: 7px;">
+                                <span class="badge" style="font-size: 13px; background-color: #0284c7;">
+                                    <?php echo htmlspecialchars($storage_stats['formatted_usage']); ?> / <?php echo htmlspecialchars($storage_stats['formatted_max']); ?> (<?php echo $storage_stats['used_pct']; ?>% Used)
+                                </span>
+                                <div style="font-size: 12px; color: #64748b; margin-top: 5px;">
+                                    <span><i class="fa fa-file-image-o text-info"></i> Media: <strong><?php echo $storage_stats['formatted_file_usage']; ?></strong> (<?php echo $storage_stats['total_files']; ?> files)</span> &bull; 
+                                    <span><i class="fa fa-database text-warning"></i> Data: <strong><?php echo $storage_stats['formatted_db_usage']; ?></strong> (<?php echo $storage_stats['db_records_total']; ?> records)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
                             <label for="supplier_plan" class="col-sm-3 control-label">SaaS Subscription Plan *</label>
                             <div class="col-sm-8">
                                 <select class="form-control" name="supplier_plan" id="supplier_plan" onchange="autoFillPlanLimit(this.value)" required>
-                                    <option value="Starter" <?php if($supplier['supplier_plan'] == 'Starter') echo 'selected'; ?>>Starter Plan (Default: 3 POS Users, 50 products)</option>
-                                    <option value="Professional" <?php if($supplier['supplier_plan'] == 'Professional') echo 'selected'; ?>>Professional Plan (Default: 10 POS Users, 500 products)</option>
-                                    <option value="Enterprise" <?php if($supplier['supplier_plan'] == 'Enterprise') echo 'selected'; ?>>Enterprise Plan (Default: 50 POS Users, Unlimited)</option>
+                                    <option value="Starter" <?php if($supplier['supplier_plan'] == 'Starter') echo 'selected'; ?>>Starter Plan (Default: 3 POS Users, 500 MB Storage)</option>
+                                    <option value="Professional" <?php if($supplier['supplier_plan'] == 'Professional') echo 'selected'; ?>>Professional Plan (Default: 10 POS Users, 2 GB Storage)</option>
+                                    <option value="Enterprise" <?php if($supplier['supplier_plan'] == 'Enterprise') echo 'selected'; ?>>Enterprise Plan (Default: 50 POS Users, 10 GB Storage)</option>
                                 </select>
                             </div>
                         </div>
@@ -129,6 +153,14 @@ $current_max_users = isset($supplier['max_pos_users']) && (int)$supplier['max_po
                             <div class="col-sm-8">
                                 <input type="number" min="1" max="500" class="form-control" name="max_pos_users" id="max_pos_users" value="<?php echo htmlspecialchars($current_max_users); ?>" required>
                                 <small class="text-muted"><i class="fa fa-info-circle"></i> SaaS Admin controls the maximum number of cashier accounts this tenant can create.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max_storage_mb" class="col-sm-3 control-label">Storage Quota (MB) *</label>
+                            <div class="col-sm-8">
+                                <input type="number" min="50" max="102400" step="50" class="form-control" name="max_storage_mb" id="max_storage_mb" value="<?php echo htmlspecialchars($current_max_storage); ?>" required>
+                                <small class="text-muted"><i class="fa fa-hdd-o"></i> Cloud storage allowance in Megabytes (500 MB = Starter, 2048 MB = 2 GB, 10240 MB = 10 GB).</small>
                             </div>
                         </div>
 
@@ -165,13 +197,21 @@ $current_max_users = isset($supplier['max_pos_users']) && (int)$supplier['max_po
 
 <script>
 function autoFillPlanLimit(plan) {
-    var limits = {
+    var userLimits = {
         'Starter': 3,
         'Professional': 10,
         'Enterprise': 50
     };
-    if (limits[plan]) {
-        document.getElementById('max_pos_users').value = limits[plan];
+    var storageLimits = {
+        'Starter': 500,
+        'Professional': 2048,
+        'Enterprise': 10240
+    };
+    if (userLimits[plan]) {
+        document.getElementById('max_pos_users').value = userLimits[plan];
+    }
+    if (storageLimits[plan]) {
+        document.getElementById('max_storage_mb').value = storageLimits[plan];
     }
 }
 </script>

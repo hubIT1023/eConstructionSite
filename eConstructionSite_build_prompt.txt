@@ -1,0 +1,5322 @@
+SICS-20260906-B-02
+
+SICS-20260906-A-05
+
+SICS-20260906-A-04 -casher
+
+https://econstruction-supply.site/admin/supplier.php
+
+🌐 Step 1: Open pgAdmin in Your Web Browser
+Navigate directly to: 👉 http://209.38.26.235:5051
+
+🔑 Step 2: Log In to pgAdmin
+Use the pre-configured administrator credentials:
+
+Email: admin@ecom.com
+Password: password123
+🗄️ Step 3: Connect to the eConstructionSite Database
+Once logged in to the pgAdmin dashboard:
+
+Right-click on Servers (in the left sidebar) 
+⟶
+⟶ Register 
+⟶
+⟶ Server...
+In the General tab:
+Name: eConstructionSite DB (or any name you prefer)
+In the Connection tab, enter:
+Host name/address: db (or econstructionsite-db)
+Port: 5432
+Maintenance database: ecomDB
+Username: ecom_admin
+Password: #Adm1n_0WN3R
+Check Save password? 
+⟶
+⟶ Click Save
+
+
+
+support.econstructionsupply@gmail.com
+
+https://econstruction-supply.site/supplier/product.php ---> View Products --> add one column called "(S)Level" (default value = 10) beside/rightside of "(N)Quantity". 
+
+https://econstruction-supply.site/supplier/product.php ---> View Products --> set conditions, if "Quantity" < "(S)Level" (AND) "(N)Quantity = 0" cell color "QUANTITY" will turn YELLOW .   if "Quantity" < 50% of"(S)Level" (AND) "(N)Quantity = 0" cell color "QUANTITY" will turn RED
+
+ 
+https://econstruction-supply.site/supplier/product.php ---> View Products --> set product conditions, if "Quantity = 1" AND "(N)Quantity > 10% of(S)Level", "Quantity = 1 + (N)Quantity"THEN (N)Quantity = 0. If "(C)Price < (N)Price" THEN "(C)Price  = (N)Price", If "(C)Price > (N)Price"   THEN   "(C)Price = (C)Price"   
+
+https://econstruction-supply.site/registration.php ---> update by replacing the label "Country*" to "Town/City*", use "tbl_town" for town selection
+
+https://econstruction-supply.site/registration.php ---> add Barangay* 
+
+create a new table "Town" (column names : town_id(PK, integer) ,town_name(var(100)) in eConstruction DB database
+
+
+
+update the notification at https://econstruction-supply.site/login.php-->Sorry! Your account is inactive. Please contact to the administrator at:
+support.econstructionsupply@gmail.com.
+
+
+https://econstruction-supply.site/checkout.php --> update the message :You must have to fill up all the billing and shipping information from your dashboard panel in order to checkout the order. Please fill up the information going to "this link". <-- update Please fill up the information going to "this link" to :Please fill up the information to "this LINK (highligh with color blue)"
+
+https://econstruction-supply.site/customer-billing-shipping-update.php ---> update the form by adding below the selection field "Town/City*" the label and selection  "Barangay*", use/associate "tbl_brgy" for selection
+
+https://econstruction-supply.site/supplier/index.php --> on sidebar add "Shop Settings" -->  View Serviceable Barangays (Barangays/Town) use list of barangays in "tbl_brgy" <--- note page is edidatable page(same as View Serviceable Towns (Iloilo))
+
+https://econstruction-supply.site/supplier/index.php --> on sidebar add "Shop Settings" -->shipping-cost.ph
+
+https://econstruction-supply.site/supplier/shipping-cost.php --> update the page by changing the label "Select Country *" to "Select Location*" use/associate "tbl_brgy" for selection of location
+
+https://econstruction-supply.site/supplier/shipping-cost.php -->update the page by changing the label 1)-->"Add Shipping Cost" to Add Delivery Cost, 2)-->"View Shipping Costs" to View Delivery Costs
+
+https://econstruction-supply.site/supplier/shipping-cost.php -->update the page by changing the label "Shipping Cost (Rest of the world)" to "Delivery Cost (All the Towns)"
+
+https://econstruction-supply.site/checkout.php --> associate/add shipping/delivery cost based on "Barangay" location
+
+option to not to include the Delivery fee and change the "Pay Now"  button label to "Send Purchase Order"
+
+https://econstruction-supply.site/checkout.php--> correct the option to not to include the Delivery fee should be at the "Order Details / Delivery Cost (Location: )" not at "Payment Section /Over the Counter Payment"
+
+https://econstruction-supply.site/checkout.php--> Generate "Purchase Order Receipt with Transaction ID " after the "Send Purchase Order: button is pressed.
+
+https://econstruction-supply.site/supplier/product.php -->at View Products --> add columns "(Ca)Price" and "(%)Mark_Up" beside/rightside of (s)Level. Note "(N)Price = (Ca)Price x (%)Mark_Up"
+																Default (%)Mark_Up value = 20 (editable at form https://econstruction-supply.site/supplier/product-edit.php ). "(Ca)Price" should be editable .(Ca)Price  = (N)Price/(%)Mark_Up. FYI: Ca means Capital --> Capital Price
+https://econstruction-supply.site/supplier/sales-report.php --> it shoud reflect the total Profit from total sale --> per day, week, month and year
+
+https://econstruction-supply.site/supplier/order.php   --> update View Orders by add button "Purchase Order" at the "Payment Information" column to view thw customer's purchase order.
+
+https://econstruction-supply.site/supplier/order.php --> on sidebar below "Receive Order" add  "Paid Orders" and create "View Paid Orders database/table (table is same as of "View Orders")", all Paid orders should move to "View Paid Orders" database when customer order  "Payment Status" change to "Paid"
+
+https://econstruction-supply.site/supplier/index.php --->  on sidebar below "RFQ Quotations" add  "Sales Report" and create "View Sales Report" database/table. Sales Report can be filtered by Day, Week, Quarterly and Yearly.Sales Report has also analytics
+
+https://econstruction-supply.site/supplier/login.php --> before logging in should have an option to log as Admin or User(registration and login). User should have limited access (only for POS)
+
+Target :
+https://econstruction-supply.site/supplier/product.php -->   https://econstruction-supply.site/supplier/product-edit.php
+
+Task: check all the the dimensions/sizes  used then add it to then add all the gathered dimensions/sizes at  https://econstruction-supply.site/admin/size.php
+
+Target :
+https://econstruction-supply.site/supplier/product.php  -->task: check all products (https://econstruction-supply.site/supplier/product.php)/ database table 
+														--> arrange or configure (https://econstruction-supply.site/supplier/product-edit.php) according to category, product name (will display one product with different sizes: 
+														https://econstruction-supply.site/supplier/pos.php ) to make more organize and easy to navigate.
+														
+														
+also do the same for the POS with --->
+Target :
+https://econstruction-supply.site/supplier/pos.php -->
+task: 
+			1. Display ONE product card for the parent product.
+			2. Group all variants/selections belonging to that product.
+			3. When the user clicks "+ Add", open a product/variant selection interface.
+			4. Allow the POS operator to select the required variant.
+			5. After selecting the variant, display the correct SKU, price, stock quantity and other variant-specific information.
+			6. Add the selected variant to the POS  "Current Sale" card.													
+														
+
+Target :														
+https://econstruction-supply.site/store.php?slug=sam-inri-construction-supply	--> 	
+		Task
+			1. Display ONE product card for the parent product.
+			2. Group all variants/selections belonging to that product.
+			3. When the user clicks "+ Add", open a product/variant selection interface.
+			4. Allow the POS operator to select the required variant.
+			5. After selecting the variant, display the correct SKU, price, stock quantity and other variant-specific information.
+			6. Add the selected variant to the "Cart".
+
+  do the improvement with product categorization that same with but will not be affected--> https://econstruction-supply.site/supplier/pos.php 	or 	https://econstruction-supply.site/product-category.php?id=1&type=mid-category	
+
+Active Filters:
+Supplier: Sam & Inri construction Supply
+
+make the page : https://econstruction-supply.site/store.php?slug=platform-supplies -->Supplier Products --same as Active Filters, dedicated only to selected supplier products (ex: Supplier: Sam & Inri construction Supply)
+
+target : https://econstruction-supply.site/supplier/pos.php --> at "Current Sale" card, if user role is "Order Processing Staff" --the button "Complete Sale & Print Receipt" will be change to "Create PO"
+																When button "Create PO" is click product is added to the cart will open the page for check out(checkout conditions will apply)-->https://econstruction-supply.site/checkout.php	
+Target
+https://econstruction-supply.site/supplier/pos.php --> Task:at the sidebar menu, add "Users'Manual" below the "Store Settings" upadate and link on it the HTML documentation on how to use the POS. add step by step on how to add the product and configure according its category or which categuro it belong(https://econstruction-supply.site/supplier/product-edit.php). 
+
+Target: https://econstruction-supply.site/supplier/users.php --> task: display the storage usage of tenant at  "Manage Store POS Users"
+
+Target:https://econstruction-supply.site/admin/supplier.php --> task: display the storage usage of tenant at  "Manage B2B SaaS Suppliers"
+
+https://econstruction-supply.site/supplier/shipping-cost.php --> change label "Delivery Cost (All the Towns)" to "Delivery Cost (All Towns)"
+
+https://econstruction-supply.site/supplier/pos.php --> at "Current Sale" card, add radio "Location" button (use/associate "tbl_brgy" for selection of location) beside/rigthside "Rgistered User".
+
+https://econstruction-supply.site/supplier/pos.php --> at "Current Sale" card, note that radio "Location" button (associate "tbl_brgy" for selection of location) is independent from others(Walk-in (OTC) and Rgistered User). It is for option to "not include(when inactive)" or "add(when active)" the delivery cost 
+
+https://econstruction-supply.site/supplier/pos.php ---> at the Product Card, fit all the Category buttons within the card, Create another row to accomodate the category buttons to avoid having the horizontal scroll
+
+https://econstruction-supply.site/supplier/pos.php -->at the Product Card,replace the button label "RETURN" to "Returned Item(s)"
+
+https://econstruction-supply.site/supplier/pos.php -->"Returned Item(s)" --> clicked RETURN ITEM, at the modal card "Return Item & Customer Refund" customer has anoter option to "Change Item"
+													   if item change, the returned item will be add at the "Current Sale" card, casher should select new product in the POS Product card	and will be added to the "Current Sale" card.
+														Then calculate the difference it is either to be refunded the difference amount to the customer or the customer pay for the short fall amount
+
+https://econstruction-supply.site/supplier/pos.php --> at the "Current Sale" card, the casher has an option to give discount on the item requested by the customer but subject to approval by supplier admin. The discount allowable %
+														is predefine in the Shop Setting/ Dsicount -->the max value. Supplier admin should approve or reject or change the % discount, oncce approve the cashier can continue the payment process
+
+https://econstruction-supply.site/supplier/product-edit.php ---> Task:inventory/item price changes when new items comes. Given: (C) Price (Current Price),(Ca) Price (Capital Price) , (₱)Mark_Up (change to real amount instead of %),(N)Price(new Price) = ((Ca) Price) + ((₱)Mark_Up)
+																contidion: if (N)Price < (C)Price then 	(C)Price = (C)Price. If (N)Price > (C)Price then (C)Price = (N)Price. point: item current price stay if new item price is low but if new price of the item is higher it follow the new price. 
+																the admin can edit and update the (Ca)Price and (₱)Mark_Up amount and the the (N)Price calculated automatically. Then conditions applied on (C)Price. 
+															     Note: the supplier admin has option to edit and update NPrice the (C)Price conditions follows
+
+
+TARGET PAGE: https://econstruction-supply.site/supplier/pos.php --> at "Products Available" card, 
+
+			TASK: Modify the Supplier POS Product Display and Product Selection System
+
+			PRIMARY GOAL:
+			Improve the "Products Available" section of the Supplier POS so that products are displayed and grouped by their END LEVEL CATEGORY.
+
+			If multiple database records represent the same parent product but have different selections/variants such as Size, Color, Voltage, Rated Current, Length, Thickness, etc., DO NOT display them as separate product cards.
+
+			Instead:
+
+			1. Display ONE product card for the parent product.
+			2. Group all variants/selections belonging to that product.
+			3. When the user clicks "+ Add", open a product/variant selection interface.
+			4. Allow the POS operator to select the required variant.
+			5. After selecting the variant, display the correct SKU, price, stock quantity and other variant-specific information.
+			6. Add the selected variant to the POS  "Current Sale" card.
+			
+
+target :https://econstruction-supply.site/supplier/discount-approvals.php --> task: ammendment to discount approval: if "admin / manager" made the request is allowed to approve while if the "casher or operator" made the request, requires the approval of Admin /manager or Supervisor approval while the Supervisor requires admin/manager approval
+
+ target: https://econstruction-supply.site/supplier/users.php  --> task: at "Change User Role" modal card, add  "Order Processing Staff" role in the selection pulldown menu
+
+
+TARGET PAGE: https://econstruction-supply.site/product-category.php?id=1&type=top-category <--- do the same here
+
+		1. Display ONE product card for the parent product.
+			2. Group all variants/selections belonging to that product.
+			3. When the user clicks "+ Add", open a product/variant selection interface.
+			4. Allow the POS operator to select the required variant.
+			5. After selecting the variant, display the correct SKU, price, stock quantity and other variant-specific information.
+			6. Add the selected variant to the "Cart".
+			
+			
+files  of http://localhost:9090/supplier/users.php were updated while the other were not https://econstruction-supply.site/supplier/users.php	for https://econstruction-supply.site/
+
+check and copy database table entry of http://209.38.26.235:5051/browser/	-->paste or insert the database table entry at http://localhost:5051 to update 
+			
+TASK:
+Add a "SPECIAL ORDER" function to the existing Supplier POS system.
+
+https://econstruction-supply.site/supplier/pos.php --> will add user limitation rule. if the user is encoder will only place order on "Current Sale" card can't accept payments but can send "Purchase Order"
+														The button "Complete Sale & Print Receipt" will be replace with "Create PO" at  " Current Sale" card.When button "Create PO" is click product is added to the cart  will open the page for check out-->https://econstruction-supply.site/checkout.php 
+
+https://econstruction-supply.site/checkout.php
+
+
+TARGET:
+Supplier POS page:
+https://econstruction-supply.site/supplier/pos.php
+
+REFERENCE UI:
+Use the existing product/variant selection modal/card as the visual reference.
+
+The Special Order card/modal must look and behave consistently with the existing product selection card shown in the attached reference image.
+
+============================================================
+OBJECTIVE
+============================================================
+
+The POS must allow the cashier/operator to create an order for a product that is NOT currently available in the product catalogue.
+
+This is called:
+
+SPECIAL ORDER
+
+A Special Order is a manually entered product/order item.
+
+The cashier must be able to enter:
+
+1. Product Name
+2. Product Details / Description
+3. Quantity
+4. Unit Price
+
+The Special Order must then be added to the POS cart.
+
+It must NOT require an existing product ID, SKU, variant, stock record, or catalogue entry.
+
+============================================================
+IMPORTANT BUSINESS RULE
+============================================================
+
+A Special Order is NOT an existing catalogue product.
+
+Therefore:
+
+- Do not require product_id.
+- Do not require variant_id.
+- Do not check normal inventory stock.
+- Do not deduct stock from an existing product.
+- Do not require Size/Color/Variant selection.
+- Do not force the cashier to create a catalogue product.
+- Do not modify the normal product catalogue.
+
+Instead, create a temporary/manual POS item identified as:
+
+item_type = "SPECIAL_ORDER"
+
+The item should remain clearly identifiable as a Special Order throughout the cart and checkout process.
+
+============================================================
+HOW THE USER OPENS SPECIAL ORDER
+============================================================
+
+Add a clearly visible button to the POS.
+
+Recommended:
+
+[ + Special Order ]
+
+Possible location:
+
+Near the product search box / Products Available section.
+
+Example:
+
+---------------------------------------------------------
+[ Search product by name, brand, or SKU... ] [×]
+
+[ + Special Order ]
+
+Products Available: XX
+---------------------------------------------------------
+
+Clicking:
+
+[ + Special Order ]
+
+opens the Special Order modal.
+
+============================================================
+SPECIAL ORDER MODAL DESIGN
+============================================================
+
+The modal should closely match the existing product/variant modal.
+
+Use the same:
+
+- Modal width
+- Header height
+- Header styling
+- Border radius
+- Typography
+- Spacing
+- Footer
+- Button style
+- Quantity control style
+- Price presentation
+- Responsive behavior
+
+However, the contents must be designed specifically for manual Special Orders.
+
+Recommended modal:
+
+---------------------------------------------------------
+|  SPECIAL ORDER                                  [ X ] |
+|  Manual Product / Customer Request                     |
+---------------------------------------------------------
+
+|  PRODUCT NAME *                                      |
+|  [_______________________________________________]  |
+
+|  PRODUCT DETAILS / SPECIFICATION                     |
+|  [_______________________________________________]  |
+|  [_______________________________________________]  |
+|  [_______________________________________________]  |
+
+|  UNIT PRICE *                                         |
+|  [ ₱ __________________ ]                             |
+
+|  QUANTITY *                                           |
+|       [ - ]   [ 1 ]   [ + ]                           |
+
+---------------------------------------------------------
+|                    TOTAL AMOUNT: ₱0.00                |
+---------------------------------------------------------
+
+                    [ Close ] [ Add to Cart ]
+---------------------------------------------------------
+
+============================================================
+HEADER
+============================================================
+
+Use a header similar to the existing product modal.
+
+Example:
+
+SPECIAL ORDER
+
+Sub-header:
+
+Manual Product / Customer Request
+
+The modal should visually distinguish Special Order from normal catalogue products.
+
+Do NOT use a normal product SKU or normal inventory status.
+
+============================================================
+PRODUCT NAME
+============================================================
+
+Provide an editable text input:
+
+Product Name *
+
+Example:
+
+"Stainless Steel Pipe"
+
+The field must be editable.
+
+Required validation:
+
+- Cannot be empty.
+- Trim leading/trailing spaces.
+- Maximum reasonable character length.
+- Display validation message if empty.
+
+============================================================
+PRODUCT DETAILS
+============================================================
+
+Provide an editable multiline textarea:
+
+Product Details / Specification
+
+Example:
+
+"304 Stainless Steel Pipe, 2 inch diameter,
+2mm thickness, 6 meter length"
+
+This field is optional but recommended.
+
+Allow the cashier to enter:
+
+- Size
+- Dimension
+- Material
+- Brand
+- Model
+- Specification
+- Customer requirements
+- Other relevant information
+
+Do not restrict this to predefined product attributes.
+
+This is specifically for products not yet available in the catalogue.
+
+============================================================
+PRICE
+============================================================
+
+Provide an editable:
+
+Unit Price *
+
+Example:
+
+₱1,250.00
+
+The cashier must be able to manually enter the price.
+
+Price must:
+
+- Accept decimal values.
+- Reject negative values.
+- Reject invalid characters.
+- Be stored as a numeric/decimal value.
+- Be formatted as currency when displayed.
+
+Do NOT retrieve the price from the product catalogue.
+
+============================================================
+QUANTITY
+============================================================
+
+Use the same quantity control style as the existing product modal.
+
+Example:
+
+[ - ] [ 1 ] [ + ]
+
+Requirements:
+
+- Minimum quantity = 1
+- Quantity must be an integer.
+- Minus button cannot reduce quantity below 1.
+- Plus button increments quantity.
+- Direct quantity editing may be allowed if consistent with the existing POS.
+
+============================================================
+TOTAL AMOUNT
+============================================================
+
+Automatically calculate:
+
+Total Amount = Unit Price × Quantity
+
+Example:
+
+Unit Price:
+₱1,250.00
+
+Quantity:
+3
+
+Total:
+
+₱3,750.00
+
+Update the total immediately when:
+
+- Price changes
+- Quantity changes
+
+No page reload.
+
+============================================================
+SPECIAL ORDER IDENTIFICATION
+============================================================
+
+The cart must clearly identify this as a Special Order.
+
+Recommended cart item:
+
+---------------------------------------------------------
+SPECIAL ORDER
+
+Stainless Steel Pipe
+
+Details:
+304 Stainless Steel Pipe, 2 inch diameter,
+2mm thickness, 6 meter length
+
+Unit Price: ₱1,250.00
+Qty: 3
+
+Subtotal: ₱3,750.00
+---------------------------------------------------------
+
+Display a badge:
+
+[SPECIAL ORDER]
+
+Do not display:
+
+"0 in stock"
+
+"Out of stock"
+
+or other normal inventory messages.
+
+Instead display:
+
+SPECIAL ORDER
+or
+ORDER REQUIRED
+
+============================================================
+SKU / PRODUCT CODE
+============================================================
+
+Do not require a normal catalogue SKU.
+
+If the existing POS/cart requires an identifier, generate a temporary unique reference.
+
+Example:
+
+SO-20260905-0001
+
+or:
+
+SPECIAL-ORDER-0001
+
+Recommended database field:
+
+special_order_reference
+
+Example:
+
+SO-20260905-0001
+
+This is NOT a catalogue SKU.
+
+Clearly distinguish:
+
+Catalogue SKU:
+SKU-00017
+
+from:
+
+Special Order Reference:
+SO-20260905-0001
+
+============================================================
+CART DATA
+============================================================
+
+When adding the Special Order to cart, store:
+
+item_type
+special_order_reference
+product_name
+product_details
+unit_price
+quantity
+subtotal
+
+Example:
+
+item_type:
+SPECIAL_ORDER
+
+special_order_reference:
+SO-20260905-0001
+
+product_name:
+Stainless Steel Pipe
+
+product_details:
+304 Stainless Steel Pipe, 2 inch diameter,
+2mm thickness, 6 meter length
+
+unit_price:
+1250.00
+
+quantity:
+3
+
+subtotal:
+3750.00
+
+============================================================
+CART BEHAVIOR
+============================================================
+
+When the Special Order is added:
+
+1. Close the modal.
+2. Add the item to the existing POS cart.
+3. Update cart total.
+4. Display the Special Order badge.
+5. Allow quantity editing according to existing POS behavior.
+6. Allow removal.
+7. Preserve the manually entered product details.
+8. Preserve the manually entered price.
+
+Example:
+
+---------------------------------------------------------
+CART
+
+SPECIAL ORDER
+
+Stainless Steel Pipe
+304 Stainless Steel Pipe, 2 inch diameter,
+2mm thickness, 6 meter length
+
+₱1,250.00 × 3
+
+₱3,750.00
+
+[ - ] 3 [ + ]       [ Remove ]
+---------------------------------------------------------
+
+TOTAL:
+₱3,750.00
+
+============================================================
+CHECKOUT
+============================================================
+
+When the POS transaction is completed, the Special Order information must remain attached to the transaction.
+
+The sales/order record must preserve:
+
+- Special Order reference
+- Product name
+- Product details
+- Unit price
+- Quantity
+- Subtotal
+- Supplier
+- Cashier/operator
+- Transaction/order ID
+- Date/time
+
+Do not convert it into a normal catalogue product.
+
+============================================================
+SUPPLIER
+============================================================
+
+Because this is a Supplier POS:
+
+The Special Order must be associated with the currently logged-in supplier.
+
+Store the appropriate existing supplier_id.
+
+Do not allow the Special Order to accidentally appear in another supplier's product catalogue.
+
+============================================================
+NO INVENTORY DEDUCTION
+============================================================
+
+Special Orders must NOT affect:
+
+- Existing product stock
+- Variant stock
+- Safety stock
+- Product inventory quantity
+
+Example:
+
+Existing product:
+
+Angle Bar
+Stock = 100
+
+Special Order:
+
+"Custom Stainless Steel Bracket"
+Qty = 10
+
+After adding Special Order:
+
+Angle Bar stock must remain:
+
+100
+
+No inventory deduction.
+
+============================================================
+EDITING
+============================================================
+
+Before checkout, allow the cashier to edit the Special Order if the existing POS supports cart-item editing.
+
+Editable fields:
+
+- Product Name
+- Product Details
+- Unit Price
+- Quantity
+
+When edited:
+
+Subtotal must recalculate immediately.
+
+Example:
+
+Old:
+
+₱1,250 × 3 = ₱3,750
+
+Change price:
+
+₱1,400 × 3 = ₱4,200
+
+Cart total updates automatically.
+
+============================================================
+VISUAL CONSISTENCY
+============================================================
+
+The Special Order modal must look like the existing product variant modal.
+
+Reference structure:
+
+Existing:
+
+[ Product Modal Header ]
+[ Product Image / Product Information ]
+[ Variant Selection ]
+[ Quantity ]
+[ Total Amount ]
+[ Footer Buttons ]
+
+Special Order:
+
+[ Special Order Header ]
+[ Editable Product Name / Details ]
+[ Editable Price ]
+[ Quantity ]
+[ Total Amount ]
+[ Footer Buttons ]
+
+Do NOT create a completely different visual design.
+
+Reuse existing:
+
+- CSS
+- Bootstrap components, if currently used
+- Modal component
+- Buttons
+- Typography
+- Quantity controls
+- Footer layout
+- Responsive behavior
+
+============================================================
+RECOMMENDED UI
+============================================================
+
+Header:
+
+SPECIAL ORDER
+Manual Product / Customer Request
+
+Body:
+
+Product Name *
+[ Stainless Steel Pipe                         ]
+
+Product Details / Specification
+[ 304 Stainless Steel Pipe, 2 inch diameter,   ]
+[ 2mm thickness, 6 meter length                ]
+
+Unit Price *
+[ ₱1,250.00                                     ]
+
+Quantity:
+[ - ] [ 3 ] [ + ]
+
+------------------------------------------------
+
+Total Amount:
+₱3,750.00
+
+Footer:
+
+[ Close ]              [ Add to Cart ]
+
+============================================================
+VALIDATION
+============================================================
+
+Before Add to Cart:
+
+Product Name:
+REQUIRED
+
+Unit Price:
+REQUIRED
+Must be >= 0
+
+Quantity:
+REQUIRED
+Must be >= 1
+
+Product Details:
+Optional
+
+If validation fails:
+
+Do not add to cart.
+
+Display a clear inline validation message.
+
+============================================================
+SECURITY
+============================================================
+
+Do not trust price, quantity or product details submitted by the browser.
+
+Validate and sanitize data server-side.
+
+Use:
+
+- Prepared SQL statements
+- Existing authentication
+- Existing supplier authorization
+- Existing CSRF protection if implemented
+- Existing session security
+
+Do not allow a user to manipulate another supplier's transaction.
+
+============================================================
+DATABASE
+============================================================
+
+First inspect the existing POS/cart/order database structure.
+
+Do NOT immediately create new tables.
+
+Determine whether Special Orders can safely be represented inside the existing cart/order-item structure.
+
+Preferred approach:
+
+If existing order/cart items already support flexible item types, add:
+
+item_type = SPECIAL_ORDER
+
+and fields required for:
+
+special_order_reference
+product_name
+product_details
+unit_price
+
+If the existing architecture does not support this, propose the minimum database modification required.
+
+Do not duplicate existing tables unnecessarily.
+
+Do not break existing normal product transactions.
+
+============================================================
+NORMAL PRODUCT VS SPECIAL ORDER
+============================================================
+
+NORMAL PRODUCT:
+
+Product exists in catalogue.
+
+Example:
+
+Flat Latex
+Size = 1 Gallon
+Color = White
+SKU = BOY-FL-1G-W
+Price = ₱850
+Stock = 32
+
+SPECIAL ORDER:
+
+Product does NOT exist in catalogue.
+
+Example:
+
+Stainless Steel Pipe
+Details = 304 SS / 2 inch / 2mm / 6m
+Reference = SO-20260905-0001
+Price = ₱1,250
+Quantity = 3
+
+Both should use the same POS/cart workflow, but Special Orders must remain distinguishable.
+
+============================================================
+IMPORTANT: DO NOT CHANGE EXISTING PRODUCT VARIANT LOGIC
+============================================================
+
+The existing product variant system must continue working.
+
+For normal products:
+
+Product
+→ End Level Category
+→ Product Variants
+→ Size / Color / Specification
+→ SKU
+→ Price
+→ Stock
+→ Cart
+
+For Special Orders:
+
+Special Order
+→ Manual Product Name
+→ Manual Details
+→ Manual Price
+→ Quantity
+→ Cart
+
+Do not mix these two systems.
+
+============================================================
+TEST CASES
+============================================================
+
+Test at least the following:
+
+TEST 1:
+Create Special Order:
+
+Product:
+Stainless Steel Pipe
+
+Details:
+2 inch / 304 SS / 6m
+
+Price:
+1250
+
+Qty:
+1
+
+Expected:
+Subtotal = 1250
+
+TEST 2:
+
+Price:
+850
+
+Qty:
+5
+
+Expected:
+Subtotal = 4250
+
+TEST 3:
+
+Leave Product Name blank.
+
+Expected:
+Validation error.
+
+TEST 4:
+
+Enter negative price.
+
+Expected:
+Validation error.
+
+TEST 5:
+
+Quantity = 0.
+
+Expected:
+Validation error.
+
+TEST 6:
+
+Add normal catalogue product and Special Order to same cart.
+
+Expected:
+
+Cart:
+
+Normal Product
+₱850 × 1
+
+SPECIAL ORDER
+₱1,250 × 2
+
+Total:
+₱3,350
+
+TEST 7:
+
+Complete transaction.
+
+Expected:
+Special Order details remain associated with the transaction.
+
+TEST 8:
+
+Verify no existing product inventory is deducted by Special Order.
+
+============================================================
+FINAL UI OBJECTIVE
+============================================================
+
+The final POS should provide:
+
+Products Available
+    ↓
+Normal catalogue products grouped by End Level Category
+    ↓
+Select product
+    ↓
+Select variant
+    ↓
+Add to cart
+
+OR
+
+[ + SPECIAL ORDER ]
+    ↓
+Special Order Modal
+    ↓
+Enter Product Name
+    ↓
+Enter Details
+    ↓
+Enter Price
+    ↓
+Enter Quantity
+    ↓
+Calculate Total
+    ↓
+Add to Cart
+
+Both workflows must use the existing POS cart and checkout system.
+
+============================================================
+DELIVERABLE
+============================================================
+
+After implementation provide:
+
+1. Files modified.
+2. Database changes.
+3. New/modified PHP functions.
+4. New/modified JavaScript functions.
+5. CSS changes.
+6. Cart changes.
+7. Checkout/order changes.
+8. Validation implemented.
+9. Security considerations.
+10. Test results.
+
+IMPORTANT:
+Do not only create a visual mockup.
+
+Implement the complete working Special Order functionality in the existing PHP POS application while preserving all existing normal product, variant, inventory, cart, supplier and checkout functionality.			
+
+===========================================
+
+PROJECT:
+eConstruction Supply PHP eCommerce / Supplier POS
+
+TARGET:
+Supplier POS:
+https://econstruction-supply.site/supplier/pos.php
+
+TASK:
+Implement a complete "Return Item" feature in the existing Supplier POS.
+
+The Return Item feature must integrate with the existing POS, Orders, Products, Product Variants, Cart, Inventory, Supplier and Customer systems.
+
+IMPORTANT:
+Do not redesign or replace the existing POS.
+
+First inspect the existing application architecture, database schema, PHP files, JavaScript, AJAX/API endpoints, cart logic, order logic, payment logic and inventory logic.
+
+Then implement the Return Item feature using the existing architecture and coding conventions.
+
+============================================================
+1. BUSINESS OBJECTIVE
+============================================================
+
+The POS currently supports selling products.
+
+Add a RETURN ITEM workflow that allows the cashier/operator to:
+
+1. Search for an existing completed sale/order.
+2. Open the original transaction.
+3. View the products/items purchased.
+4. Select one or more items to return.
+5. Specify the return quantity.
+6. Select the return reason.
+7. Select the item condition.
+8. Calculate the refund amount.
+9. Select the refund method.
+10. Process the return.
+11. Update inventory when appropriate.
+12. Create a permanent return transaction record.
+13. Maintain a complete audit trail.
+
+The original sale MUST NOT be deleted or modified to hide the original transaction.
+
+A return must be recorded as a separate transaction related to the original order.
+
+============================================================
+2. ADD RETURN MODE TO POS
+============================================================
+Possible location:
+
+Near the product search box /[ + Special Order ]/[ RETURN ]/ Products Available section.
+
+
+Clicking:
+
+[ RETURN ] 
+
+opens the RETURN ITEM modal.
+
+Add a Return function to the POS.
+
+Recommended interface:
+
+[ search box ] [ SPECIAL ORDER ] [ RETURN ]
+
+Existing SALE functionality must remain unchanged.
+
+SPECIAL ORDER functionality must remain unchanged.
+
+
+When RETURN is selected, display the Return interface.
+
+============================================================
+3. RETURN SEARCH
+============================================================
+
+Provide a search area:
+
+RETURN ITEMS
+
+Search Original Order:
+
+[ Enter invoice/order/reference number ] [ Search ]
+
+The system should support searching by existing identifiers where available, such as:
+
+- Invoice number
+- Order number
+- Transaction number
+- Customer name
+- Customer phone/email if already supported
+- Date
+- Other existing transaction reference
+
+Do NOT invent new identifiers if equivalent fields already exist.
+
+The cashier should be able to find the original completed transaction.
+
+============================================================
+4. ORDER VALIDATION
+============================================================
+
+Only eligible transactions can be returned.
+
+Before allowing a return, verify:
+
+- Order exists.
+- Order belongs to the current supplier where supplier isolation applies.
+- Order is completed/paid/eligible for return.
+- Order has returnable items.
+- Item has not already been fully returned.
+- Return quantity does not exceed the remaining returnable quantity.
+
+Do not allow returns against:
+
+- Cancelled orders unless existing business rules explicitly allow it.
+- Fully returned orders.
+- Invalid/nonexistent orders.
+
+Use the existing order status definitions if available.
+
+Do not hard-code new status values if equivalent existing values already exist.
+
+============================================================
+5. DISPLAY ORIGINAL ORDER
+============================================================
+
+After searching, display the original transaction.
+
+Example:
+
+---------------------------------------------------------
+RETURN ITEMS
+
+Order / Invoice:
+INV-000125
+
+Date:
+05 Sep 2026
+
+Customer:
+ABC Construction
+
+---------------------------------------------------------
+
+ITEMS
+
+[ ] Flat Latex - 1 Gallon / White
+    SKU: BOY-FL-1G-W
+    Purchased: 5
+    Previously Returned: 0
+    Available to Return: 5
+    Unit Price: ₱850.00
+
+[ ] Deformed Bar - D=16mm
+    SKU: SKU-00017
+    Purchased: 10
+    Previously Returned: 2
+    Available to Return: 8
+    Unit Price: ₱400.00
+
+---------------------------------------------------------
+
+[ Continue / Select Return Items ]
+---------------------------------------------------------
+
+Use the existing POS visual design and Bootstrap/CSS framework where applicable.
+
+============================================================
+6. RETURN QUANTITY
+============================================================
+
+When an item is selected, allow the cashier to specify the quantity being returned.
+
+Example:
+
+Original Quantity:
+5
+
+Previously Returned:
+1
+
+Remaining Returnable:
+4
+
+Return Quantity:
+
+[-] [ 2 ] [+]
+
+The maximum return quantity must be:
+
+original_quantity - previously_returned_quantity
+
+Do not allow:
+
+return_quantity > remaining_returnable_quantity
+
+Example:
+
+Purchased = 5
+Already Returned = 3
+
+Maximum new return = 2
+
+The cashier must NOT be able to return 3 or more.
+
+============================================================
+7. RETURN ITEM MODAL
+============================================================
+
+Use the existing product/variant modal design as the visual reference.
+
+The Return Item modal should be consistent with the existing POS product modal.
+
+Recommended:
+
+---------------------------------------------------------
+| RETURN ITEM                                      [X] |
+| Order: INV-000125 | 05 Sep 2026                     |
+---------------------------------------------------------
+
+[PRODUCT IMAGE]
+
+Flat Latex (1 Gallon)
+
+Brand: Boysen
+
+SKU: BOY-FL-1G-W
+
+Original Quantity: 5
+Previously Returned: 0
+Available to Return: 5
+
+Return Quantity:
+[ - ] [ 1 ] [ + ]
+
+Return Reason:
+[ Customer changed mind              ▼ ]
+
+Item Condition:
+[ Resellable                         ▼ ]
+
+Refund Amount:
+₱850.00
+
+---------------------------------------------------------
+[ Close ]                    [ Process Return ]
+---------------------------------------------------------
+
+The exact styling should reuse the existing POS modal/card styles.
+
+============================================================
+8. RETURN REASON
+============================================================
+
+Provide a dropdown of return reasons.
+
+Recommended values:
+
+- Customer changed mind
+- Wrong item supplied
+- Wrong size/specification
+- Incorrect quantity
+- Damaged item
+- Defective item
+- Delivery damage
+- Supplier error
+- Product quality issue
+- Other
+
+If "Other" is selected, display:
+
+Additional Notes:
+[________________________________________]
+
+Use existing database structures if a return-reason table already exists.
+
+If not, implement the minimum required structure.
+
+============================================================
+9. ITEM CONDITION
+============================================================
+
+Provide:
+
+Item Condition:
+
+- Resellable
+- Unopened
+- Opened
+- Used
+- Damaged
+- Defective
+- Needs Inspection
+
+The condition must affect inventory processing.
+
+Example:
+
+RESSELLABLE:
+
+Return quantity is added back to available inventory.
+
+DAMAGED:
+
+Do NOT add to available inventory.
+
+DEFECTIVE:
+
+Do NOT add to available inventory.
+
+USED:
+
+Do NOT automatically add to available inventory unless existing business rules explicitly support this.
+
+NEEDS INSPECTION:
+
+Do NOT add to available sellable stock.
+
+============================================================
+10. INVENTORY RULES
+============================================================
+
+For normal catalogue products:
+
+If:
+
+condition = Resellable
+
+then:
+
+available_stock = available_stock + return_quantity
+
+If:
+
+condition = Damaged / Defective / Used / Needs Inspection
+
+then:
+
+do NOT increase normal available stock.
+
+If the existing inventory system has damaged/inspection inventory locations, use the existing system.
+
+Do not create a parallel inventory system unnecessarily.
+
+============================================================
+11. PRODUCT VARIANT SUPPORT
+============================================================
+
+IMPORTANT:
+
+Returns must identify the exact product VARIANT that was sold.
+
+Do not identify the return only by parent product.
+
+Example:
+
+Parent Product:
+
+Flat Latex
+
+Variant:
+
+Size = 1 Gallon
+Color = White
+
+SKU:
+
+BOY-FL-1G-W
+
+The return must reference:
+
+product_id
+variant_id
+SKU
+
+where these exist in the existing system.
+
+This is critical because:
+
+1 Liter and 1 Gallon are different inventory items.
+
+Similarly:
+
+Deformed Bar:
+D=10mm
+D=12mm
+D=16mm
+
+must remain separate variants.
+
+============================================================
+12. SPECIAL ORDER SUPPORT
+============================================================
+
+The Return Item system must also support Special Orders created by the POS.
+
+If an original transaction contains:
+
+item_type = SPECIAL_ORDER
+
+allow it to be returned using the same return workflow.
+
+Example:
+
+SPECIAL ORDER
+
+Custom Stainless Steel Bracket
+
+Details:
+304 SS / 500mm / custom specification
+
+Qty Purchased:
+10
+
+Price:
+₱1,250
+
+Return Qty:
+2
+
+Refund:
+₱2,500
+
+IMPORTANT:
+
+A Special Order must NOT increase normal catalogue inventory.
+
+Record the return, but:
+
+DO NOT add the returned Special Order quantity to normal product stock.
+
+============================================================
+13. REFUND CALCULATION
+============================================================
+
+Calculate:
+
+refund_amount =
+return_quantity × original_unit_price
+
+Example:
+
+Original unit price:
+₱850
+
+Return quantity:
+2
+
+Refund:
+₱1,700
+
+The default refund price should come from the original order item.
+
+Do NOT retrieve the current catalogue price.
+
+Example:
+
+Product originally sold for:
+
+₱850
+
+Current catalogue price:
+
+₱950
+
+If customer returns the original item, refund should normally use:
+
+₱850
+
+unless an existing business rule specifies otherwise.
+
+============================================================
+14. DISCOUNTS
+============================================================
+
+Inspect the existing order system for:
+
+- Item discounts
+- Order discounts
+- Promotions
+- Tax
+- Shipping
+- Other charges
+
+Return calculations must respect the existing pricing/accounting structure.
+
+Do not blindly use the current product price.
+
+If an item was sold at a discounted price, the refund should be based on the appropriate original transaction amount.
+
+============================================================
+15. REFUND METHOD
+============================================================
+
+Provide:
+
+Refund Method:
+
+- Cash
+- Original Payment Method
+- Bank Transfer
+- Store Credit
+- Customer Account Credit
+- Replacement
+- Other
+
+Use existing payment/refund functionality if available.
+
+Do not create duplicate payment systems.
+
+If Store Credit or Customer Account Credit exists, update it using the existing mechanism.
+
+============================================================
+16. RETURN CONFIRMATION
+============================================================
+
+Before final processing, show a confirmation summary.
+
+Example:
+
+---------------------------------------------------------
+RETURN SUMMARY
+
+Original Order:
+INV-000125
+
+Product:
+Flat Latex - 1 Gallon / White
+
+SKU:
+BOY-FL-1G-W
+
+Quantity:
+2
+
+Unit Price:
+₱850.00
+
+Refund:
+₱1,700.00
+
+Reason:
+Damaged Item
+
+Condition:
+Needs Inspection
+
+Refund Method:
+Store Credit
+
+---------------------------------------------------------
+
+[ Cancel ]        [ CONFIRM RETURN ]
+---------------------------------------------------------
+
+The user must explicitly confirm the return.
+
+============================================================
+17. RETURN TRANSACTION NUMBER
+============================================================
+
+Generate a unique return reference.
+
+Recommended format:
+
+RET-000001
+
+or, if appropriate to the existing system:
+
+RET-YYYYMMDD-0001
+
+Example:
+
+RET-20260905-0001
+
+Do not duplicate an existing return reference.
+
+Use the existing transaction numbering convention if one already exists.
+
+============================================================
+18. DATABASE
+============================================================
+
+FIRST inspect the existing database.
+
+Do not immediately create new tables.
+
+Identify existing:
+
+- Orders table
+- Order items table
+- Product table
+- Product variant table
+- Inventory table
+- Customer table
+- Supplier table
+- Payment table
+- Transaction table
+- Cart table
+- Existing return/refund tables, if any
+
+If return functionality already partially exists, extend it instead of creating duplicate functionality.
+
+If return tables do not exist, use a normalized structure similar to:
+
+tbl_returns
+
+Fields conceptually:
+
+return_id
+return_reference
+order_id
+supplier_id
+customer_id
+processed_by
+return_date
+refund_method
+refund_amount
+status
+notes
+created_at
+updated_at
+
+and:
+
+tbl_return_items
+
+return_item_id
+return_id
+order_item_id
+product_id
+variant_id
+item_type
+product_name
+sku
+product_details
+quantity_returned
+unit_price
+refund_amount
+return_reason
+condition
+restock_status
+notes
+created_at
+
+ADAPT THE NAMES TO THE EXISTING DATABASE.
+
+Do not blindly create these exact tables if equivalent tables already exist.
+
+============================================================
+19. DO NOT MODIFY ORIGINAL SALE
+============================================================
+
+This is mandatory.
+
+Example:
+
+Original:
+
+INV-000125
+Total = ₱3,700
+
+Return:
+
+RET-000034
+Refund = ₱1,700
+
+The original order must remain:
+
+INV-000125
+Total = ₱3,700
+
+The return is separately recorded.
+
+For reporting:
+
+Gross Sales = ₱3,700
+Returns = ₱1,700
+Net Sales = ₱2,000
+
+Do not overwrite the original sale.
+
+============================================================
+20. MULTIPLE RETURNS
+============================================================
+
+The system must support multiple returns against one original order.
+
+Example:
+
+Original quantity:
+10
+
+First return:
+3
+
+Remaining:
+7
+
+Second return:
+2
+
+Remaining:
+5
+
+Third return:
+5
+
+Remaining:
+0
+
+At this point:
+
+The item must show:
+
+FULLY RETURNED
+
+and no further return should be allowed.
+
+============================================================
+21. CART INTEGRATION
+============================================================
+
+Determine whether the existing POS cart can be reused for returns.
+
+If appropriate, use:
+
+item_type = RETURN
+
+or another existing transaction type.
+
+Do not mix return quantities with normal SALE quantities.
+
+A return cart might display:
+
+---------------------------------------------------------
+RETURN CART
+
+Flat Latex - 1 Gallon
+SKU: BOY-FL-1G-W
+
+Return Qty: 2
+Refund: ₱1,700
+
+Reason: Damaged
+Condition: Needs Inspection
+---------------------------------------------------------
+
+TOTAL REFUND:
+₱1,700
+
+[ PROCESS RETURN ]
+---------------------------------------------------------
+
+Do not allow normal sale items and return items to accidentally become the same transaction.
+
+============================================================
+22. INVENTORY TRANSACTION / AUDIT
+============================================================
+
+If the existing inventory system supports transaction history, create an inventory movement for a resellable return.
+
+Example:
+
+Transaction Type:
+RETURN
+
+Product:
+Flat Latex
+
+Variant:
+1 Gallon / White
+
+Quantity:
++2
+
+Reference:
+RET-20260905-0001
+
+This allows future inventory auditing.
+
+For damaged/defective items, record the appropriate non-sellable inventory movement if the system supports it.
+
+============================================================
+23. SUPPLIER SECURITY
+============================================================
+
+This is a SUPPLIER POS.
+
+Every return must be validated against the logged-in supplier.
+
+A supplier must NOT be able to:
+
+- Return another supplier's order.
+- View another supplier's transaction.
+- Modify another supplier's inventory.
+- Process a return against another supplier's product.
+
+Use the existing supplier_id/session authorization mechanism.
+
+Do not trust supplier_id supplied by the browser.
+
+Determine supplier ownership server-side.
+
+============================================================
+24. CUSTOMER INFORMATION
+============================================================
+
+If the original transaction has customer information, display it.
+
+Example:
+
+Customer:
+ABC Construction
+
+Phone:
+09XXXXXXXX
+
+Do not require the cashier to manually re-enter customer information if it already exists.
+
+For customer/store credit refunds, use the existing customer record.
+
+============================================================
+25. RETURN STATUS
+============================================================
+
+Use clear return statuses.
+
+Recommended:
+
+PENDING
+COMPLETED
+CANCELLED
+REJECTED
+
+Use the existing status architecture if already available.
+
+Do not permanently delete completed returns.
+
+============================================================
+26. PERMISSIONS
+============================================================
+
+Inspect existing user roles/permissions.
+
+If the application supports roles, consider restricting return processing to authorized users.
+
+For example:
+
+Cashier:
+Can create return request
+
+Supervisor/Admin:
+Can approve/process high-value returns
+
+If the existing system does not have approval functionality, do not introduce a complex approval workflow unless required.
+
+At minimum, record:
+
+processed_by
+date/time
+
+============================================================
+27. RETURN HISTORY
+============================================================
+
+Add or integrate with an existing transaction history section.
+
+Display:
+
+Return Reference
+Original Order
+Customer
+Product
+Quantity
+Refund
+Reason
+Condition
+Status
+Processed By
+Date
+
+Example:
+
+RET-000034
+INV-000125
+ABC Construction
+Flat Latex 1 Gallon
+Qty: 2
+Refund: ₱1,700
+Damaged
+Needs Inspection
+COMPLETED
+Admin
+05 Sep 2026
+
+============================================================
+28. POS UI
+============================================================
+
+Maintain the existing POS design.
+
+Do not create a completely different interface.
+
+Use the existing:
+
+- Header
+- Product cards
+- Modal
+- Buttons
+- Bootstrap components
+- Font/icons
+- Search controls
+- Quantity controls
+- Currency formatting
+- Responsive layout
+
+The Return Item modal should look similar to the existing product variant modal.
+
+============================================================
+29. ERROR HANDLING
+============================================================
+
+Handle:
+
+- Invalid order number
+- Order not found
+- Order not eligible for return
+- Product already fully returned
+- Return quantity exceeds available return quantity
+- Invalid quantity
+- Invalid refund amount
+- Unauthorized supplier
+- Missing required return reason
+- Database error
+- Duplicate submission
+- Network/AJAX failure
+
+Display user-friendly error messages.
+
+Do not expose SQL errors or sensitive system information to the cashier.
+
+============================================================
+30. TRANSACTION SAFETY
+============================================================
+
+Processing a return must be atomic.
+
+The following operations should succeed together:
+
+1. Create return header.
+2. Create return item.
+3. Update inventory if applicable.
+4. Update customer/store credit if applicable.
+5. Record refund transaction.
+6. Mark return completed.
+
+If one required operation fails:
+
+ROLL BACK the transaction.
+
+Do not create a return record without the corresponding inventory/payment update if those operations are required.
+
+Use database transactions where supported.
+
+============================================================
+31. DOUBLE-SUBMISSION PROTECTION
+============================================================
+
+Prevent the cashier from accidentally processing the same return twice.
+
+After clicking:
+
+[ CONFIRM RETURN ]
+
+Disable the button while processing.
+
+Use server-side validation to prevent duplicate submissions.
+
+Do not rely only on JavaScript.
+
+============================================================
+32. EXAMPLE
+============================================================
+
+Original Order:
+
+INV-000125
+
+Product:
+
+Flat Latex
+
+Variant:
+
+1 Gallon / White
+
+SKU:
+
+BOY-FL-1G-W
+
+Purchased:
+
+5
+
+Unit Price:
+
+₱850
+
+Previously Returned:
+
+1
+
+Available to Return:
+
+4
+
+Cashier selects:
+
+Return Quantity = 2
+
+Reason:
+
+Damaged Item
+
+Condition:
+
+Needs Inspection
+
+Refund Method:
+
+Store Credit
+
+System calculates:
+
+2 × ₱850 = ₱1,700
+
+Creates:
+
+RET-000034
+
+Result:
+
+Original purchased = 5
+Previous returned = 1
+New returned = 2
+Total returned = 3
+Remaining returnable = 2
+
+Because condition is:
+
+Needs Inspection
+
+DO NOT increase sellable stock.
+
+Customer Store Credit:
+
++₱1,700
+
+============================================================
+33. SECOND EXAMPLE — RESELLABLE
+============================================================
+
+Original:
+
+Deformed Bar D=16mm
+
+Variant ID:
+existing variant ID
+
+Purchased:
+10
+
+Already Returned:
+0
+
+Return:
+2
+
+Condition:
+Resellable
+
+Unit Price:
+₱400
+
+Refund:
+₱800
+
+Inventory:
+
+Before:
+1000
+
+After:
+1002
+
+Return reference:
+
+RET-000035
+
+============================================================
+34. SPECIAL ORDER EXAMPLE
+============================================================
+
+Original transaction:
+
+SPECIAL ORDER
+
+Product:
+Custom Stainless Steel Bracket
+
+Details:
+304 SS / 500mm / custom specification
+
+Quantity:
+10
+
+Unit Price:
+₱1,250
+
+Customer returns:
+2
+
+Refund:
+₱2,500
+
+Create return record:
+
+item_type = SPECIAL_ORDER
+
+Do NOT increase catalogue inventory.
+
+============================================================
+35. SEARCH BEHAVIOR
+============================================================
+
+Return search must search existing completed orders.
+
+Do not search the product catalogue.
+
+Example:
+
+Search:
+
+INV-000125
+
+Result:
+
+Original order.
+
+Search:
+
+ABC Construction
+
+Result:
+
+Customer's eligible orders, if customer search is supported.
+
+Search:
+
+BOY-FL-1G-W
+
+If practical with existing architecture, show orders containing that SKU.
+
+Do not expose unauthorized supplier transactions.
+
+============================================================
+36. REPORTING
+============================================================
+
+Ensure returns can be separated from sales in reporting.
+
+Example:
+
+Today's Sales:
+₱100,000
+
+Today's Returns:
+₱5,000
+
+Net Sales:
+₱95,000
+
+Do not count returned amounts as additional sales.
+
+============================================================
+37. IMPLEMENTATION PROCESS
+============================================================
+
+FOLLOW THIS ORDER.
+
+STEP 1:
+Inspect the complete existing POS implementation.
+
+STEP 2:
+Inspect the database schema.
+
+STEP 3:
+Identify existing order, order item, product, variant, inventory, customer, supplier, payment and transaction tables.
+
+STEP 4:
+Identify whether return/refund functionality already exists.
+
+STEP 5:
+Document the existing architecture before modifying it.
+
+STEP 6:
+Determine the minimum database changes required.
+
+STEP 7:
+Implement backend return functionality.
+
+STEP 8:
+Implement return search.
+
+STEP 9:
+Implement original order display.
+
+STEP 10:
+Implement return item selection.
+
+STEP 11:
+Implement return quantity validation.
+
+STEP 12:
+Implement return reason and condition.
+
+STEP 13:
+Implement refund calculation.
+
+STEP 14:
+Implement inventory handling.
+
+STEP 15:
+Implement refund/store-credit handling according to existing architecture.
+
+STEP 16:
+Implement return transaction recording.
+
+STEP 17:
+Implement Return Item UI/modal.
+
+STEP 18:
+Integrate with POS.
+
+STEP 19:
+Implement return history/reporting if appropriate.
+
+STEP 20:
+Test thoroughly.
+
+============================================================
+38. TESTING REQUIREMENTS
+============================================================
+
+Test:
+
+TEST 1:
+Return one item from a completed sale.
+
+TEST 2:
+Return part of the quantity.
+
+TEST 3:
+Return the remaining quantity.
+
+TEST 4:
+Attempt to return more than purchased.
+
+Expected:
+Blocked.
+
+TEST 5:
+Attempt to return an already fully returned item.
+
+Expected:
+Blocked.
+
+TEST 6:
+Return a resellable item.
+
+Expected:
+Inventory increases.
+
+TEST 7:
+Return a damaged item.
+
+Expected:
+Available stock does not increase.
+
+TEST 8:
+Return a defective item.
+
+Expected:
+Available stock does not increase.
+
+TEST 9:
+Return a product variant.
+
+Expected:
+Correct variant inventory is updated.
+
+TEST 10:
+Return a Special Order.
+
+Expected:
+No catalogue inventory increase.
+
+TEST 11:
+Process Store Credit.
+
+Expected:
+Customer credit increases correctly.
+
+TEST 12:
+Process cash refund.
+
+Expected:
+Correct refund record.
+
+TEST 13:
+Process multiple returns against same order.
+
+Expected:
+Total returned quantity never exceeds purchased quantity.
+
+TEST 14:
+Supplier A attempts to return Supplier B's order.
+
+Expected:
+Access denied.
+
+TEST 15:
+Double-click Process Return.
+
+Expected:
+Only one return transaction is created.
+
+TEST 16:
+Database failure during processing.
+
+Expected:
+Entire return transaction rolls back.
+
+TEST 17:
+Existing normal SALE transaction.
+
+Expected:
+No regression.
+
+TEST 18:
+Existing SPECIAL ORDER.
+
+Expected:
+No regression.
+
+TEST 19:
+Existing product variant selection.
+
+Expected:
+No regression.
+
+TEST 20:
+Existing POS cart and checkout.
+
+Expected:
+No regression.
+
+============================================================
+39. SECURITY REQUIREMENTS
+============================================================
+
+Use existing authentication and authorization.
+
+Use prepared SQL statements.
+
+Validate all input server-side.
+
+Escape output.
+
+Do not trust:
+
+- order_id
+- supplier_id
+- product_id
+- variant_id
+- price
+- quantity
+- refund amount
+- customer_id
+
+provided by the browser.
+
+The server must retrieve authoritative information from the database.
+
+Especially:
+
+REFUND PRICE MUST COME FROM THE ORIGINAL ORDER ITEM.
+
+Do not allow the browser to submit:
+
+unit_price = 999999
+
+and have the server blindly refund that amount.
+
+Calculate the refund server-side.
+
+============================================================
+40. FINAL ACCEPTANCE CRITERIA
+============================================================
+
+The feature is complete only when:
+
+✓ Cashier can enter RETURN mode.
+
+✓ Cashier can search an original completed order.
+
+✓ Original order items are displayed.
+
+✓ Product variants are correctly identified.
+
+✓ Partial returns are supported.
+
+✓ Previously returned quantities are tracked.
+
+✓ Return quantity cannot exceed remaining returnable quantity.
+
+✓ Return reason is recorded.
+
+✓ Item condition is recorded.
+
+✓ Refund amount is calculated correctly.
+
+✓ Refund method is recorded.
+
+✓ Resellable products return to inventory.
+
+✓ Damaged/defective/used items do not enter sellable inventory.
+
+✓ Special Orders can be returned.
+
+✓ Special Orders do not increase catalogue inventory.
+
+✓ Original sale remains unchanged.
+
+✓ Return receives a unique return reference.
+
+✓ Return is linked to original order.
+
+✓ Supplier isolation is enforced.
+
+✓ Return information is auditable.
+
+✓ Duplicate return submission is prevented.
+
+✓ Database transaction rollback is implemented.
+
+✓ Existing Sale functionality still works.
+
+✓ Existing Special Order functionality still works.
+
+✓ Existing Product Variant functionality still works.
+
+✓ Existing POS cart works.
+
+✓ Existing checkout works.
+
+✓ Existing inventory functionality works.
+
+============================================================
+41. FINAL REPORT TO ADMINISTRATOR
+============================================================
+
+After implementation, provide a concise implementation report containing:
+
+1. Files modified.
+2. Files created.
+3. Database tables modified.
+4. Database tables created.
+5. SQL migration required.
+6. PHP changes.
+7. JavaScript changes.
+8. CSS/UI changes.
+9. Inventory changes.
+10. Payment/refund changes.
+11. Security changes.
+12. Test cases performed.
+13. Test results.
+14. Any known limitations.
+
+IMPORTANT:
+DO NOT simply create a visual mockup.
+
+Implement the actual working Return Item feature in the existing PHP POS application.
+
+DO NOT replace the existing POS.
+
+DO NOT break existing functionality.
+
+INSPECT FIRST.
+PLAN SECOND.
+IMPLEMENT THIRD.
+TEST LAST.
+
+# Discount Approval Amendment — Role-Based Approval Hierarchy
+
+**Target:** `https://econstruction-supply.site/supplier/discount-approvals.php`
+
+## Task
+
+Amend the existing **Discount Approval** workflow to implement the following **role-based approval hierarchy**.
+
+The required approval level depends on the role of the user who created the discount request.
+
+### 1. Admin / Manager Creates the Request
+
+If the discount request is created by an:
+
+* **Admin**, or
+* **Manager**
+
+the same **Admin / Manager** is authorized to approve the request, subject to the existing discount limits and approval rules.
+
+```text
+Admin / Manager
+      ↓
+Creates Discount Request
+      ↓
+Admin / Manager Approval
+      ↓
+APPROVED
+```
+
+The system must still enforce all existing discount-limit rules, including the configured maximum and any special/absolute maximum limits.
+
+---
+
+### 2. Cashier / Operator Creates the Request
+
+If the discount request is created by a:
+
+* **Cashier**, or
+* **Operator**
+
+the request must **not be self-approved**.
+
+The request requires approval from an authorized:
+
+* **Admin / Manager**, or
+* **Supervisor**
+
+```text
+Cashier / Operator
+        ↓
+Creates Discount Request
+        ↓
+ ┌──────────────────────┐
+ │ Admin / Manager      │
+ │ OR                   │
+ │ Supervisor            │
+ └──────────┬───────────┘
+            ↓
+         APPROVED
+```
+
+The Cashier or Operator must not be able to approve, modify, or finalize their own discount request.
+
+---
+
+### 3. Supervisor Creates the Request
+
+If the discount request is created by a **Supervisor**, the Supervisor must not be allowed to approve their own request.
+
+The request requires approval from an authorized:
+
+**Admin / Manager**
+
+```text
+Supervisor
+     ↓
+Creates Discount Request
+     ↓
+Admin / Manager Approval
+     ↓
+APPROVED
+```
+
+A Supervisor must not approve their own discount request.
+
+---
+
+# 4. Approval Rules Summary
+
+Implement the following matrix:
+
+| Request Created By | Who Can Approve               | Self-Approval                        |
+| ------------------ | ----------------------------- | ------------------------------------ |
+| Admin              | Admin / Manager               | Allowed according to existing policy |
+| Manager            | Admin / Manager               | Allowed according to existing policy |
+| Supervisor         | Admin / Manager               | **Not allowed**                      |
+| Cashier            | Admin / Manager OR Supervisor | **Not allowed**                      |
+| Operator           | Admin / Manager OR Supervisor | **Not allowed**                      |
+
+### Important
+
+For **Cashier/Operator** requests, either an authorized **Supervisor** or **Admin/Manager** may approve the request.
+
+For **Supervisor** requests, only **Admin/Manager** approval is allowed.
+
+---
+
+# 5. Approval Permission Must Be Server-Side
+
+Do not rely only on the frontend to determine who can approve.
+
+The backend must verify:
+
+```text
+Requester's Role
++
+Approver's Role
++
+Supplier/Tenant
++
+Approval Permission
++
+Discount Limit
++
+Request Status
+```
+
+before allowing an approval action.
+
+A user must not be able to bypass the approval hierarchy by modifying:
+
+* User ID
+* Role
+* Request ID
+* Supplier ID
+* Tenant ID
+* Approval level
+* Approval status
+* Discount percentage
+
+through browser developer tools or manipulated API requests.
+
+---
+
+# 6. Supplier/Tenant Isolation
+
+The approver must belong to the same authorized supplier/tenant as the discount request.
+
+For example:
+
+```text
+Supplier A
+
+Cashier A
+   ↓
+Discount Request
+   ↓
+Supervisor A / Admin A / Manager A
+   ↓
+Approval
+```
+
+An Admin, Manager, or Supervisor from another supplier/tenant must not be able to approve the request.
+
+The backend must enforce supplier/tenant ownership.
+
+---
+
+# 7. Approval Status
+
+Use the existing discount approval statuses where available.
+
+At minimum, the workflow should support:
+
+```text
+PENDING
+APPROVED
+APPROVED_MODIFIED
+REJECTED
+ESCALATED
+CANCELLED
+```
+
+When a request is created, determine the required approval level based on the **requester's role**.
+
+---
+
+# 8. Required Approval Level
+
+Store or calculate the required approval level when the request is created.
+
+Example:
+
+### Cashier Request
+
+```text
+Requester:
+Cashier
+
+Required Approval:
+Supervisor OR Admin/Manager
+```
+
+### Operator Request
+
+```text
+Requester:
+Operator
+
+Required Approval:
+Supervisor OR Admin/Manager
+```
+
+### Supervisor Request
+
+```text
+Requester:
+Supervisor
+
+Required Approval:
+Admin/Manager
+```
+
+### Admin/Manager Request
+
+```text
+Requester:
+Admin/Manager
+
+Required Approval:
+Admin/Manager
+```
+
+The system must not allow the requester to change their own required approval level.
+
+---
+
+# 9. Approval Interface
+
+On:
+
+`https://econstruction-supply.site/supplier/discount-approvals.php`
+
+show only requests that the logged-in user is authorized to approve.
+
+For example, when a Supervisor logs in:
+
+```text
+DISCOUNT APPROVALS
+
+Requests Awaiting Your Approval
+
+Cashier Request     → APPROVABLE
+Operator Request    → APPROVABLE
+Supervisor Request  → NOT APPROVABLE
+Admin Request       → NOT APPROVABLE
+Manager Request     → NOT APPROVABLE
+```
+
+The backend must enforce the same filtering.
+
+Do not rely solely on hiding buttons in the UI.
+
+---
+
+# 10. Approval Action
+
+When an authorized approver opens a request, provide the existing approval controls:
+
+```text
+[ APPROVE ]
+[ CHANGE DISCOUNT ]
+[ REJECT ]
+```
+
+The system must determine whether the logged-in user is authorized before processing the action.
+
+---
+
+# 11. Example — Cashier Request
+
+```text
+Requester:
+John
+
+Role:
+Cashier
+
+Product:
+ABC Cement
+
+Original Price:
+₱1,000.00
+
+Requested Discount:
+8%
+```
+
+The request should display:
+
+```text
+Approval Required:
+Supervisor OR Admin/Manager
+```
+
+A Supervisor can:
+
+```text
+APPROVE
+CHANGE DISCOUNT
+REJECT
+```
+
+An Admin/Manager can also:
+
+```text
+APPROVE
+CHANGE DISCOUNT
+REJECT
+```
+
+The Cashier cannot approve the request.
+
+---
+
+# 12. Example — Supervisor Request
+
+```text
+Requester:
+Michael
+
+Role:
+Supervisor
+
+Requested Discount:
+8%
+```
+
+Display:
+
+```text
+Approval Required:
+Admin / Manager
+```
+
+The Supervisor must not see an active approval option for their own request.
+
+Even if the Supervisor manually calls the approval API, the server must reject the operation.
+
+---
+
+# 13. Example — Admin/Manager Request
+
+```text
+Requester:
+Sarah
+
+Role:
+Manager
+
+Requested Discount:
+8%
+```
+
+The request can be approved according to the existing Admin/Manager approval policy.
+
+The system must continue to enforce:
+
+```text
+Normal Maximum Discount
++
+Absolute Maximum Discount
++
+Existing Special Approval Rules
+```
+
+The role-based approval hierarchy must not bypass the configured discount limits.
+
+---
+
+# 14. Admin/Manager Modification
+
+If an authorized approver changes the requested discount:
+
+```text
+Requested Discount:
+10%
+
+Approved Discount:
+7%
+```
+
+record both values.
+
+The final sale must use:
+
+```text
+Approved Discount = 7%
+```
+
+The cashier/operator/requester must not be able to change the approved value without creating a new approval request.
+
+---
+
+# 15. Audit Trail
+
+Every approval action must record:
+
+```text
+Discount Request ID
+Sale ID
+Sale Item ID
+Supplier ID
+Tenant ID
+Requester User ID
+Requester Role
+Approver User ID
+Approver Role
+Requested Discount %
+Approved Discount %
+Approval Level
+Approval Action
+Approval Status
+Approver Remarks
+Request Date/Time
+Approval Date/Time
+```
+
+Example:
+
+```text
+REQUESTER:
+John — Cashier
+
+REQUESTED:
+8%
+
+APPROVER:
+Peter — Supervisor
+
+ACTION:
+APPROVED
+
+FINAL DISCOUNT:
+8%
+
+STATUS:
+APPROVED
+```
+
+---
+
+# 16. Self-Approval Protection
+
+Implement explicit server-side protection.
+
+If:
+
+```text
+request.user_id == current_user.id
+```
+
+and the role is:
+
+```text
+Cashier
+Operator
+Supervisor
+```
+
+the approval request must be rejected.
+
+For Admin/Manager requests, follow the configured Admin/Manager approval policy.
+
+Do not assume that frontend restrictions are sufficient.
+
+---
+
+# 17. Payment Integration
+
+The existing POS payment process must remain blocked while a required discount approval is pending.
+
+For example:
+
+```text
+Cashier
+   ↓
+Requests 8% Discount
+   ↓
+PENDING
+   ↓
+Payment BLOCKED
+   ↓
+Supervisor approves
+   ↓
+APPROVED
+   ↓
+Payment ENABLED
+```
+
+After approval, the cashier can continue the normal payment process.
+
+---
+
+# 18. Existing Discount Rules Must Remain
+
+This amendment changes **WHO can approve** a discount.
+
+It must not remove or bypass the existing rules governing:
+
+* Normal maximum discount.
+* Absolute maximum discount.
+* Special approval.
+* Discount calculation.
+* Approved discount amount.
+* Payment blocking.
+* Audit logging.
+* Supplier/tenant isolation.
+
+The new role-based approval hierarchy must work together with the existing discount rules.
+
+---
+
+# 19. Final Approval Logic
+
+Implement the following decision logic:
+
+```text
+START
+  ↓
+Identify Requester Role
+  ↓
+ ┌─────────────────────────────┐
+ │ Is requester Admin/Manager? │
+ └──────────────┬──────────────┘
+                │
+              YES
+                ↓
+       Admin/Manager Approval
+                │
+                ▼
+             APPROVE
+```
+
+For Supervisor:
+
+```text
+Supervisor
+    ↓
+Creates Request
+    ↓
+Admin/Manager Approval
+    ↓
+Approve / Modify / Reject
+```
+
+For Cashier/Operator:
+
+```text
+Cashier / Operator
+       ↓
+Creates Request
+       ↓
+Supervisor OR Admin/Manager
+       ↓
+Approve / Modify / Reject
+```
+
+---
+
+# 20. Acceptance Criteria
+
+The implementation is complete only when:
+
+* [ ] Admin can create a discount request.
+* [ ] Manager can create a discount request.
+* [ ] Admin/Manager requests can be approved according to the Admin/Manager approval policy.
+* [ ] Supervisor can create a discount request.
+* [ ] Supervisor requests require Admin/Manager approval.
+* [ ] Supervisor cannot approve their own request.
+* [ ] Cashier can create a discount request.
+* [ ] Operator can create a discount request.
+* [ ] Cashier/Operator requests can be approved by Supervisor.
+* [ ] Cashier/Operator requests can be approved by Admin/Manager.
+* [ ] Cashier cannot approve their own request.
+* [ ] Operator cannot approve their own request.
+* [ ] Approver must belong to the correct supplier/tenant.
+* [ ] Unauthorized users cannot approve through the API.
+* [ ] Requested discount limits remain enforced.
+* [ ] Approved/modified discount is used for the final sale.
+* [ ] Pending approval blocks payment.
+* [ ] Approval enables payment.
+* [ ] Every approval action is audited.
+* [ ] Existing discount functionality remains operational.
+* [ ] Existing POS functionality remains operational.
+* [ ] No cross-supplier/tenant approval is possible.
+
+---
+
+# FINAL INSTRUCTION TO THE AI CODING AGENT
+
+Inspect the existing implementation of:
+
+`/supplier/discount-approvals.php`
+
+and the related discount request, user-role, POS, database, and approval functions before making changes.
+
+**Do not rewrite the existing discount approval system.**
+
+Amend it to enforce the following role-based hierarchy:
+
+```text
+ADMIN / MANAGER
+    → Admin/Manager approval
+
+SUPERVISOR
+    → Admin/Manager approval
+
+CASHIER / OPERATOR
+    → Supervisor OR Admin/Manager approval
+```
+
+The approval rules must be enforced both in the **frontend UI** and, most importantly, in the **server-side backend**.
+
+The server/database must be the final authority for determining whether a user is authorized to approve a discount request.
+
+After implementation, test every role combination and provide a report of the files modified, database changes, approval logic implemented, security controls, and test results.
+
+-------------------------------------------------
+
+
+# TASK: STANDARDIZE SUPPLIER STORE PAGE — SUPPLIER PRODUCTS
+
+## TARGET PAGE / TEMPLATE
+
+Update and standardize the existing supplier store page:
+
+[https://econstruction-supply.site/store.php](https://econstruction-supply.site/store.php?utm_source=chatgpt.com)
+
+Example supplier:
+
+[SAM & INRI Construction Supply Store](https://econstruction-supply.site/store.php?slug=sam-inri-construction-supply&utm_source=chatgpt.com)
+
+The `store.php?slug=...` page is the **standard Supplier Store / Supplier Products template** for all suppliers on the eConstruction Supply marketplace.
+
+Do **NOT** hard-code the implementation specifically for SAM & INRI Construction Supply.
+
+The same implementation must work dynamically for any valid supplier slug.
+
+---
+
+# 1. PRIMARY OBJECTIVE
+
+Make `store.php` the standardized **Supplier Product Discovery Page**.
+
+Use the existing:
+
+* `index.php` product presentation
+* Standardized `Product Card`
+* Standardized `Variant Modal`
+* Standardized `Active Filters`
+* Existing category/filter behavior
+* Existing cart behavior
+
+as the UI/UX and component standard.
+
+The supplier page should look and behave consistently with the marketplace homepage while remaining strictly scoped to the selected supplier.
+
+### Core principle
+
+```text
+index.php
+Marketplace Product Discovery
+        ↓
+ALL SUPPLIERS
+
+store.php?slug=...
+Supplier Product Discovery
+        ↓
+ONE SELECTED SUPPLIER
+```
+
+---
+
+# 2. CRITICAL REQUIREMENT — DO NOT BREAK EXISTING FUNCTIONALITY
+
+This task is primarily a **UI/UX and product-discovery standardization task**.
+
+It is NOT a redesign or replacement of the existing:
+
+* Supplier system
+* Supplier/tenant architecture
+* Product database
+* Category hierarchy
+* Product variants
+* SKU system
+* Inventory system
+* Cart
+* Checkout
+* Authentication
+* POS
+* Supplier management
+* Existing URLs
+* Existing business rules
+
+### Priority order
+
+The AI agent MUST follow this priority:
+
+```text
+1. Preserve existing functionality
+2. Preserve existing database relationships
+3. Preserve supplier/tenant isolation
+4. Preserve existing URLs/routes
+5. Reuse existing components/business logic
+6. Standardize UI/UX
+7. Refactor only when necessary
+```
+
+Do not sacrifice working functionality to achieve visual standardization.
+
+---
+
+# 3. SUPPLIER MUST BE THE PERMANENT PAGE SCOPE
+
+When a customer opens:
+
+```text
+store.php?slug=sam-inri-construction-supply
+```
+
+the application must:
+
+```text
+Read supplier slug
+        ↓
+Resolve supplier using existing supplier table/relationship
+        ↓
+Get actual supplier_id / tenant_id
+        ↓
+Use that supplier_id as the mandatory scope
+        ↓
+Display ONLY products belonging to that supplier
+```
+
+Conceptually:
+
+```text
+store.php?slug={supplier_slug}
+              ↓
+      Resolve Supplier
+              ↓
+      supplier_id = X
+              ↓
+       Supplier Products
+              ↓
+    Category/Search/Sort
+              ↓
+          Results
+```
+
+The supplier scope must be established **server-side**.
+
+Do NOT identify supplier ownership using:
+
+* Product name
+* SKU text
+* Supplier name text
+* URL text matching
+* JavaScript-only filtering
+* Client-supplied supplier IDs
+
+Use the existing database relationships.
+
+---
+
+# 4. IMPORTANT — `store.php` MUST WORK FOR EVERY SUPPLIER
+
+The implementation must remain dynamic.
+
+For example:
+
+```text
+store.php?slug=sam-inri-construction-supply
+```
+
+must display SAM & INRI products.
+
+Another valid supplier:
+
+```text
+store.php?slug=another-supplier
+```
+
+must display only that supplier's products.
+
+The code must NOT contain hard-coded logic such as:
+
+```text
+if slug == "sam-inri-construction-supply"
+```
+
+unless that logic already exists for a legitimate business reason.
+
+Supplier information must always be loaded dynamically from the existing database.
+
+---
+
+# 5. SUPPLIER HEADER / STORE INFORMATION
+
+Retain all existing supplier/store functionality currently provided by `store.php`.
+
+Standardize the presentation using the existing site design.
+
+Where available, display:
+
+```text
+[Supplier Logo]
+
+SAM & INRI CONSTRUCTION SUPPLY
+
+Supplier description
+
+Location / relevant supplier information
+
+[Existing supplier/store actions]
+```
+
+The actual supplier information must be dynamically loaded.
+
+Possible existing information includes:
+
+* Supplier logo
+* Supplier name
+* Description
+* Location
+* Contact information
+* Product count
+* Verification status
+* Rating
+* Existing supplier metadata
+
+Only display information that already exists and is permitted by the current application.
+
+Do not invent supplier information.
+
+Do not create a duplicate supplier profile system.
+
+---
+
+# 6. SUPPLIER PRODUCTS SECTION
+
+The main product section must be clearly identified as:
+
+**Supplier Products**
+
+or:
+
+**Products from [Supplier Name]**
+
+Example:
+
+```text
+SAM & INRI CONSTRUCTION SUPPLY
+
+Supplier Products
+Products available from this supplier
+```
+
+The supplier name must be dynamically generated.
+
+Do not hard-code:
+
+```text
+SAM & INRI CONSTRUCTION SUPPLY
+```
+
+The example is only a test case.
+
+---
+
+# 7. ACTIVE FILTERS — SUPPLIER IS LOCKED
+
+Use the same standardized **Active Filters** component used by the marketplace.
+
+On a supplier store page, the supplier is a **mandatory locked filter**.
+
+Example:
+
+```text
+Active Filters
+
+Supplier:
+SAM & INRI CONSTRUCTION SUPPLY  🔒
+
+Category:
+Steel & Metal                  ×
+
+Mid Category:
+Structural Steel               ×
+
+End Category:
+Angle Bar                      ×
+```
+
+### Supplier filter behavior
+
+The supplier filter:
+
+* Must always be present logically
+* Must be displayed when the Active Filters component is visible
+* Must NOT have an `X` removal button
+* Must NOT be removable while remaining on the supplier store page
+* Must remain active during search
+* Must remain active during category filtering
+* Must remain active during sorting
+* Must remain active during pagination
+* Must remain active during AJAX requests
+
+The customer can leave the supplier store by navigating elsewhere, but cannot remove the supplier scope from within the supplier page.
+
+---
+
+# 8. FILTER HIERARCHY
+
+All customer-selected filters must operate **inside the supplier scope**.
+
+The effective hierarchy is:
+
+```text
+Supplier
+   ↓
+Top Level Category
+   ↓
+Mid Level Category
+   ↓
+End Level Category
+   ↓
+Parent Product
+   ↓
+Variant
+```
+
+Example:
+
+```text
+Supplier:
+SAM & INRI CONSTRUCTION SUPPLY
+
+Category:
+Steel & Metal
+
+End Category:
+Angle Bar
+```
+
+Result:
+
+```text
+ONLY Angle Bar products
+belonging to
+SAM & INRI CONSTRUCTION SUPPLY
+```
+
+Category filtering must never expand the result set outside the selected supplier.
+
+---
+
+# 9. SEARCH MUST REMAIN INSIDE SUPPLIER SCOPE
+
+The supplier page must support product search.
+
+Example:
+
+```text
+Search:
+Angle Bar
+```
+
+The search must be applied within the current supplier scope.
+
+Correct:
+
+```text
+Supplier = SAM & INRI
+        +
+Search = Angle Bar
+        ↓
+SAM & INRI Angle Bar products ONLY
+```
+
+Incorrect:
+
+```text
+Search = Angle Bar
+        ↓
+All marketplace Angle Bar products
+```
+
+The search query must never escape the supplier scope.
+
+This requirement applies to:
+
+* Normal page requests
+* AJAX search
+* Autocomplete
+* API requests
+* Load More
+* Pagination
+* Dynamic filtering
+
+where applicable.
+
+---
+
+# 10. CATEGORY FILTERING
+
+Customers must be able to filter the supplier's products using the existing category hierarchy.
+
+Example:
+
+```text
+Supplier:
+SAM & INRI CONSTRUCTION SUPPLY
+
+Top Level:
+Steel & Metal
+
+Mid Level:
+Structural Steel
+
+End Level:
+Angle Bar
+```
+
+The resulting query must effectively enforce:
+
+```text
+supplier_id = current_supplier_id
+```
+
+AND the selected category conditions.
+
+Do NOT modify the existing category hierarchy.
+
+Do NOT create a separate supplier-category hierarchy.
+
+---
+
+# 11. STANDARD PRODUCT CARD
+
+The supplier page must use the same standardized Product Card established for `index.php`.
+
+### Fundamental rule
+
+**ONE PARENT PRODUCT = ONE PRODUCT CARD**
+
+Variants must NOT appear as separate product cards.
+
+Example:
+
+```text
+┌─────────────────────────────────┐
+│                                 │
+│          Product Image          │
+│                                 │
+│ Angle Bar                       │
+│ Multiple sizes available        │
+│ From ₱XXX.XX                    │
+│                                 │
+│                       [+ Add]   │
+└─────────────────────────────────┘
+```
+
+The card must use the existing parent-product → variant relationship.
+
+Do not group products based only on similar names.
+
+Use the actual database relationships.
+
+---
+
+# 12. PRODUCT CARD INFORMATION
+
+Use the standardized product-card presentation from `index.php`.
+
+Recommended information priority:
+
+1. Product image
+2. Parent product name
+3. Short description where appropriate
+4. Variant availability
+5. Price / starting price where appropriate
+6. Stock/availability where appropriate
+7. `+ Add`
+
+For multi-variant products, do not display misleading information from an arbitrary variant.
+
+For example, do not display the SKU of Variant A when the customer has not selected a variant.
+
+---
+
+# 13. SUPPLIER NAME ON PRODUCT CARDS
+
+Because the entire page is already supplier-specific, do not unnecessarily repeat the supplier name on every product card.
+
+Preferred:
+
+```text
+SAM & INRI CONSTRUCTION SUPPLY
+
+Supplier Products
+
+[Product Card]
+[Product Card]
+[Product Card]
+```
+
+The supplier identity is already established by:
+
+* Supplier header
+* Page title
+* Locked Active Filter
+
+If the existing standardized Product Card requires supplier information, it may still display it, but avoid unnecessary duplication.
+
+---
+
+# 14. STANDARD VARIANT MODAL
+
+The supplier page must use the same standardized Variant Modal as `index.php`.
+
+When the customer selects:
+
+```text
++ Add
+```
+
+for a multi-variant product:
+
+```text
+Product Card
+      ↓
++ Add
+      ↓
+Variant Modal
+      ↓
+Select Variant
+      ↓
+Select Quantity
+      ↓
+Add to Cart
+```
+
+The modal must display only variants belonging to:
+
+1. The selected parent product
+2. The current supplier
+3. Active/available records according to existing business rules
+
+---
+
+# 15. VARIANT INFORMATION
+
+The Variant Modal should display relevant information such as:
+
+```text
+Product:
+Angle Bar
+
+Select Variant
+
+[ 1" × 1/8" ]
+[ 1½" × 1/8" ]
+[ 2" × 2" × 1/8" ]
+
+Selected Variant
+----------------
+
+SKU: AB1-001
+Price: ₱XXX
+Available Stock: XX
+Unit: Length
+
+Quantity
+[-] 1 [+]
+
+[Add to Cart]
+```
+
+The actual fields must be generated from the existing variant/product structure.
+
+Do not hard-code attributes such as Size, Color, Length, etc. if the current database supports different attribute types.
+
+The UI should adapt to the actual product variant structure.
+
+---
+
+# 16. PRICE / SKU / STOCK MUST COME FROM SELECTED VARIANT
+
+The selected variant must determine:
+
+* Variant name
+* SKU
+* Price
+* Stock
+* Unit
+* Specifications
+* Other variant-specific information
+
+Never display a random variant's information.
+
+For multi-variant products:
+
+```text
+From ₱XXX.XX
+```
+
+may be displayed if compatible with the existing pricing rules.
+
+Otherwise use an appropriate standardized presentation such as:
+
+```text
+Select variant for price
+```
+
+---
+
+# 17. SINGLE-SKU PRODUCTS
+
+If a parent product has only one valid SKU/variant, retain the existing streamlined behavior.
+
+Example:
+
+```text
+Product
+
+Price: ₱XXX
+Stock: XX
+
+[+ Add]
+```
+
+If the current implementation allows direct addition of the single variant, preserve that behavior.
+
+Do not force a variant modal when there is no meaningful variant choice unless required by the existing system.
+
+---
+
+# 18. CART — USE EXISTING CART ONLY
+
+Products added from the supplier page must use the existing cart system.
+
+Do NOT create a separate supplier cart.
+
+Do NOT create:
+
+```text
+supplier_cart
+```
+
+or any replacement cart architecture.
+
+Preserve the existing cart data structure and behavior.
+
+When adding a product/variant, preserve where supported:
+
+* Parent product ID
+* Variant ID
+* SKU
+* Product name
+* Variant name
+* Price
+* Quantity
+* Unit
+* Supplier/tenant relationship
+* Existing variant attributes
+
+Different variants of the same parent product must remain distinguishable by their existing variant/SKU identity.
+
+---
+
+# 19. SORTING
+
+Use the existing standardized sorting controls where supported.
+
+Example:
+
+```text
+Sort By:
+
+Relevance
+Newest
+Price: Low to High
+Price: High to Low
+Popularity
+Best Selling
+```
+
+Every sorting operation must remain inside the supplier scope.
+
+For example:
+
+```text
+WHERE supplier_id = X
+ORDER BY price ASC
+```
+
+not:
+
+```text
+ORDER BY price ASC
+```
+
+across all marketplace suppliers.
+
+---
+
+# 20. PAGINATION / LOAD MORE / AJAX
+
+If the current page supports:
+
+* Pagination
+* AJAX loading
+* Infinite scrolling
+* Load More
+* Dynamic filtering
+
+the supplier scope must be preserved in every request.
+
+Example:
+
+```text
+Page 1 → supplier_id = X
+Page 2 → supplier_id = X
+Page 3 → supplier_id = X
+```
+
+Never allow a subsequent request to lose the supplier constraint.
+
+This must be enforced server-side, not only in JavaScript.
+
+---
+
+# 21. URL PRESERVATION
+
+Do NOT change the existing supplier URL structure.
+
+Continue supporting:
+
+```text
+store.php?slug=sam-inri-construction-supply
+```
+
+and dynamically:
+
+```text
+store.php?slug={supplier_slug}
+```
+
+Additional filters may use the existing URL/query/state mechanism if one already exists.
+
+For example:
+
+```text
+store.php?slug=sam-inri-construction-supply&category=...
+```
+
+Only use parameters supported by the current application architecture.
+
+Do not introduce a new routing system unless absolutely required.
+
+---
+
+# 22. BREADCRUMB / PAGE CONTEXT
+
+Use the existing breadcrumb system if available.
+
+Example:
+
+```text
+Home
+  >
+Supplier Stores
+  >
+SAM & INRI CONSTRUCTION SUPPLY
+```
+
+Then:
+
+```text
+SAM & INRI CONSTRUCTION SUPPLY
+
+Supplier Products
+```
+
+The supplier name must be dynamically generated.
+
+---
+
+# 23. SUPPLIER PAGE VS HOMEPAGE
+
+Use the same standardized components but different data scopes.
+
+### Marketplace Homepage
+
+```text
+index.php
+
+Supplier Scope:
+ALL SUPPLIERS
+
+Supplier Filter:
+Optional
+
+Customer can filter:
+Supplier
+Category
+Search
+Price
+Availability
+Sorting
+...
+```
+
+### Supplier Store
+
+```text
+store.php?slug={supplier_slug}
+
+Supplier Scope:
+ONE SUPPLIER
+
+Supplier Filter:
+LOCKED
+
+Customer can filter:
+Category
+Search
+Price
+Availability
+Sorting
+...
+```
+
+The visual language and components should be consistent.
+
+The data scope must remain different.
+
+---
+
+# 24. SUPPLIER PAGE VS CATEGORY PAGE
+
+Do not break the existing category page:
+
+```text
+product-category.php?id=1&type=mid-category
+```
+
+The existing category hierarchy remains the source of truth:
+
+```text
+Top Level Category
+       ↓
+Mid Level Category
+       ↓
+End Level Category
+       ↓
+Parent Product
+       ↓
+Variant
+```
+
+Do not redesign category routing as part of this task.
+
+Do not create a new supplier-category architecture.
+
+The supplier store should simply apply the existing category filtering logic inside the supplier scope.
+
+---
+
+# 25. SUPPLIER / TENANT ISOLATION
+
+This is a critical security requirement.
+
+The supplier slug must be resolved server-side.
+
+Example:
+
+```text
+slug
+ ↓
+Resolve Supplier
+ ↓
+supplier_id
+ ↓
+Supplier-scoped query
+```
+
+The client must never be trusted to determine supplier ownership.
+
+Validate the existing relationships for:
+
+* Supplier
+* Tenant
+* Product
+* Parent product
+* Variant
+* SKU
+* Inventory
+* Cart item
+
+The system must ensure:
+
+```text
+Product belongs to current supplier
+        AND
+Variant belongs to product
+        AND
+Variant is valid for current supplier
+```
+
+A customer must never be able to retrieve another supplier's products by manipulating:
+
+* URL parameters
+* Supplier IDs
+* Product IDs
+* Variant IDs
+* AJAX requests
+* API requests
+* Pagination parameters
+* Search parameters
+* Category parameters
+
+---
+
+# 26. SUPPLIER VISIBILITY RULES
+
+Follow the existing supplier/product visibility rules.
+
+Only display products that are currently permitted to appear in the public marketplace according to the existing system.
+
+Respect existing states such as:
+
+* Active
+* Published
+* Approved
+* Available
+* Inactive
+* Hidden
+* Deleted
+* Out of stock
+
+Do not invent new visibility rules.
+
+Do not expose private/unpublished supplier products.
+
+---
+
+# 27. DO NOT CREATE DUPLICATE SYSTEMS
+
+The existing database remains the single source of truth.
+
+Do NOT create new:
+
+* Supplier tables
+* Tenant tables
+* Product tables
+* Parent-product tables
+* Variant tables
+* SKU tables
+* Category tables
+* Inventory tables
+* Cart tables
+* Supplier-category systems
+
+unless an existing database change is genuinely required and explicitly justified.
+
+Prefer reusing the existing schema.
+
+---
+
+# 28. STANDARDIZED COMPONENTS
+
+Where the current architecture permits, reuse or standardize these components:
+
+```text
+SupplierHeader
+ProductCard
+VariantModal
+ProductGrid
+ProductCarousel
+ActiveFilters
+CategoryFilter
+SupplierFilter
+SearchBar
+SortControl
+CartIndicator
+```
+
+The same Product Card and Variant Modal should ideally be usable across:
+
+```text
+index.php
+store.php
+product-category.php
+supplier product listings
+POS product selection
+```
+
+However:
+
+**Do not perform a large application-wide refactor unnecessarily.**
+
+Make the smallest safe architectural change required.
+
+---
+
+# 29. RESPONSIVE DESIGN
+
+The supplier page must follow the same responsive design standard as `index.php`.
+
+### Desktop
+
+```text
+Supplier Header
+
+Supplier Products
+
+Active Filters
+
+Search / Filter / Sort
+
+Product Grid
+```
+
+Use approximately 4–6 cards per row depending on screen width.
+
+### Mobile
+
+```text
+Supplier Header
+
+Search
+
+[Filter] [Sort]
+
+Active Filters
+
+2-column Product Grid
+```
+
+The Variant Modal must remain mobile-friendly.
+
+Use the standardized mobile modal/bottom-sheet behavior where supported by the existing design.
+
+---
+
+# 30. EMPTY STATES
+
+If the supplier has no products:
+
+```text
+No products available from this supplier.
+```
+
+If filters return no products:
+
+```text
+No products match your selected filters.
+
+[Clear Filters]
+```
+
+The **Clear Filters** action must clear customer-selected filters such as:
+
+* Category
+* Search
+* Price
+* Availability
+* Other removable filters
+
+but MUST NOT remove the supplier scope.
+
+Example:
+
+```text
+Before:
+
+Supplier: SAM & INRI 🔒
+Category: Steel & Metal ×
+Search: Angle Bar ×
+
+[Clear Filters]
+```
+
+After:
+
+```text
+Supplier: SAM & INRI 🔒
+```
+
+This is a critical behavior.
+
+Never fall back to showing all marketplace products.
+
+---
+
+# 31. PERFORMANCE
+
+Use supplier-scoped database queries.
+
+Avoid:
+
+```text
+Load all marketplace products
+        ↓
+Filter supplier products in PHP/JavaScript
+```
+
+Prefer:
+
+```text
+Database
+   ↓
+Supplier Scope
+   ↓
+Category/Search/Filter conditions
+   ↓
+Sorting
+   ↓
+Pagination
+   ↓
+Return required products
+```
+
+Lazy-load product images where appropriate.
+
+Do not load unnecessary variant data for every product card.
+
+Load detailed variant information when required, such as when opening the Variant Modal, if compatible with the existing architecture.
+
+---
+
+# 32. EXISTING FUNCTIONALITY INSPECTION — REQUIRED BEFORE CODING
+
+Before modifying code, inspect the existing implementation of:
+
+```text
+index.php
+store.php
+product-category.php
+supplier/pos.php
+```
+
+Also inspect:
+
+```text
+Existing Product Card
+Existing Variant Logic
+Existing Cart Logic
+Existing Active Filters
+Existing Category Filters
+Existing Supplier/Tenant Relationships
+Existing Search
+Existing Sorting
+Existing Pagination/AJAX
+Existing Inventory/Stock Logic
+Existing Authentication/Authorization
+```
+
+Determine how these currently work before making changes.
+
+Do not assume the database structure.
+
+Do not create new relationships when existing ones already provide the required functionality.
+
+---
+
+# 33. CHANGE ONLY WHAT IS REQUIRED
+
+The AI agent must follow a **minimal-change strategy**.
+
+Before modifying a component:
+
+1. Identify its current purpose.
+2. Identify which pages use it.
+3. Identify dependencies.
+4. Determine whether it can be safely reused.
+5. Make the smallest required change.
+6. Test all affected pages.
+
+Do not rewrite working modules simply because a different implementation appears cleaner.
+
+---
+
+# 34. TESTING REQUIREMENTS
+
+## Test 1 — Supplier Scope
+
+Open:
+
+```text
+store.php?slug=sam-inri-construction-supply
+```
+
+Confirm:
+
+* Correct supplier is identified.
+* Correct supplier name is displayed.
+* Only that supplier's products appear.
+* Products from other suppliers do not appear.
+
+---
+
+## Test 2 — Supplier Filter
+
+Confirm Active Filters displays:
+
+```text
+Supplier: SAM & INRI CONSTRUCTION SUPPLY 🔒
+```
+
+Confirm the supplier filter cannot be removed.
+
+---
+
+## Test 3 — Search
+
+Search:
+
+```text
+Angle Bar
+```
+
+Confirm:
+
+* Matching products are displayed.
+* Every result belongs to SAM & INRI.
+* No other supplier's products appear.
+
+---
+
+## Test 4 — Category
+
+Select:
+
+```text
+Steel & Metal
+```
+
+Confirm:
+
+* Only SAM & INRI products within the selected category appear.
+
+---
+
+## Test 5 — Category + Search
+
+Use:
+
+```text
+Supplier = SAM & INRI
+Category = Steel & Metal
+Search = Angle Bar
+```
+
+Confirm every result satisfies ALL conditions.
+
+---
+
+## Test 6 — Clear Filters
+
+Apply:
+
+```text
+Category
+Search
+Price
+```
+
+Then select:
+
+```text
+Clear Filters
+```
+
+Confirm:
+
+* Customer-selected filters are removed.
+* Supplier filter remains active.
+* Only SAM & INRI products remain.
+
+---
+
+## Test 7 — Multi-Variant Product
+
+Open a multi-variant product.
+
+Confirm:
+
+* One parent product card is displayed.
+* Variants are grouped.
+* Correct variant options appear.
+* Correct SKU appears.
+* Correct price appears.
+* Correct stock appears.
+* Correct unit appears.
+* Correct specifications appear.
+
+---
+
+## Test 8 — Cart
+
+Add Variant A.
+
+Then add Variant B from the same parent product.
+
+Confirm different variants remain distinguishable according to the existing cart logic.
+
+Do not modify the existing cart architecture.
+
+---
+
+## Test 9 — Pagination / Load More
+
+Move through:
+
+```text
+Page 1
+Page 2
+Page 3
+```
+
+or use Load More.
+
+Confirm every result remains within the selected supplier.
+
+---
+
+## Test 10 — Sorting
+
+Test:
+
+```text
+Price Low → High
+Price High → Low
+Newest
+Popularity
+```
+
+Confirm supplier scope remains active.
+
+---
+
+## Test 11 — URL / Request Manipulation
+
+Attempt to manipulate query parameters, supplier IDs, product IDs, variant IDs, pagination parameters, or AJAX requests.
+
+Confirm another supplier's products cannot be retrieved through the supplier page.
+
+---
+
+## Test 12 — Other Supplier
+
+Open another valid supplier slug.
+
+Confirm the same `store.php` implementation correctly displays that supplier's products.
+
+This proves the implementation is dynamic rather than hard-coded for SAM & INRI.
+
+---
+
+## Test 13 — Existing Pages
+
+Verify:
+
+```text
+index.php
+product-category.php
+supplier/pos.php
+store.php
+```
+
+continue functioning normally.
+
+---
+
+# 35. FINAL ACCEPTANCE CRITERIA
+
+The implementation is successful only when:
+
+* [ ] `store.php` remains the standard supplier-store template.
+* [ ] Existing supplier URL structure is preserved.
+* [ ] `store.php?slug={supplier_slug}` works dynamically for all valid suppliers.
+* [ ] Supplier is resolved from the existing slug.
+* [ ] Supplier scope is established server-side.
+* [ ] Supplier is a mandatory/locked filter.
+* [ ] Active Filters clearly show the selected supplier.
+* [ ] Supplier cannot be removed from the supplier page.
+* [ ] Clear Filters removes customer filters but preserves supplier scope.
+* [ ] Only selected supplier products are displayed.
+* [ ] Search remains supplier-scoped.
+* [ ] Category filtering remains supplier-scoped.
+* [ ] Sorting remains supplier-scoped.
+* [ ] Pagination remains supplier-scoped.
+* [ ] AJAX/API requests remain supplier-scoped.
+* [ ] Product cards follow the standardized `index.php` design.
+* [ ] One parent product = one product card.
+* [ ] Variants are grouped under the parent product.
+* [ ] `+ Add` uses the standard Variant Modal.
+* [ ] Variant information comes from the selected variant.
+* [ ] Correct SKU, price, stock and unit are displayed.
+* [ ] Existing cart functionality is preserved.
+* [ ] Existing supplier/tenant isolation is preserved.
+* [ ] Existing category hierarchy is preserved.
+* [ ] Existing POS functionality is unaffected.
+* [ ] Existing supplier functionality is preserved.
+* [ ] Existing URLs are preserved.
+* [ ] No duplicate database architecture is introduced.
+* [ ] No unnecessary application-wide refactoring is performed.
+* [ ] Desktop and mobile layouts are responsive.
+* [ ] Empty results do not leak products from other suppliers.
+* [ ] Another supplier can use the same `store.php` template successfully.
+
+---
+
+# 36. FINAL STANDARDIZATION MODEL
+
+The eConstruction Supply platform should use the following standardized model:
+
+```text
+                         eCONSTRUCTION SUPPLY
+                                  │
+                ┌─────────────────┴─────────────────┐
+                │                                   │
+          MARKETPLACE                            SUPPLIER
+           index.php                             store.php
+                │                                   │
+        ALL SUPPLIERS                         ONE SUPPLIER
+                │                                   │
+      Optional Supplier Filter              Locked Supplier Scope
+                │                                   │
+                └─────────────────┬─────────────────┘
+                                  ↓
+                         STANDARD PRODUCT CARD
+                                  ↓
+                           + ADD / SELECT
+                                  ↓
+                        STANDARD VARIANT MODAL
+                                  ↓
+                            SELECT QUANTITY
+                                  ↓
+                            EXISTING CART
+```
+
+### Page responsibilities
+
+```text
+index.php
+= Marketplace-wide product discovery
+
+store.php?slug={supplier}
+= Supplier-specific product discovery
+
+product-category.php
+= Category-specific product discovery
+
+supplier/pos.php
+= Supplier/Tenant-specific POS operations
+```
+
+### Most important rule
+
+**Standardize the presentation, not the data scope.**
+
+The same Product Card, Variant Modal, Active Filters, Search, Sort and responsive design should provide a consistent user experience across the platform.
+
+But:
+
+```text
+Homepage
+→ Marketplace-wide
+
+Supplier Store
+→ One supplier only
+
+Category Page
+→ Existing category scope
+
+POS
+→ Logged-in supplier/tenant scope
+```
+
+Never allow UI standardization to weaken supplier/tenant isolation or alter existing business functionality.
+
+**Implement the smallest safe change necessary to achieve this standardization.**
+
+
+----------------------------
+ target: https://econstruction-supply.site/supplier/pos.php --> Task: at Right Side: POS Cart and Register Panel:
+ if the user is "Order Processing Staff" or "Operator" change the button-->
+<button type="submit" id="posCompleteBtn" 
+class="btn btn-success btn-block btn-lg" 
+style="font-size: 18px; 
+font-weight: 800; border-radius: 8px; 
+padding: 14px 20px; 
+box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);" disabled="">
+<i class="fa fa-check-circle"></i> Complete Sale &amp; Print Receipt
+</button>
+
+to
+
+</button><a href="checkout.php" class="btn btn-primary">Proceed to Checkout</a></button>(When click, Checkout process followed)
+
+note the submitted Purchase Order will go to https://econstruction-supply.site/supplier/order.php 
+		to further process the payment by Customer with the "casher" once paid will move to https://econstruction-supply.site/supplier/paid-orders.php
+
+target:  https://econstruction-supply.site/supplier/checkout.php
+task: change this -->					
+<button type="submit" class="btn btn-success btn-block btn-lg" 
+style="font-size: 18px; font-weight: 800; border-radius: 8px; padding: 14px 20px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);">
+ <i class="fa fa-check-circle"></i> Create Purchase Order (PO) / Submit Order
+  </button>		
+  
+to this-->				
+<div class="col-md-12 form-group" style="margin-top: 10px;">
+<input type="submit" class="btn btn-primary" 
+style="background-color: #0284c7; border-color: #0284c7; font-size: 16px; padding: 10px 20px;"
+value="Send Purchase Order" name="form_otc" >
+ </div>	
+Then the purchase order move to: 
+https://econstruction-supply.site/checkout.php 
+
+note the submitted  "Create Purchase Order (PO) / Submit Order (change to "Send Purchase Order")" will go to https://econstruction-supply.site/supplier/order.php 
+to further process the payment by Customer with the "casher" once paid will move to https://econstruction-supply.site/supplier/paid-orders.php (existing files is reused)
+
+
+
+Supplier Checkout — Send Purchase Order
+# UNIFIED "SEND PURCHASE ORDER" WORKFLOW
+
+## Objective
+
+Implement a **single, consistent Purchase Order submission workflow** for both the Customer checkout page and the Supplier POS checkout page.
+
+There are two different checkout entry points used by two different user types:
+
+| User                   | Checkout Page            | Role                              |
+| ---------------------- | ------------------------ | --------------------------------- |
+| Customer               | `/checkout.php`          | Customer                          |
+| Order Processing Staff | `/supplier/checkout.php` | Order Processing Staff / Operator |
+
+Although the two pages are located in different directories and are used by different users, **the "Send Purchase Order" action must use the same underlying order-submission/business process**.
+
+After a successful **Send Purchase Order**, both pages must redirect to:
+
+```text
+https://econstruction-supply.site/supplier/paid-orders.php
+```
+
+---
+
+# 1. CUSTOMER CHECKOUT
+
+## Target
+
+```text
+https://econstruction-supply.site/checkout.php
+```
+
+This page is used by the **Customer**.
+
+Locate the existing:
+
+```html
+<div class="col-md-12 form-group" style="margin-top: 10px;">
+    <input type="submit"
+           class="btn btn-primary"
+           style="background-color: #0284c7;
+                  border-color: #0284c7;
+                  font-size: 16px;
+                  padding: 10px 20px;"
+           value="Send Purchase Order"
+           name="form_otc">
+</div>
+```
+
+Keep the button label:
+
+```text
+Send Purchase Order
+```
+
+When the Customer clicks **Send Purchase Order**, the system must:
+
+1. Validate the checkout information.
+2. Validate the current cart/order.
+3. Create/submit the Purchase Order using the existing order-processing logic.
+4. Save the order correctly in the existing database structure.
+5. Preserve the Customer, Supplier/Tenant, products, quantities, prices, discounts, totals, and order information.
+6. Prevent duplicate order creation.
+7. After successful submission, redirect to:
+
+```text
+/supplier/paid-orders.php
+```
+
+---
+
+# 2. POS / ORDER PROCESSING STAFF CHECKOUT
+
+## Target
+
+```text
+https://econstruction-supply.site/supplier/checkout.php
+```
+
+This page is used by:
+
+```text
+Order Processing Staff
+Operator
+```
+
+Locate the existing:
+
+```html
+<div class="col-md-12 form-group" style="margin-top: 10px;">
+    <input type="submit"
+           class="btn btn-primary"
+           style="background-color: #0284c7;
+                  border-color: #0284c7;
+                  font-size: 16px;
+                  padding: 10px 20px;"
+           value="Send Purchase Order"
+           name="form_otc">
+</div>
+```
+
+Keep the button label:
+
+```text
+Send Purchase Order
+```
+
+When the Order Processing Staff or Operator clicks **Send Purchase Order**, the system must:
+
+1. Validate the checkout information.
+2. Validate the current POS/cart order.
+3. Create/submit the Purchase Order using the **same underlying order-submission logic used by the Customer checkout process**.
+4. Save the order correctly in the existing database structure.
+5. Preserve the correct Supplier/Tenant.
+6. Preserve products, quantities, prices, discounts, totals, customer information, and order information.
+7. Prevent duplicate order creation.
+8. After successful submission, redirect to:
+
+```text
+/supplier/paid-orders.php
+```
+
+---
+
+# 3. IMPORTANT — SAME SUBMISSION PROCESS
+
+The two pages:
+
+```text
+https://econstruction-supply.site/checkout.php
+```
+
+and:
+
+```text
+https://econstruction-supply.site/supplier/checkout.php
+```
+
+must be treated as **two different entry points into the same Purchase Order workflow**.
+
+The implementation should NOT create two separate business processes.
+
+Conceptually:
+
+```text
+                    PURCHASE ORDER SUBMISSION
+                              │
+             ┌────────────────┴────────────────┐
+             │                                 │
+             ▼                                 ▼
+      CUSTOMER CHECKOUT                  SUPPLIER POS CHECKOUT
+      /checkout.php                      /supplier/checkout.php
+             │                                 │
+             │      Send Purchase Order        │
+             └───────────────┬─────────────────┘
+                             ▼
+                  SAME ORDER SUBMISSION LOGIC
+                             │
+                             ▼
+                    CREATE/SAVE ORDER
+                             │
+                             ▼
+              SUCCESSFUL SUBMISSION
+                             │
+                             ▼
+          /supplier/paid-orders.php
+```
+
+---
+
+# 4. DO NOT DUPLICATE ORDER LOGIC
+
+Before modifying the code, inspect:
+
+```text
+/checkout.php
+/supplier/checkout.php
+/supplier/order.php
+/supplier/paid-orders.php
+```
+
+Determine how each page currently:
+
+* Creates orders
+* Creates order items
+* Generates order numbers
+* Saves customer information
+* Saves supplier/tenant information
+* Calculates totals
+* Handles discounts
+* Sets order status
+* Sets payment status
+* Creates payment records
+* Redirects after submission
+
+If there is already a common function, endpoint, PHP include, class, or processing routine, **reuse it**.
+
+Do not duplicate the same order-creation code unnecessarily.
+
+---
+
+# 5. IMPORTANT DISTINCTION: ORDER STATUS VS PAYMENT STATUS
+
+Do not assume that an order is already paid merely because the customer clicked:
+
+```text
+Send Purchase Order
+```
+
+The **Send Purchase Order** action means:
+
+```text
+Purchase Order submitted
+```
+
+It does NOT automatically mean:
+
+```text
+Payment completed
+```
+
+Therefore, preserve the application's existing order/payment status model.
+
+If the existing system has a specific status representing:
+
+```text
+Pending Payment
+Awaiting Payment
+Unpaid
+PO Submitted
+```
+
+use that existing status.
+
+Do not mark the order as `PAID` unless payment has actually been confirmed.
+
+---
+
+# 6. REDIRECT REQUIREMENT
+
+After the Purchase Order has been successfully created, both checkout pages must redirect to exactly:
+
+```text
+https://econstruction-supply.site/supplier/paid-orders.php
+```
+
+### Customer
+
+```text
+/checkout.php
+       │
+       │ Send Purchase Order
+       ▼
+Successful PO submission
+       │
+       ▼
+/supplier/paid-orders.php
+```
+
+### Order Processing Staff / Operator
+
+```text
+/supplier/checkout.php
+       │
+       │ Send Purchase Order
+       ▼
+Successful PO submission
+       │
+       ▼
+/supplier/paid-orders.php
+```
+
+Do not redirect either page to:
+
+```text
+/supplier/order.php
+```
+
+unless the existing application requires an internal processing step that cannot be removed.
+
+The requested final browser destination after successful **Send Purchase Order** is:
+
+```text
+/supplier/paid-orders.php
+```
+
+---
+
+# 7. DO NOT CONFUSE THE PAGES
+
+There are three separate pages:
+
+### Customer checkout
+
+```text
+https://econstruction-supply.site/checkout.php
+```
+
+Used by:
+
+```text
+Customer
+```
+
+### Supplier/POS checkout
+
+```text
+https://econstruction-supply.site/supplier/checkout.php
+```
+
+Used by:
+
+```text
+Order Processing Staff
+Operator
+```
+
+### Supplier order/paid-order management
+
+```text
+https://econstruction-supply.site/supplier/paid-orders.php
+```
+
+This is the destination after successful **Send Purchase Order**.
+
+---
+
+# 8. SUPPLIER/TENANT ISOLATION
+
+This is a multi-tenant application.
+
+The implementation must preserve the existing Supplier/Tenant relationship.
+
+For orders submitted from:
+
+```text
+/supplier/checkout.php
+```
+
+the system must use the authenticated Order Processing Staff/Operator's existing Supplier/Tenant context.
+
+For orders submitted from:
+
+```text
+/checkout.php
+```
+
+the system must preserve the existing Customer → Supplier relationship.
+
+Never allow an order submitted by one Supplier/Tenant to appear as another Supplier/Tenant's order.
+
+Do not remove or weaken existing authorization checks.
+
+---
+
+# 9. CUSTOMER AND POS ORDER DATA
+
+Both submission paths must preserve the appropriate order data.
+
+At minimum:
+
+* Customer
+* Supplier/Tenant
+* Order/PO number
+* Order date
+* Products
+* Product variants
+* Quantities
+* Unit prices
+* Discounts
+* Discount approval information, if applicable
+* Subtotal
+* Discount amount
+* Grand total
+* Order status
+* Payment status
+* Created-by user, where supported
+* Existing audit information
+
+---
+
+# 10. PREVENT DUPLICATE ORDERS
+
+The system must protect against duplicate Purchase Orders caused by:
+
+* Double-clicking **Send Purchase Order**
+* Browser refresh
+* Form resubmission
+* Network retry
+* Back/forward browser navigation
+
+Use the application's existing duplicate-submission/idempotency mechanism if one exists.
+
+Do not create duplicate orders or duplicate payment records.
+
+---
+
+# 11. ERROR HANDLING
+
+If order creation fails:
+
+* Do NOT redirect to `/supplier/paid-orders.php`.
+* Do NOT create a partial order.
+* Display the existing error handling/message mechanism.
+* Preserve the user's entered information where possible.
+
+Redirect to:
+
+```text
+/supplier/paid-orders.php
+```
+
+ONLY after successful Purchase Order creation/submission.
+
+---
+
+# 12. "SEND PURCHASE ORDER" BUTTON
+
+The button on both pages must remain:
+
+```html
+<div class="col-md-12 form-group" style="margin-top: 10px;">
+    <input type="submit"
+           class="btn btn-primary"
+           style="background-color: #0284c7;
+                  border-color: #0284c7;
+                  font-size: 16px;
+                  padding: 10px 20px;"
+           value="Send Purchase Order"
+           name="form_otc">
+</div>
+```
+
+Do not unnecessarily change the existing styling or form structure.
+
+The existing:
+
+```text
+name="form_otc"
+```
+
+must continue to work unless inspection of the existing backend shows that a different existing submission mechanism is required.
+
+---
+
+# 13. SECURITY
+
+Do not implement the workflow using client-side JavaScript alone.
+
+All important validation must occur server-side.
+
+The server must verify:
+
+* User authentication
+* User role
+* Supplier/Tenant access
+* Customer/order ownership where applicable
+* Cart/order validity
+* Product validity
+* Quantity validity
+* Price validity
+* Discount validity
+* Order totals
+* Order status
+* Payment status
+
+Never trust values submitted by the browser.
+
+---
+
+# 14. ACCEPTANCE TEST
+
+Test both workflows independently.
+
+## Test A — Customer
+
+1. Log in as Customer.
+2. Add products to cart.
+3. Open:
+
+```text
+/checkout.php
+```
+
+4. Verify **Send Purchase Order** is displayed.
+5. Click **Send Purchase Order**.
+6. Verify the order is successfully created.
+7. Verify the customer is redirected to:
+
+```text
+/supplier/paid-orders.php
+```
+
+8. Verify the order appears correctly.
+9. Verify the order is NOT incorrectly marked as paid unless payment has actually been completed.
+
+---
+
+## Test B — Order Processing Staff
+
+1. Log in as **Order Processing Staff**.
+2. Create/select a POS order.
+3. Proceed to:
+
+```text
+/supplier/checkout.php
+```
+
+4. Verify **Send Purchase Order** is displayed.
+5. Click **Send Purchase Order**.
+6. Verify the order is successfully created.
+7. Verify the user is redirected to:
+
+```text
+/supplier/paid-orders.php
+```
+
+8. Verify the correct Supplier/Tenant is associated with the order.
+9. Verify the order is NOT incorrectly marked as paid unless payment has actually been completed.
+
+---
+
+## Test C — Operator
+
+Repeat the same test using:
+
+```text
+Operator
+```
+
+The behavior must be identical to the Order Processing Staff workflow.
+
+---
+
+# 15. FINAL REQUIRED WORKFLOW
+
+The final system behavior must be:
+
+```text
+┌──────────────────────────────────────────────┐
+│              CUSTOMER                       │
+│                                              │
+│  https://econstruction-supply.site/checkout.php
+│                                              │
+│        [ SEND PURCHASE ORDER ]               │
+└──────────────────────┬───────────────────────┘
+                       │
+                       │
+                       ▼
+              SAME PO SUBMISSION
+                   PROCESS
+                       │
+                       ▼
+┌──────────────────────────────────────────────┐
+│ https://econstruction-supply.site/           │
+│ supplier/paid-orders.php                     │
+└──────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────┐
+│       ORDER PROCESSING STAFF / OPERATOR     │
+│                                              │
+│  https://econstruction-supply.site/          │
+│  supplier/checkout.php                       │
+│                                              │
+│        [ SEND PURCHASE ORDER ]               │
+└──────────────────────┬───────────────────────┘
+                       │
+                       │
+                       ▼
+              SAME PO SUBMISSION
+                   PROCESS
+                       │
+                       ▼
+┌──────────────────────────────────────────────┐
+│ https://econstruction-supply.site/           │
+│ supplier/paid-orders.php                     │
+└──────────────────────────────────────────────┘
+```
+
+## Final Rule
+
+**Two checkout pages, two user types, one Purchase Order submission process, and one final redirect destination.**
+
+```text
+Customer
+/checkout.php
+        │
+        └── Send Purchase Order ──┐
+                                  │
+                                  ▼
+                         /supplier/paid-orders.php
+                                  ▲
+                                  │
+        ┌── Send Purchase Order ──┘
+        │
+/supplier/checkout.php
+        │
+Order Processing Staff / Operator
+```
+
+Before changing code, inspect the existing implementation and reuse the existing order, payment, authentication, authorization, and Supplier/Tenant logic. Make the **smallest safe modification necessary** to achieve this exact workflow.
