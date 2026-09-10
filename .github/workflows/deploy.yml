@@ -1,0 +1,66 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'Documentation/**'
+      - 'README.md'
+      - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'Git Commit SHA, Branch, or Release Tag to deploy'
+        required: true
+        default: 'master'
+
+jobs:
+  validate:
+    name: Code Validation & Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          extensions: mbstring, pdo, pdo_pgsql, curl, json
+
+      - name: PHP Syntax Check (Lint)
+        run: |
+          echo "Linting all PHP files..."
+          ERRORS=0
+          while IFS= read -r -d '' file; do
+            if ! php -l "$file" >/dev/null 2>&1; then
+              echo "Syntax error in $file"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done < <(find . -name "*.php" -not -path "./scratch/*" -print0)
+          
+          if [ $ERRORS -ne 0 ]; then
+            echo "Failed: $ERRORS syntax error(s) detected."
+            exit 1
+          fi
+          echo "All PHP files passed syntax validation."
+
+  deploy:
+    name: Deploy to Production Droplet
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Trigger Remote Deployment Script
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: ${{ secrets.DROPLET_PORT || 22 }}
+          script: |
+            TARGET="${{ github.event.inputs.target_ref || github.sha }}"
+            /root/scripts/deploy.sh "${TARGET}"
