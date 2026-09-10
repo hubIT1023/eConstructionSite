@@ -1,0 +1,4 @@
+# Ensure all shell scripts always have LF line endings across all platforms
+*.sh text eol=lf
+*.sql text eol=lf
+*.php text eol=lf
