@@ -710,7 +710,7 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         send_system_email($cust_email, $subject_customer, $email_body);
                     }
 
-                    // Prepare Receipt for modal & 500mm thermal printing
+                    // Prepare Receipt for modal & 200mm thermal printing
                     $pos_success_receipt = array(
                         'payment_id' => $paying_po_id,
                         'payment_date' => $payment_date,
@@ -1538,8 +1538,8 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </div>
                         </div>
                         <div class="col-sm-7 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Automatic Printer Detection, Paper Width (500mm / 80mm / A4) & Print Options">
-                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer: 500mm</span>
+                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Printer Configuration / Setup (Auto Detect, 210mm / 80mm / 58mm / A4)">
+                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer: 210mm</span>
                             </button>
                             <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Create custom/manual order item not in catalogue">
                                 <i class="fa fa-plus-circle"></i> + Special Order
@@ -2444,11 +2444,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
             <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="button" class="btn btn-default" onclick="printReturnSlip('thermal400')" style="font-weight: 700; border-radius: 6px; padding: 6px 14px; font-size: 13px;">
-                        <i class="fa fa-print text-primary"></i> 400 mm Thermal
+                    <button type="button" class="btn btn-primary" onclick="printReturnSlip('thermal200')" style="font-weight: 700; border-radius: 6px; padding: 6px 14px; font-size: 13px; background-color: #0284c7; border-color: #0369a1;" title="Print Return Slip on Thermal Roll">
+                        <i class="fa fa-print"></i> Print Slip (Thermal)
                     </button>
-                    <button type="button" class="btn btn-info" onclick="printReturnSlip('pdf500')" style="font-weight: 700; border-radius: 6px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2;">
-                        <i class="fa fa-file-pdf-o"></i> 400 mm Thermal PDF
+                    <button type="button" class="btn btn-info" onclick="printReturnSlip('pdf')" style="font-weight: 700; border-radius: 6px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2;" title="Preview Return Slip in PDF layout">
+                        <i class="fa fa-file-pdf-o"></i> PDF Preview
                     </button>
                 </div>
                 <button type="button" class="btn btn-primary" onclick="closeReturnSuccessModal()" style="font-weight: 700; border-radius: 6px; padding: 6px 20px; font-size: 13px;">
@@ -2461,212 +2461,338 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 </div>
 
 <!-- ========================================== -->
-<!-- POS PRINTER SELECTION & AUTO-DETECT MODAL -->
+<!-- PRINTER CONFIGURATION / SETUP MODAL        -->
 <!-- ========================================== -->
 <div class="modal fade" id="posPrinterModal" tabindex="-1" role="dialog" aria-labelledby="posPrinterModalLabel" aria-hidden="true">
-    <div class="modal-dialog" style="max-width: 580px; margin-top: 45px;">
+    <div class="modal-dialog" style="max-width: 600px; margin-top: 35px;">
         <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 12px 35px rgba(0,0,0,0.35);">
             <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; padding: 16px 22px;">
                 <button type="button" class="close" data-dismiss="modal" aria-hidden="true" style="color: #fff; opacity: 0.85; font-size: 24px;">&times;</button>
-                <h4 class="modal-title" id="posPrinterModalLabel" style="font-weight: 800; font-size: 17px; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa fa-print text-primary"></i> POS Printer Selection &amp; Print Formatting
+                <h4 class="modal-title" id="posPrinterModalLabel" style="font-weight: 800; font-size: 18px; display: flex; align-items: center; gap: 8px; margin: 0;">
+                    <i class="fa fa-print text-primary"></i> Printer Configuration / Setup
                 </h4>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 3px; font-weight: 400;">
+                    Configure thermal, A4 and PDF output
+                </div>
             </div>
-            <div class="modal-body" style="padding: 22px; font-size: 13px; color: #1e293b;">
+            <div class="modal-body" style="padding: 20px 22px; font-size: 13px; color: #1e293b; max-height: 80vh; overflow-y: auto;">
                 
                 <!-- Live Detection Status Box -->
-                <div id="posPrinterStatusBox" style="background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 6px; padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between;">
+                <div id="posPrinterStatusBox" style="background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
                     <div style="flex: 1; padding-right: 10px;">
-                        <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #0369a1; letter-spacing: 0.5px;">Detection Status</div>
+                        <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #0369a1; letter-spacing: 0.5px;">PRINTER DETECTION</div>
                         <div id="posPrinterStatusText" style="font-size: 13px; font-weight: 700; color: #0c4a6e; margin-top: 2px;">
-                            <i class="fa fa-circle-o-notch fa-spin text-info"></i> Detecting available printers &amp; services...
+                            <span style="color: #0284c7;"><i class="fa fa-info-circle"></i> Auto Detect Active &bull; Ready (Browser / OS Print Dialog)</span>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-default btn-xs" onclick="refreshPOSPrinters()" style="font-weight: 700; border-radius: 4px; padding: 5px 10px; background: #fff; border-color: #93c5fd;" title="Re-probe local printers, USB, and print daemons">
-                        <i class="fa fa-refresh text-primary"></i> Refresh
+                    <button type="button" class="btn btn-default btn-xs" onclick="refreshPOSPrinters()" style="font-weight: 700; border-radius: 4px; padding: 6px 12px; background: #fff; border-color: #93c5fd;" title="Re-probe local printers, USB, and print daemons">
+                        <i class="fa fa-refresh text-primary"></i> Refresh Detection
                     </button>
                 </div>
 
+                <!-- ========================================== -->
+                <!-- ACTIVE CONFIGURATION CARD (TOP)            -->
+                <!-- ========================================== -->
+                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #bbf7d0; padding-bottom: 4px;">
+                        <span style="font-weight: 800; color: #15803d; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa fa-sliders"></i> ACTIVE CONFIGURATION
+                        </span>
+                        <span class="label label-success" style="font-size: 9.5px; font-weight: 700; background-color: #16a34a; padding: 2px 7px;">ACTIVE</span>
+                    </div>
+                    <div id="posCompatibilityBadge" style="font-size: 12px; color: #14532d; line-height: 1.6;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px 12px; margin-bottom: 4px;">
+                            <div><strong>Printer:</strong> <span id="posActivePrinterVal" style="color: #0369a1; font-weight: 700;">AUTO DETECT</span></div>
+                            <div><strong>Primary Output:</strong> <span style="color: #0284c7; font-weight: 700;">THERMAL PRINTER</span></div>
+                            <div><strong>Paper Width:</strong> <span id="posActiveWidthVal" style="font-weight: 700; color: #0f766e;">210 mm (Max)</span></div>
+                            <div><strong>Font:</strong> <span id="posActiveFontNameVal" style="font-weight: 700; color: #1e293b;">Courier New</span></div>
+                            <div><strong>Font Size:</strong> <span id="posActiveFontVal" style="font-weight: 700; color: #0369a1;">12 pt</span></div>
+                            <div><strong>Secondary:</strong> <span id="posActiveA4Val" style="font-weight: 700; color: #475569;">A4 Portrait</span></div>
+                            <div><strong>PDF:</strong> <span style="font-weight: 700; color: #c2410c;">Preview / Export Only</span></div>
+                            <div><strong>Copies:</strong> <span id="posActiveCopiesVal" style="font-weight: 700; color: #334155;">1 Copy</span></div>
+                        </div>
+                        <div id="posLayoutDesc" style="font-size: 11px; color: #166534; border-top: 1px dashed #86efac; padding-top: 4px; margin-top: 4px;">Primary: Thermal • 210 mm (Max) • 12 pt min | Secondary: A4 Portrait | PDF: Preview Only</div>
+                    </div>
+                </div>
+
                 <form id="posPrinterForm">
-                    <!-- Target Printer Selection -->
-                    <div class="form-group" style="margin-bottom: 16px;">
-                        <label style="font-weight: 700; color: #1e293b; margin-bottom: 5px;">
-                            <i class="fa fa-hdd-o text-primary"></i> Target Printer:
-                        </label>
-                        <select id="posPrinterSelect" class="form-control input-sm" style="font-size: 13px; height: 38px; border-radius: 4px;" onchange="handlePrinterSelectChange()">
-                            <option value="system_default">✓ System Default Printer (via Browser / OS Print Dialog)</option>
-                        </select>
-                        <div id="posPrinterDetailNote" style="font-size: 11.5px; color: #64748b; margin-top: 4px;">
-                            <i class="fa fa-info-circle text-info"></i> Direct printer enumeration is sandboxed by browser policy. The system print dialog will open automatically with dynamic layout formatting.
-                        </div>
-                    </div>
-
-                    <!-- Printer Type and Paper Size Preset Row -->
-                    <div class="row">
-                        <div class="col-xs-6">
-                            <div class="form-group" style="margin-bottom: 14px;">
-                                <label style="font-weight: 700; color: #1e293b; margin-bottom: 5px;">
-                                    <i class="fa fa-cog text-warning"></i> Printer Type:
-                                </label>
-                                <select id="posPrinterType" class="form-control input-sm" style="font-size: 13px; height: 38px; border-radius: 4px;" onchange="handlePrinterTypeChange()">
-                                    <option value="auto">Auto Detect (Recommended)</option>
-                                    <option value="thermal" selected>Thermal Printer (Continuous Roll)</option>
-                                    <option value="normal">Normal Printer (Laser / Inkjet / A4)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-xs-6">
-                            <div class="form-group" style="margin-bottom: 14px;">
-                                <label style="font-weight: 700; color: #1e293b; margin-bottom: 5px;">
-                                    <i class="fa fa-file-text-o text-success"></i> Paper Size Preset:
-                                </label>
-                                <select id="posPaperWidth" class="form-control input-sm" style="font-size: 13px; height: 38px; border-radius: 4px; font-weight: 700; color: #0f766e; background-color: #f0fdf4; border-color: #86efac;" onchange="handlePaperWidthChange()">
-                                    <option value="500" selected>500 mm Roll (Wide Thermal Roll - Default)</option>
-                                    <option value="80">80 mm (Standard 3-inch POS Thermal)</option>
-                                    <option value="58">58 mm (Compact 2-inch Thermal)</option>
-                                    <option value="210">210 mm (A4 Sheet / Standard PDF)</option>
-                                    <option value="400">400 mm (Direct 40 cm Thermal)</option>
-                                    <option value="250">250 mm (Compact Thermal)</option>
-                                    <option value="custom">Custom Paper Width (mm)...</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Custom Width Input (Hidden by default) -->
-                    <div id="posCustomWidthGroup" class="form-group" style="display: none; margin-bottom: 14px; background: #fffbeb; padding: 10px 14px; border-radius: 6px; border: 1px solid #fde68a;">
-                        <label style="font-weight: 700; color: #92400e; margin-bottom: 4px;">
-                            <i class="fa fa-pencil text-warning"></i> Specify Custom Paper Roll Width (mm):
-                        </label>
-                        <div class="input-group">
-                            <input type="number" id="posCustomWidthInput" class="form-control input-sm" value="500" min="40" max="1000" style="height: 36px;" oninput="handlePaperWidthChange()">
-                            <span class="input-group-addon">mm</span>
-                        </div>
-                        <div style="font-size: 11px; color: #b45309; margin-top: 3px;">Enter exact roll/sheet physical width in millimeters (e.g., 210 for A4, 500 for 50 cm).</div>
-                    </div>
-
-                    <!-- Dynamic PDF Paper Width & Print Content Width Section (0 - 200 mm) -->
-                    <div style="background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <label style="font-weight: 800; font-size: 13.5px; color: #0369a1; margin: 0; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa fa-file-pdf-o text-danger"></i> PDF Paper Width &amp; Dynamic Content Width:
-                            </label>
-                            <span id="posPdfWidthBadge" class="label label-primary" style="font-size: 12px; font-weight: 700; padding: 4px 10px; background-color: #0284c7; border-radius: 4px;">
-                                <span id="posPdfWidthBadgeVal">80</span> mm
+                    <!-- ========================================== -->
+                    <!-- SECTION 1: PRIMARY — THERMAL PRINTER       -->
+                    <!-- ========================================== -->
+                    <div id="posModeCardThermal" style="border: 1.5px solid #0284c7; background: #f0f9ff; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1.5px solid #bae6fd; padding-bottom: 6px;">
+                            <span style="font-weight: 800; color: #0369a1; font-size: 12.5px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-star text-warning"></i> PRIMARY — THERMAL PRINTER
                             </span>
-                        </div>
-                        
-                        <div style="font-size: 11.5px; color: #0284c7; margin-bottom: 10px; line-height: 1.35;">
-                            Adjusting PDF Paper Width dynamically calculates printable content width (0–200 mm), left-aligned with clean single-row header formatting.
+                            <span class="label label-primary" style="font-size: 9.5px; font-weight: 700; background-color: #0284c7; padding: 2px 7px;">PRIMARY / DEFAULT</span>
                         </div>
 
-                        <!-- Stepper and Direct Input Row -->
-                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-                            <button type="button" class="btn btn-default btn-sm" onclick="adjustA4PrintWidth(-5)" style="font-weight: 800; font-size: 15px; width: 42px; height: 38px; border-color: #93c5fd; background: #fff; color: #0369a1;" title="Decrease width by 5mm">
-                                &minus;
-                            </button>
-                            <div class="input-group" style="flex: 1;">
-                                <input type="number" id="posA4PrintWidthInput" class="form-control" value="80" min="0" max="200" step="1" style="height: 38px; font-weight: 800; font-size: 16px; text-align: center; color: #0c4a6e; border-color: #93c5fd;" oninput="setA4PrintWidthMm(this.value)">
-                                <span class="input-group-addon" style="font-weight: 700; background: #e0f2fe; color: #0369a1; border-color: #93c5fd;">mm</span>
-                            </div>
-                            <button type="button" class="btn btn-default btn-sm" onclick="adjustA4PrintWidth(5)" style="font-weight: 800; font-size: 15px; width: 42px; height: 38px; border-color: #93c5fd; background: #fff; color: #0369a1;" title="Increase width by 5mm">
-                                +
-                            </button>
-                        </div>
-
-                        <!-- Interactive Range Slider (0 - 200 mm) -->
-                        <div style="margin-bottom: 12px; padding: 0 4px;">
-                            <input type="range" id="posA4PrintWidthRange" min="0" max="200" step="1" value="80" style="width: 100%; height: 6px; cursor: pointer; accent-color: #0284c7;" oninput="setA4PrintWidthMm(this.value)">
-                            <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; color: #64748b; margin-top: 2px;">
-                                <span>0 mm</span>
-                                <span>50 mm</span>
-                                <span>100 mm</span>
-                                <span>150 mm</span>
-                                <span>200 mm</span>
+                        <!-- Thermal Printer Target Selection -->
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label style="font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 12px;">
+                                <i class="fa fa-hdd-o text-primary"></i> Printer:
+                            </label>
+                            <select id="posPrinterSelect" class="form-control input-sm" style="font-size: 12.5px; height: 36px; border-radius: 4px;" onchange="handlePrinterSelectChange()">
+                                <option value="system_default">AUTO DETECT (System Default / Browser Print Dialog)</option>
+                            </select>
+                            <div style="font-size: 11px; color: #0284c7; margin-top: 3px;">
+                                <i class="fa fa-check-circle"></i> Printer will be detected automatically
                             </div>
                         </div>
 
-                        <!-- Quick Width Presets -->
-                        <div style="margin-bottom: 10px;">
-                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0369a1; margin-bottom: 5px; letter-spacing: 0.3px;">Quick Presets (0–200 mm):</div>
-                            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(50)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #fff; border-color: #bae6fd; color: #0369a1;">50 mm</button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(80)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #e0f2fe; border-color: #7dd3fc; color: #0369a1;">80 mm</button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(100)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #fff; border-color: #bae6fd; color: #0369a1;">100 mm</button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(120)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #fff; border-color: #bae6fd; color: #0369a1;">120 mm</button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(150)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #fff; border-color: #bae6fd; color: #0369a1;">150 mm</button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(180)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #fff; border-color: #bae6fd; color: #0369a1;">180 mm</button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="setA4PrintWidthMm(200)" style="font-weight: 700; font-size: 11px; padding: 4px 8px; background: #fff; border-color: #bae6fd; color: #0369a1;">200 mm</button>
-                            </div>
-                        </div>
-
-                        <!-- Alignment and Header Rule Summary -->
-                        <div style="background: #ffffff; border: 1px solid #e0f2fe; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11.5px;">
-                            <div>
-                                <span style="font-weight: 700; color: #0f172a;"><i class="fa fa-align-left text-info"></i> Alignment:</span>
-                                <span style="color: #0369a1; font-weight: 700; margin-left: 4px;">Left-Aligned (0mm margin)</span>
-                            </div>
-                            <div>
-                                <span style="font-weight: 700; color: #0f172a;"><i class="fa fa-font text-success"></i> Typography:</span>
-                                <span style="color: #15803d; font-weight: 700; margin-left: 4px;">Arial (Single-Row Header)</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Print Copies & Capability Check -->
-                    <div class="row">
-                        <div class="col-xs-4">
-                            <div class="form-group" style="margin-bottom: 14px;">
-                                <label style="font-weight: 700; color: #1e293b; margin-bottom: 5px;">
-                                    <i class="fa fa-copy text-info"></i> Copies:
+                        <!-- Thermal Paper Width Preset (Hard Maximum: 210 mm) -->
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-weight: 700; color: #0f172a; margin: 0; font-size: 12px;">
+                                    <i class="fa fa-file-text-o text-success"></i> Paper Width:
                                 </label>
-                                <input type="number" id="posPrintCopies" class="form-control input-sm" value="1" min="1" max="5" style="height: 38px; border-radius: 4px; font-weight: 700;">
+                                <span style="font-size: 11px; font-weight: 700; color: #0369a1;">Maximum: 210 mm</span>
                             </div>
+                            <select id="posPaperWidth" class="form-control input-sm" style="font-size: 12.5px; height: 36px; border-radius: 4px; font-weight: 700; color: #0f766e; background-color: #f0fdf4; border-color: #86efac;" onchange="handlePaperWidthChange()">
+                                <option value="210" selected>210 mm — Default / Maximum</option>
+                                <option value="80">80 mm — Standard 3-inch POS Thermal</option>
+                                <option value="58">58 mm — Standard 2-inch POS Thermal</option>
+                                <option value="custom">Custom (Max 210 mm)...</option>
+                            </select>
                         </div>
-                        <div class="col-xs-8">
-                            <div class="form-group" style="margin-bottom: 14px;">
-                                <label style="font-weight: 700; color: #1e293b; margin-bottom: 5px;">
-                                    <i class="fa fa-check-circle text-success"></i> Dynamic Layout:
+
+                        <!-- Custom Width Input (Shown only when 'custom' is selected) -->
+                        <div id="posCustomWidthGroup" class="form-group" style="display: none; margin-bottom: 10px; background: #fffbeb; padding: 10px 14px; border-radius: 6px; border: 1px solid #fde68a;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-weight: 700; color: #92400e; margin: 0; font-size: 11.5px;">
+                                    <i class="fa fa-pencil text-warning"></i> Custom Paper Width (mm):
                                 </label>
-                                <div id="posCompatibilityBadge" style="padding: 9px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; font-size: 12px; font-weight: 700; color: #15803d; line-height: 1.3;">
-                                    <i class="fa fa-check"></i> <span id="posLayoutDesc">500 mm Thermal Roll • 450 mm Content (Default)</span>
+                                <span style="font-size: 10.5px; font-weight: 700; color: #b45309;">Maximum: 210 mm</span>
+                            </div>
+                            <div class="input-group">
+                                <input type="number" id="posCustomWidthInput" class="form-control input-sm" value="210" min="40" max="210" style="height: 34px; font-weight: 700;" oninput="if(this.value>210)this.value=210; handlePaperWidthChange();">
+                                <span class="input-group-addon">mm</span>
+                            </div>
+                            <div style="font-size: 10.5px; color: #b45309; margin-top: 3px;">Maximum: 210 mm. Thermal roll width cannot exceed 210 mm.</div>
+                        </div>
+
+                        <!-- Thermal Typography Section (Editable Font Name & Selectable/Editable Font Size) -->
+                        <div style="background: #ffffff; border: 1.5px solid #bae6fd; border-radius: 6px; padding: 12px 14px; margin-top: 10px;">
+                            <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #0369a1; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-font text-info"></i> THERMAL TYPOGRAPHY &amp; READABILITY
+                            </div>
+                            
+                            <div class="row" style="margin-bottom: 8px;">
+                                <!-- Font Name (Select / Editable) -->
+                                <div class="col-xs-12 col-sm-6" style="margin-bottom: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                        <label style="font-weight: 700; font-size: 12px; color: #1e293b; margin: 0;">
+                                            Font Name:
+                                        </label>
+                                        <span style="font-size: 10.5px; color: #64748b;">Select or type custom</span>
+                                    </div>
+                                    <div class="input-group input-group-sm" style="width: 100%;">
+                                        <input type="text" id="posThermalFontName" list="posThermalFontList" class="form-control" value="Courier New" style="height: 34px; font-weight: 700; font-size: 12.5px; color: #0f172a;" oninput="updateCompatibilityBadge()" onchange="updateCompatibilityBadge()" placeholder="e.g. Courier New">
+                                        <datalist id="posThermalFontList">
+                                            <option value="Courier New">Courier New (Monospace &bull; Standard POS)</option>
+                                            <option value="Consolas">Consolas (Clear Monospace)</option>
+                                            <option value="Lucida Console">Lucida Console</option>
+                                            <option value="Arial">Arial (Clean Sans-Serif)</option>
+                                            <option value="Tahoma">Tahoma (Compact Sans-Serif)</option>
+                                            <option value="Verdana">Verdana (Wide Sans-Serif)</option>
+                                            <option value="Liberation Mono">Liberation Mono</option>
+                                            <option value="DejaVu Sans Mono">DejaVu Sans Mono</option>
+                                        </datalist>
+                                    </div>
+                                    <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">Use a clear, readable font suitable for thermal printing.</div>
+                                </div>
+
+                                <!-- Font Size (Range 12 pt to 20 pt Selection & Slider) -->
+                                <div class="col-xs-12 col-sm-6" style="margin-bottom: 6px; display: block !important;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                        <label style="font-weight: 700; font-size: 12px; color: #1e293b; margin: 0;">
+                                            Font Size (12 &ndash; 20 pt):
+                                        </label>
+                                        <span id="posThermalFontSizeBadge" style="font-size: 11px; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 1px 7px; border-radius: 3px; border: 1px solid #bae6fd;">12 pt</span>
+                                    </div>
+                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                        <select id="posThermalDefaultFontSize" class="form-control input-sm" style="height: 34px; font-size: 12.5px; font-weight: 700; color: #0369a1; flex: 1;" onchange="handleFontSizePresetChange(this.value)">
+                                            <optgroup label="Standard Range (12 pt — 20 pt)">
+                                                <option value="12" selected>12 pt (Standard / Compact)</option>
+                                                <option value="13">13 pt</option>
+                                                <option value="14">14 pt (Medium)</option>
+                                                <option value="15">15 pt</option>
+                                                <option value="16">16 pt (Large)</option>
+                                                <option value="17">17 pt</option>
+                                                <option value="18">18 pt (Extra Large)</option>
+                                                <option value="19">19 pt</option>
+                                                <option value="20">20 pt (High-Visibility / Max)</option>
+                                            </optgroup>
+                                            <option value="custom">Custom pt...</option>
+                                        </select>
+                                        <div id="posThermalCustomSizeGroup" style="display: block; width: 90px; flex-shrink: 0;">
+                                            <div class="input-group input-group-sm">
+                                                <input type="number" id="posThermalCustomFontSize" class="form-control" value="12" min="12" max="36" style="height: 34px; font-weight: 700; text-align: center; color: #0369a1;" oninput="if(this.value<12)this.value=12; syncFontSizeFromCustom(this.value); updateCompatibilityBadge();" onchange="if(this.value<12)this.value=12; syncFontSizeFromCustom(this.value); updateCompatibilityBadge();" title="Exact font size in points (pt)">
+                                                <span class="input-group-addon" style="font-size: 10.5px; padding: 4px 6px; font-weight: 700;">pt</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Interactive Range Slider (12 pt to 20 pt) -->
+                                    <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                                        <span style="font-size: 10px; font-weight: 700; color: #64748b;">12 pt</span>
+                                        <input type="range" id="posThermalFontSizeRange" min="12" max="20" step="1" value="12" style="flex: 1; height: 18px; cursor: pointer; accent-color: #0284c7; width: 100%;" oninput="handleFontSizeRangeInput(this.value)" title="Slide to adjust font size between 12 pt and 20 pt">
+                                        <span style="font-size: 10px; font-weight: 700; color: #64748b;">20 pt</span>
+                                    </div>
+                                    <input type="hidden" id="posThermalMinFontSize" value="12">
+                                    <div style="font-size: 10.5px; color: #64748b; margin-top: 3px;">Range selection: 12 pt to 20 pt enterprise thermal standard.</div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                                <label style="font-weight: 700; font-size: 11.5px; color: #334155; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                    <input type="checkbox" id="posThermalBoldImportant" checked style="margin: 0;" onchange="updateCompatibilityBadge()">
+                                    <strong>Bold important text</strong> (Item names, totals, receipt no.)
+                                </label>
+                                
+                                <!-- Advanced Font Strategy dropdown preserved as subtle option -->
+                                <div style="font-size: 11px; color: #64748b; display: inline-flex; align-items: center; gap: 4px;">
+                                    <span>Strategy:</span>
+                                    <select id="posThermalFontStrategy" class="form-control input-xs" style="height: 24px; font-size: 10.5px; padding: 1px 4px; display: inline-block; width: auto;" onchange="updateCompatibilityBadge()">
+                                        <option value="native" selected>Native / High-Contrast</option>
+                                        <option value="monospace">System Monospace</option>
+                                        <option value="custom_ttf">Installed / Custom TTF</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Security & Safety Policy Notice -->
-                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; font-size: 11.5px; color: #475569; line-height: 1.5; margin-top: 2px;">
-                        <strong><i class="fa fa-shield text-primary"></i> Safe Print Execution:</strong>
-                        Printing is strictly read-only. Screen view remains 100% responsive. Adjusted printable width aligns from the left and applies exclusively inside the print payload.
+                    <!-- ========================================== -->
+                    <!-- SECTION: QUICK THERMAL TESTS / PRINTER TEST -->
+                    <!-- ========================================== -->
+                    <div style="border: 1.5px solid #0284c7; background: #f0f9ff; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #bae6fd; padding-bottom: 4px;">
+                            <span style="font-weight: 800; color: #0369a1; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-print"></i> QUICK THERMAL PAPER TEST PROFILES
+                            </span>
+                            <span style="font-size: 10px; font-weight: 700; color: #0369a1;">ISOLATED TEST &bull; CONFIG SAFE</span>
+                        </div>
+                        <div style="font-size: 11px; color: #0c4a6e; margin-bottom: 10px; line-height: 1.35;">
+                            Test printing instantly using specific roll widths. Tests run isolated and <strong>will not change</strong> your saved paper width.
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 8px;">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="testPrintPOS('thermal210')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1; padding: 7px 8px; font-size: 12px;" title="Test print maximum 210mm thermal layout">
+                                <i class="fa fa-print"></i> Test 210 mm
+                            </button>
+                            <button type="button" class="btn btn-info btn-sm" onclick="testPrintPOS('thermal80')" style="font-weight: 700; background-color: #0ea5e9; border-color: #0284c7; padding: 7px 8px; font-size: 12px;" title="Test print standard 80mm (3-inch) POS receipt">
+                                <i class="fa fa-print"></i> Test 80 mm
+                            </button>
+                            <button type="button" class="btn btn-default btn-sm" onclick="testPrintPOS('thermal58')" style="font-weight: 700; background-color: #ffffff; border-color: #94a3b8; color: #1e293b; padding: 7px 8px; font-size: 12px;" title="Test print compact 58mm (2-inch) thermal receipt">
+                                <i class="fa fa-print"></i> Test 58 mm
+                            </button>
+                            <button type="button" class="btn btn-warning btn-sm" onclick="testPrintPOS('thermal50')" style="font-weight: 700; background-color: #f59e0b; border-color: #d97706; color: #ffffff; padding: 7px 8px; font-size: 12px;" title="Test print 50mm narrow profile without altering saved configuration">
+                                <i class="fa fa-wrench"></i> Test 50 mm
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ========================================== -->
+                    <!-- SECTION 2: SECONDARY PRINTER — STANDARD A4 -->
+                    <!-- ========================================== -->
+                    <div id="posModeCardNormal" style="border: 1.5px solid #cbd5e1; background: #f8fafc; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px;">
+                            <span style="font-weight: 800; color: #334155; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-print text-muted"></i> SECONDARY — STANDARD A4 PRINTER
+                            </span>
+                            <span class="label label-default" style="font-size: 9.5px; font-weight: 700; padding: 2px 7px;">SECONDARY / A4</span>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <label style="font-weight: 700; color: #0f172a; margin-bottom: 3px; font-size: 11.5px;">
+                                <i class="fa fa-hdd-o text-muted"></i> A4 Printer:
+                            </label>
+                            <select id="posA4PrinterSelect" class="form-control input-sm" style="font-size: 12px; height: 34px; border-radius: 4px;">
+                                <option value="system_a4">AUTO DETECT (Office Printer / Laser / Inkjet via OS Dialog)</option>
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-xs-6">
+                                <label style="font-weight: 700; font-size: 11px; color: #334155; margin-bottom: 2px;">Paper:</label>
+                                <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 10px; font-size: 11.5px; font-weight: 700; color: #1e293b;">
+                                    A4 (210 &times; 297 mm)
+                                </div>
+                            </div>
+                            <div class="col-xs-6">
+                                <label style="font-weight: 700; font-size: 11px; color: #334155; margin-bottom: 2px;">Orientation:</label>
+                                <select id="posA4Orientation" class="form-control input-sm" style="height: 32px; font-size: 11.5px; font-weight: 600;" onchange="updateCompatibilityBadge()">
+                                    <option value="portrait" selected>Portrait</option>
+                                    <option value="landscape">Landscape</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="font-size: 10.5px; color: #64748b; margin-top: 6px; line-height: 1.35;">
+                            <i class="fa fa-info-circle text-info"></i> Thermal roll width and thermal font settings do not alter A4 print layout.
+                        </div>
+
+                        <div style="margin-top: 8px; text-align: right;">
+                            <button type="button" class="btn btn-default btn-sm" onclick="testPrintA4PDF()" style="font-weight: 700; background: #ffffff; border-color: #cbd5e1; color: #334155;" title="Test print on Standard A4 Sheet">
+                                <i class="fa fa-file-text-o text-muted"></i> Test A4 Print
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ========================================== -->
+                    <!-- SECTION 3: PDF PREVIEW / EXPORT            -->
+                    <!-- ========================================== -->
+                    <div id="posModeCardPdf" style="border: 1.5px solid #fed7aa; background: #fffaf5; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-weight: 800; color: #c2410c; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-file-pdf-o text-danger"></i> PDF PREVIEW / EXPORT
+                            </span>
+                            <span class="label label-warning" style="font-size: 9px; font-weight: 700; background-color: #ea580c; padding: 2px 6px;">PREVIEW ONLY</span>
+                        </div>
+                        <div style="font-size: 11px; color: #9a3412; line-height: 1.35; margin-bottom: 8px;">
+                            PDF is for preview/export only. It is not a physical printer.
+                        </div>
+                        <button type="button" class="btn btn-default btn-xs" onclick="testPrintPOS('pdf_preview')" style="font-weight: 700; border-color: #fdba74; color: #c2410c; background: #ffffff; padding: 5px 12px;">
+                            <i class="fa fa-eye"></i> Preview PDF
+                        </button>
+                    </div>
+
+                    <!-- ========================================== -->
+                    <!-- SECTION 4: PRINT COPIES                    -->
+                    <!-- ========================================== -->
+                    <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-weight: 700; color: #1e293b; margin-bottom: 3px; font-size: 11.5px;">
+                            <i class="fa fa-copy text-info"></i> PRINT COPIES:
+                        </label>
+                        <select id="posPrintCopies" class="form-control input-sm" style="height: 34px; border-radius: 4px; font-weight: 700; max-width: 140px;" onchange="updateCompatibilityBadge()">
+                            <option value="1" selected>1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+
+                    <!-- Legacy Compatibility Inputs (Preserved for backward-compatibility with existing JS) -->
+                    <input type="hidden" id="posPrinterType" value="thermal">
+                    <input type="hidden" id="posA4PrintWidthInput" value="80">
+                    <input type="hidden" id="posA4PrintWidthRange" value="80">
+                    <span id="posPdfWidthBadgeVal" style="display: none;">80</span>
+                    <input type="radio" name="posPrinterModeRadio" id="posModeRadioThermal" value="thermal" checked style="display: none;">
+                    <input type="radio" name="posPrinterModeRadio" id="posModeRadioNormal" value="normal" style="display: none;">
+                    <input type="radio" name="posPrinterModeRadio" id="posModeRadioPdf" value="pdf" style="display: none;">
+
+                    <!-- Security Notice -->
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; font-size: 11.5px; color: #475569; line-height: 1.45;">
+                        <strong><i class="fa fa-shield text-primary"></i> Printing Settings:</strong>
+                        Thermal printing uses the configured paper width and font settings. For best readability, use a thermal font size of 12 pt or larger. Maximum thermal width: 210 mm.
                     </div>
                 </form>
 
             </div>
-            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn btn-primary btn-sm" onclick="testPrintPOS('thermal500')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1;" title="Test print on 500mm Thermal Roll">
-                        <i class="fa fa-print"></i> Test Thermal (500mm)
-                    </button>
-                    <button type="button" class="btn btn-info btn-sm" onclick="testPrintPOS('pdf500')" style="font-weight: 700; background-color: #0e7490; border-color: #0891b2;" title="Test print 500mm Thermal Roll Layout via PDF Preview">
-                        <i class="fa fa-file-pdf-o"></i> Test PDF (500mm)
-                    </button>
-                    <button type="button" class="btn btn-success btn-sm" onclick="testPrintThermalPaidOrder(80)" style="font-weight: 700; background-color: #10b981; border-color: #059669;" title="Test print Paid Order Receipt on Standard 80mm Thermal Roll">
-                        <i class="fa fa-print"></i> 80mm
-                    </button>
-                    <button type="button" class="btn btn-success btn-sm" onclick="testPrintThermalPaidOrder(58)" style="font-weight: 700; background-color: #059669; border-color: #047857;" title="Test print Paid Order Receipt on Compact 58mm Thermal Roll">
-                        <i class="fa fa-print"></i> 58mm
-                    </button>
-                    <button type="button" class="btn btn-default btn-sm" onclick="testPrintPOS('custom')" style="font-weight: 700; background: #f8fafc; border-color: #94a3b8; color: #0f172a;" title="Test print with currently adjusted custom settings">
-                        <i class="fa fa-play-circle text-success"></i> Custom
-                    </button>
-                </div>
-                <div>
-                    <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 700; margin-right: 6px;">Close</button>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="savePOSPrinterSettings()" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7; padding: 6px 16px;">
-                        <i class="fa fa-save"></i> Save Settings
-                    </button>
-                </div>
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+                <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 700; padding: 6px 16px;">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="savePOSPrinterSettings()" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7; padding: 6px 20px;">
+                    <i class="fa fa-save"></i> Save Configuration
+                </button>
             </div>
         </div>
     </div>
@@ -2698,10 +2824,10 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <div style="flex: 1; min-width: 200px;">
                             <div style="font-size: 9.5pt; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">Print Settings</div>
                             <div style="line-height: 1.45;">
-                                <div><strong>Print Width:</strong> <span class="receipt-summary-width">80 mm</span></div>
-                                <div><strong>Paper Size:</strong> <span class="receipt-summary-paper">A4</span></div>
-                                <div><strong>Font:</strong> Arial 10 pt</div>
-                                <div><strong>Alignment:</strong> Left</div>
+                                <div><strong>Output Mode:</strong> <span class="receipt-summary-mode" style="color: #0284c7; font-weight: 700;">Thermal Printer (Primary Default)</span></div>
+                                <div><strong>Paper Size:</strong> <span class="receipt-summary-paper">200 mm Roll</span></div>
+                                <div><strong>Print Width:</strong> <span class="receipt-summary-width">190 mm</span></div>
+                                <div><strong>Typography:</strong> <span class="receipt-summary-font">Enterprise Thermal Monospace</span></div>
                             </div>
                         </div>
                     </div>
@@ -2835,31 +2961,32 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
             <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <!-- Row 1: Thermal Paper Selector & Settings -->
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: inline-flex; align-items: center; background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px;">
-                        <label for="posReceiptModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #475569; margin-right: 6px;">Format:</label>
-                        <select id="posReceiptModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 6px; width: auto; cursor: pointer;" title="Select receipt print format (80mm / 58mm / A4 PDF / 400mm / 500mm / 250mm)">
-                            <option value="80" selected>🖨️ 80 mm POS Thermal (Standard)</option>
-                            <option value="58">🖨️ 58 mm POS Thermal (Compact)</option>
-                            <option value="210">📄 A4 Sheet / PDF (210mm)</option>
-                            <option value="400">⚡ 400 mm Thermal (500mm Roll)</option>
-                            <option value="500">📄 500 mm Roll PDF</option>
-                            <option value="250">📄 250 mm Compact</option>
+                    <div style="display: inline-flex; align-items: center; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 3px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <label for="posReceiptModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fa fa-sliders text-primary"></i> Output Format:
+                        </label>
+                        <select id="posReceiptModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select output format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
+                            <option value="200" selected>⚡ Thermal Printer: 200 mm Roll (Primary Default)</option>
+                            <option value="80">🖨️ Thermal Printer: 80 mm POS Roll (Standard)</option>
+                            <option value="58">🖨️ Thermal Printer: 58 mm POS Roll (Compact)</option>
+                            <option value="210">📄 Standard Printer: A4 Paper Sheet</option>
+                            <option value="pdf">📄 PDF Preview / Export</option>
                         </select>
                     </div>
-                    <button type="button" class="btn btn-default btn-sm" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 30px; padding: 4px 10px; font-weight: 600; border-color: #cbd5e1;">
+                    <button type="button" class="btn btn-default" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 34px; padding: 5px 12px; font-weight: 600; border-color: #cbd5e1; border-radius: 6px;">
                         <i class="fa fa-cog text-muted"></i> Settings
                     </button>
                 </div>
 
-                <!-- Row 2: Action Buttons (Print, PDF, New Sale) -->
+                <!-- Row 2: Action Buttons (Print Thermal, PDF Preview, New Sale) -->
                 <div class="pos-success-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn btn-success btn-sm" onclick="printPOSReceipt()" style="font-weight: 700; height: 32px; padding: 5px 14px; font-size: 12.5px; background-color: #10b981; border-color: #059669; border-radius: 4px;">
-                        <i class="fa fa-print"></i> Print Receipt
+                    <button type="button" class="btn btn-success" onclick="printPOSReceipt('thermal200')" style="font-weight: 800; height: 36px; padding: 6px 16px; font-size: 13px; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 5px rgba(5,150,105,0.25);" title="Native physical print to thermal roll (No PDF conversion)">
+                        <i class="fa fa-print"></i> Print Receipt (Thermal)
                     </button>
-                    <button type="button" class="btn btn-info btn-sm" onclick="printPOSReceipt('pdf')" style="font-weight: 700; height: 32px; padding: 5px 14px; font-size: 12.5px; background-color: #0e7490; border-color: #0891b2; border-radius: 4px;">
-                        <i class="fa fa-file-pdf-o"></i> Generate PDF
+                    <button type="button" class="btn btn-info" onclick="printPOSReceipt('pdf')" style="font-weight: 800; height: 36px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2; border-radius: 6px; box-shadow: 0 2px 5px rgba(14,116,144,0.25);" title="Preview thermal layout in PDF preview window">
+                        <i class="fa fa-file-pdf-o"></i> PDF Preview
                     </button>
-                    <button type="button" class="btn btn-default btn-sm" onclick="closeReceiptModal()" style="font-weight: 600; height: 32px; padding: 5px 12px; font-size: 12.5px; border-radius: 4px; border-color: #cbd5e1;">
+                    <button type="button" class="btn btn-default" onclick="closeReceiptModal()" style="font-weight: 700; height: 36px; padding: 6px 14px; font-size: 13px; border-radius: 6px; border-color: #cbd5e1;">
                         <i class="fa fa-plus"></i> New Sale
                     </button>
                 </div>
@@ -3003,13 +3130,12 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <label for="posPOModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
                             <i class="fa fa-sliders text-primary"></i> Print Format:
                         </label>
-                        <select id="posPOModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select print format (500mm / 80mm / 58mm / A4 PDF / 250mm)">
-                            <option value="500" selected>⚡ 500 mm Thermal Roll (Default)</option>
-                            <option value="pdf500">📄 500 mm Thermal PDF (Preview / Test)</option>
-                            <option value="80">🖨️ 80 mm POS Thermal (Standard)</option>
-                            <option value="58">🖨️ 58 mm POS Thermal (Compact)</option>
-                            <option value="210">📄 A4 Sheet / PDF (210mm)</option>
-                            <option value="250">📄 250 mm Compact</option>
+                        <select id="posPOModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select print format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
+                            <option value="200" selected>⚡ Thermal Printer: 200 mm Roll (Primary Default)</option>
+                            <option value="80">🖨️ Thermal Printer: 80 mm POS Roll (Standard)</option>
+                            <option value="58">🖨️ Thermal Printer: 58 mm POS Roll (Compact)</option>
+                            <option value="210">📄 Standard Printer: A4 Paper Sheet</option>
+                            <option value="pdf">📄 PDF Preview / Export</option>
                         </select>
                     </div>
                     <div>
@@ -3022,11 +3148,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 <!-- Row 2: Action Buttons (Print, PDF, Continue) -->
                 <div class="pos-success-actions" style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; flex-wrap: wrap;">
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" class="btn btn-primary" onclick="printPOSPurchaseOrder()" style="background-color: #0284c7; border-color: #0284c7; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(2,132,199,0.3);" title="Direct print to physical 500mm thermal printer">
-                            <i class="fa fa-print"></i> Print Purchase Order (500mm Thermal)
+                        <button type="button" class="btn btn-primary" onclick="printPOSPurchaseOrder()" style="background-color: #0284c7; border-color: #0284c7; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(2,132,199,0.3);" title="Direct print to physical thermal printer">
+                            <i class="fa fa-print"></i> Print Purchase Order (Thermal)
                         </button>
-                        <button type="button" class="btn btn-info" onclick="printPOSPurchaseOrder('pdf500')" style="background-color: #0e7490; border-color: #0891b2; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(14,116,144,0.3);" title="Test preview 500mm thermal layout via PDF">
-                            <i class="fa fa-file-pdf-o"></i> PDF Test / Preview (500mm)
+                        <button type="button" class="btn btn-info" onclick="printPOSPurchaseOrder('pdf')" style="background-color: #0e7490; border-color: #0891b2; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(14,116,144,0.3);" title="Preview thermal layout via PDF">
+                            <i class="fa fa-file-pdf-o"></i> PDF Preview
                         </button>
                     </div>
 
@@ -4666,12 +4792,22 @@ function closePOSPurchaseOrderModal() {
 // ============================================================================
 
 let posDetectedPrinters = [];
+const MAX_THERMAL_WIDTH_MM = 210;
+const MIN_THERMAL_FONT_SIZE = 12;
+
 let posPrinterSettings = {
     printerId: 'system_default',
-    printerName: 'System Default Printer (via Browser Print Dialog)',
+    printerName: 'AUTO DETECT (System Default Printer)',
+    printerMode: 'thermal', // 'thermal' (Primary/Default), 'normal' (Standard A4)
     printerType: 'thermal',
-    paperWidthMm: 500,
-    printWidthA4Mm: 80, // Central PDF / Print Width setting (0 - 200 mm, default 80 mm)
+    paperWidthMm: 210, // Maximum & default standard thermal width (<= 210mm)
+    thermalFontName: 'Courier New', // Configurable thermal font name
+    thermalMinFontSize: 12, // Enterprise standard minimum (>= 12 pt)
+    thermalDefaultFontSize: 12, // Default thermal font size (>= 12 pt)
+    thermalFontStrategy: 'native', // 'native', 'monospace', 'custom_ttf'
+    thermalBoldImportant: true, // Bold important fields
+    a4Orientation: 'portrait', // 'portrait', 'landscape'
+    printWidthA4Mm: 80, // Central PDF / Print Width setting (0 - 210 mm, default 80 mm)
     copies: 1
 };
 
@@ -4685,10 +4821,41 @@ function getPOSPrintSettings() {
     } catch (e) {
         console.warn('Could not read saved POS printer settings', e);
     }
+    // Strict normalization: thermal paper width must NOT exceed MAX_THERMAL_WIDTH_MM (210 mm)
+    if (!posPrinterSettings.paperWidthMm || posPrinterSettings.paperWidthMm > MAX_THERMAL_WIDTH_MM || posPrinterSettings.paperWidthMm === 500 || posPrinterSettings.paperWidthMm === 400 || posPrinterSettings.paperWidthMm === 250) {
+        posPrinterSettings.paperWidthMm = MAX_THERMAL_WIDTH_MM;
+    }
+    if (!posPrinterSettings.printerMode) {
+        posPrinterSettings.printerMode = (posPrinterSettings.printerType === 'normal' || posPrinterSettings.paperWidthMm === 210) ? 'normal' : 'thermal';
+    }
+    // Strict normalization: thermal font size must be >= 12 pt
+    if (!posPrinterSettings.thermalMinFontSize || posPrinterSettings.thermalMinFontSize < 12) {
+        posPrinterSettings.thermalMinFontSize = 12;
+    }
+    if (!posPrinterSettings.thermalDefaultFontSize || posPrinterSettings.thermalDefaultFontSize < 12) {
+        posPrinterSettings.thermalDefaultFontSize = 12;
+    }
+    if (!posPrinterSettings.thermalFontName || typeof posPrinterSettings.thermalFontName !== 'string' || !posPrinterSettings.thermalFontName.trim()) {
+        posPrinterSettings.thermalFontName = 'Courier New';
+    }
+    if (!posPrinterSettings.thermalFontStrategy) {
+        posPrinterSettings.thermalFontStrategy = 'native';
+    }
+    if (typeof posPrinterSettings.thermalBoldImportant === 'undefined') {
+        posPrinterSettings.thermalBoldImportant = true;
+    }
+    if (!posPrinterSettings.a4Orientation) {
+        posPrinterSettings.a4Orientation = 'portrait';
+    }
     if (typeof posPrinterSettings.printWidthA4Mm === 'undefined' || isNaN(parseFloat(posPrinterSettings.printWidthA4Mm))) {
         posPrinterSettings.printWidthA4Mm = 80;
     }
     return posPrinterSettings;
+}
+
+function handlePrinterModeRadioChange(mode) {
+    posPrinterSettings.printerMode = mode;
+    updateCompatibilityBadge();
 }
 
 function getA4PrintWidthMm() {
@@ -4697,13 +4864,13 @@ function getA4PrintWidthMm() {
     if (isNaN(w) || w === null || typeof w === 'undefined') {
         w = 80;
     }
-    return Math.max(0, Math.min(200, Math.round(w)));
+    return Math.max(0, Math.min(210, Math.round(w)));
 }
 
 function setA4PrintWidthMm(val) {
     let w = parseFloat(val);
     if (isNaN(w)) w = 0;
-    w = Math.max(0, Math.min(200, Math.round(w)));
+    w = Math.max(0, Math.min(210, Math.round(w)));
     posPrinterSettings.printWidthA4Mm = w;
     try {
         localStorage.setItem('pos_printer_settings', JSON.stringify(posPrinterSettings));
@@ -4728,27 +4895,99 @@ function adjustA4PrintWidth(delta) {
     setA4PrintWidthMm(current + delta);
 }
 
-function savePOSPrinterSettings() {
-    posPrinterSettings.printerId = document.getElementById('posPrinterSelect').value;
-    const selectedOption = document.getElementById('posPrinterSelect').selectedOptions[0];
-    posPrinterSettings.printerName = selectedOption ? selectedOption.text : 'Default Printer';
-    posPrinterSettings.printerType = document.getElementById('posPrinterType').value;
-    
-    const widthVal = document.getElementById('posPaperWidth').value;
-    if (widthVal === 'custom') {
-        posPrinterSettings.paperWidthMm = Math.max(40, parseInt(document.getElementById('posCustomWidthInput').value, 10) || 80);
-    } else {
-        posPrinterSettings.paperWidthMm = parseInt(widthVal, 10) || 500;
+function handleFontSizeRangeInput(val) {
+    const pt = Math.min(20, Math.max(12, parseInt(val, 10) || 12));
+    const defFontSelect = document.getElementById('posThermalDefaultFontSize');
+    const customInput = document.getElementById('posThermalCustomFontSize');
+    if (defFontSelect) {
+        const matchingOpt = Array.from(defFontSelect.options).find(opt => opt.value == pt);
+        defFontSelect.value = matchingOpt ? pt : 'custom';
     }
+    if (customInput) {
+        customInput.value = pt;
+    }
+    updateCompatibilityBadge();
+}
+
+function syncFontSizeFromCustom(val) {
+    const pt = parseInt(val, 10);
+    const rangeSlider = document.getElementById('posThermalFontSizeRange');
+    const defFontSelect = document.getElementById('posThermalDefaultFontSize');
+    if (!isNaN(pt)) {
+        if (rangeSlider && pt >= 12 && pt <= 20) {
+            rangeSlider.value = pt;
+        }
+        if (defFontSelect) {
+            const matchingOpt = Array.from(defFontSelect.options).find(opt => opt.value == pt);
+            defFontSelect.value = matchingOpt ? pt : 'custom';
+        }
+    }
+    updateCompatibilityBadge();
+}
+
+function handleFontSizePresetChange(val) {
+    const customInput = document.getElementById('posThermalCustomFontSize');
+    const rangeSlider = document.getElementById('posThermalFontSizeRange');
+    if (val === 'custom') {
+        if (customInput && customInput.value < 12) customInput.value = 12;
+        if (customInput) customInput.focus();
+    } else {
+        const pt = parseInt(val, 10);
+        if (!isNaN(pt)) {
+            if (rangeSlider && pt >= 12 && pt <= 20) rangeSlider.value = pt;
+            if (customInput) customInput.value = pt;
+        }
+    }
+    updateCompatibilityBadge();
+}
+
+function savePOSPrinterSettings() {
+    posPrinterSettings.printerMode = 'thermal';
+    posPrinterSettings.printerId = document.getElementById('posPrinterSelect')?.value || 'system_default';
+    const selectedOption = document.getElementById('posPrinterSelect')?.selectedOptions[0];
+    posPrinterSettings.printerName = selectedOption ? selectedOption.text : 'AUTO DETECT (System Default Printer)';
+    posPrinterSettings.printerType = 'thermal';
+    
+    const widthVal = document.getElementById('posPaperWidth')?.value || '210';
+    if (widthVal === 'custom') {
+        let customW = parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 210;
+        posPrinterSettings.paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, customW));
+    } else {
+        let chosenW = parseInt(widthVal, 10) || 210;
+        posPrinterSettings.paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, chosenW);
+    }
+
+    // Thermal Font Name
+    const fontNameInput = document.getElementById('posThermalFontName');
+    posPrinterSettings.thermalFontName = (fontNameInput && fontNameInput.value.trim()) ? fontNameInput.value.trim() : 'Courier New';
+
+    // Thermal typography validation (strictly enforce >= 12 pt)
+    posPrinterSettings.thermalMinFontSize = 12;
+
+    const defFontSelect = document.getElementById('posThermalDefaultFontSize');
+    let defFont = 12;
+    if (defFontSelect && defFontSelect.value === 'custom') {
+        defFont = parseInt(document.getElementById('posThermalCustomFontSize')?.value, 10) || 12;
+    } else if (defFontSelect) {
+        defFont = parseInt(defFontSelect.value, 10) || 12;
+    }
+    if (defFont < 12) defFont = 12;
+    posPrinterSettings.thermalDefaultFontSize = defFont;
+
+    posPrinterSettings.thermalFontStrategy = document.getElementById('posThermalFontStrategy')?.value || 'native';
+    posPrinterSettings.thermalBoldImportant = document.getElementById('posThermalBoldImportant')?.checked ?? true;
+
+    // Secondary A4 settings
+    posPrinterSettings.a4Orientation = document.getElementById('posA4Orientation')?.value || 'portrait';
 
     const a4WidthInput = document.getElementById('posA4PrintWidthInput');
     if (a4WidthInput) {
         let a4W = parseFloat(a4WidthInput.value);
         if (isNaN(a4W)) a4W = 80;
-        posPrinterSettings.printWidthA4Mm = Math.max(0, Math.min(200, Math.round(a4W)));
+        posPrinterSettings.printWidthA4Mm = Math.max(0, Math.min(210, Math.round(a4W)));
     }
     
-    posPrinterSettings.copies = Math.min(5, Math.max(1, parseInt(document.getElementById('posPrintCopies').value, 10) || 1));
+    posPrinterSettings.copies = Math.min(5, Math.max(1, parseInt(document.getElementById('posPrintCopies')?.value, 10) || 1));
 
     try {
         localStorage.setItem('pos_printer_settings', JSON.stringify(posPrinterSettings));
@@ -4757,6 +4996,7 @@ function savePOSPrinterSettings() {
     }
 
     updatePOSPrinterBadge();
+    syncModalPaperSizeSelects();
     $('#posPrinterModal').modal('hide');
 }
 
@@ -4764,41 +5004,70 @@ function updatePOSPrinterBadge() {
     const s = getPOSPrintSettings();
     const btnLabel = document.getElementById('posPrinterBtnLabel');
     if (btnLabel) {
-        const typeStr = (s.printerType === 'normal' || s.paperWidthMm === 210) ? `PDF (${getA4PrintWidthMm()}mm)` : `${s.paperWidthMm}mm`;
-        btnLabel.innerText = 'Printer: ' + typeStr;
+        let modeLabel = '210mm Roll';
+        if (s.printerMode === 'pdf') {
+            modeLabel = 'PDF Preview';
+        } else if (s.printerType === 'normal' || s.paperWidthMm === 210) {
+            modeLabel = '210mm';
+        } else if (s.paperWidthMm) {
+            modeLabel = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm) + 'mm';
+        }
+        btnLabel.innerText = 'Printer: ' + modeLabel;
     }
 }
 
 function syncModalPaperSizeSelects() {
     const s = getPOSPrintSettings();
-    const widthMm = String(s.paperWidthMm || 500);
+    const widthMm = String(Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 210));
     const selects = ['posReceiptModalPaperSize', 'posPOModalPaperSize', 'posReturnModalPaperSize'];
     selects.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.value = widthMm;
+            if (s.printerMode === 'pdf') {
+                el.value = 'pdf200';
+            } else if (s.printerType === 'normal' || s.paperWidthMm === 210) {
+                el.value = '210';
+            } else {
+                el.value = widthMm;
+            }
         }
     });
 
     const a4W = getA4PrintWidthMm();
     const isA4 = (s.printerType === 'normal' || s.paperWidthMm === 210);
+    const effectiveThermalWidth = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 210);
+    const summaryModes = document.querySelectorAll('.receipt-summary-mode');
+    summaryModes.forEach(el => {
+        el.innerText = isA4 ? 'Standard Printer (A4)' : 'Thermal Printer (Primary Default)';
+    });
     const summaryWidths = document.querySelectorAll('.receipt-summary-width');
     summaryWidths.forEach(el => {
-        el.innerText = isA4 ? (a4W + ' mm') : ((s.paperWidthMm || 500) >= 500 ? '450 mm' : (s.paperWidthMm + ' mm'));
+        el.innerText = isA4 ? (a4W + ' mm') : (effectiveThermalWidth >= 200 ? '195 mm' : (effectiveThermalWidth + ' mm'));
     });
     const summaryPapers = document.querySelectorAll('.receipt-summary-paper');
     summaryPapers.forEach(el => {
-        el.innerText = isA4 ? 'A4 (210 mm)' : ((s.paperWidthMm || 500) + ' mm Roll');
+        el.innerText = isA4 ? 'A4 Paper Sheet (210 mm)' : (effectiveThermalWidth + ' mm Roll');
+    });
+    const summaryFonts = document.querySelectorAll('.receipt-summary-font');
+    summaryFonts.forEach(el => {
+        el.innerText = isA4 ? 'Arial Standard Office' : (s.thermalFontName || 'Enterprise Thermal Monospace');
     });
 }
 
 function handleModalPaperSizeChange(val) {
     const s = getPOSPrintSettings();
-    const widthMm = parseInt(val) || 500;
-    s.paperWidthMm = widthMm;
-    if (widthMm === 210) {
-        s.printerType = 'normal';
+    if (val === 'pdf200' || val === 'pdf500' || val === 'pdf') {
+        s.paperWidthMm = 210;
+        s.printerMode = 'pdf';
+        s.printerType = 'thermal';
+    } else if (val === '210') {
+        s.paperWidthMm = 210;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
     } else {
+        const widthMm = Math.min(MAX_THERMAL_WIDTH_MM, parseInt(val, 10) || 210);
+        s.paperWidthMm = widthMm;
+        s.printerMode = 'thermal';
         s.printerType = 'thermal';
     }
     localStorage.setItem('pos_printer_settings', JSON.stringify(s));
@@ -4808,9 +5077,15 @@ function handleModalPaperSizeChange(val) {
 
 function openPOSPrinterModal() {
     const s = getPOSPrintSettings();
-    const typeEl = document.getElementById('posPrinterType');
-    if (typeEl) typeEl.value = s.printerType;
-    
+    if (s.paperWidthMm > MAX_THERMAL_WIDTH_MM) {
+        s.paperWidthMm = MAX_THERMAL_WIDTH_MM;
+    }
+
+    const printerSelect = document.getElementById('posPrinterSelect');
+    if (printerSelect && s.printerId) {
+        printerSelect.value = s.printerId;
+    }
+
     const widthSelect = document.getElementById('posPaperWidth');
     if (widthSelect) {
         const matchingOption = Array.from(widthSelect.options).find(opt => opt.value == s.paperWidthMm);
@@ -4823,8 +5098,57 @@ function openPOSPrinterModal() {
             const customGroup = document.getElementById('posCustomWidthGroup');
             if (customGroup) customGroup.style.display = 'block';
             const customInput = document.getElementById('posCustomWidthInput');
-            if (customInput) customInput.value = s.paperWidthMm;
+            if (customInput) customInput.value = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm);
         }
+    }
+
+    // Thermal Font Name
+    const fontNameInput = document.getElementById('posThermalFontName');
+    if (fontNameInput) {
+        fontNameInput.value = s.thermalFontName || 'Courier New';
+    }
+
+    // Thermal typography with normalization to >= 12 pt
+    const minFontInput = document.getElementById('posThermalMinFontSize');
+    if (minFontInput) {
+        minFontInput.value = 12;
+    }
+    const defFontSelect = document.getElementById('posThermalDefaultFontSize');
+    const customSizeGroup = document.getElementById('posThermalCustomSizeGroup');
+    const customSizeInput = document.getElementById('posThermalCustomFontSize');
+    const rangeSlider = document.getElementById('posThermalFontSizeRange');
+    const fontBadge = document.getElementById('posThermalFontSizeBadge');
+    const curSize = Math.max(12, parseInt(s.thermalDefaultFontSize, 10) || 12);
+    if (defFontSelect) {
+        const matchingOpt = Array.from(defFontSelect.options).find(opt => opt.value == curSize);
+        defFontSelect.value = matchingOpt ? curSize : 'custom';
+    }
+    if (customSizeInput) {
+        customSizeInput.value = curSize;
+    }
+    if (customSizeGroup) {
+        customSizeGroup.style.display = 'block';
+    }
+    if (rangeSlider) {
+        rangeSlider.value = Math.min(20, Math.max(12, curSize));
+    }
+    if (fontBadge) {
+        fontBadge.innerText = curSize + ' pt';
+    }
+
+    const fontStratSelect = document.getElementById('posThermalFontStrategy');
+    if (fontStratSelect) {
+        fontStratSelect.value = s.thermalFontStrategy || 'native';
+    }
+    const boldCheckbox = document.getElementById('posThermalBoldImportant');
+    if (boldCheckbox) {
+        boldCheckbox.checked = (s.thermalBoldImportant !== false);
+    }
+
+    // A4 Orientation
+    const a4OrientSelect = document.getElementById('posA4Orientation');
+    if (a4OrientSelect) {
+        a4OrientSelect.value = s.a4Orientation || 'portrait';
     }
 
     const a4W = getA4PrintWidthMm();
@@ -4834,8 +5158,6 @@ function openPOSPrinterModal() {
     if (a4Range) a4Range.value = a4W;
     const badgeVal = document.getElementById('posPdfWidthBadgeVal');
     if (badgeVal) badgeVal.innerText = a4W;
-    const btnLabels = document.querySelectorAll('.pdf-btn-width-label');
-    btnLabels.forEach(el => el.innerText = a4W + 'mm');
 
     const copiesEl = document.getElementById('posPrintCopies');
     if (copiesEl) copiesEl.value = s.copies || 1;
@@ -4861,13 +5183,17 @@ function handlePaperWidthChange() {
 }
 
 function handlePrinterTypeChange() {
-    const type = document.getElementById('posPrinterType').value;
+    const type = document.getElementById('posPrinterType')?.value;
     if (type === 'thermal') {
-        document.getElementById('posPaperWidth').value = '500';
-        document.getElementById('posCustomWidthGroup').style.display = 'none';
+        const w = document.getElementById('posPaperWidth');
+        if (w) w.value = '210';
+        const cg = document.getElementById('posCustomWidthGroup');
+        if (cg) cg.style.display = 'none';
     } else if (type === 'normal') {
-        document.getElementById('posPaperWidth').value = '210';
-        document.getElementById('posCustomWidthGroup').style.display = 'none';
+        const w = document.getElementById('posPaperWidth');
+        if (w) w.value = '210';
+        const cg = document.getElementById('posCustomWidthGroup');
+        if (cg) cg.style.display = 'none';
     }
     updateCompatibilityBadge();
 }
@@ -4876,12 +5202,11 @@ function handlePrinterSelectChange() {
     const val = document.getElementById('posPrinterSelect').value;
     const found = posDetectedPrinters.find(p => p.id === val);
     if (found) {
-        if (found.type) document.getElementById('posPrinterType').value = found.type;
         if (found.paperWidth) {
             const widthSelect = document.getElementById('posPaperWidth');
-            const match = Array.from(widthSelect.options).find(o => o.value == found.paperWidth);
+            const match = Array.from(widthSelect.options).find(o => o.value == Math.min(MAX_THERMAL_WIDTH_MM, found.paperWidth));
             if (match) {
-                widthSelect.value = found.paperWidth;
+                widthSelect.value = match.value;
             }
         }
     }
@@ -4889,23 +5214,65 @@ function handlePrinterSelectChange() {
 }
 
 function updateCompatibilityBadge() {
-    const type = document.getElementById('posPrinterType')?.value || posPrinterSettings.printerType;
-    const widthVal = document.getElementById('posPaperWidth')?.value || posPrinterSettings.paperWidthMm;
-    let widthMm = (widthVal === 'custom') ? (parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 500) : parseInt(widthVal, 10);
-    if (isNaN(widthMm) || widthMm <= 0) widthMm = 500;
-    const a4W = getA4PrintWidthMm();
+    const s = getPOSPrintSettings();
+    const widthVal = document.getElementById('posPaperWidth')?.value || s.paperWidthMm;
+    let widthMm = (widthVal === 'custom') ? (parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 210) : parseInt(widthVal, 10);
+    if (isNaN(widthMm) || widthMm <= 0) widthMm = 210;
+    if (widthMm > MAX_THERMAL_WIDTH_MM) widthMm = MAX_THERMAL_WIDTH_MM;
+
+    const fontNameInput = document.getElementById('posThermalFontName');
+    const fontName = (fontNameInput && fontNameInput.value.trim()) ? fontNameInput.value.trim() : (s.thermalFontName || 'Courier New');
+
+    const defFontSelect = document.getElementById('posThermalDefaultFontSize');
+    let fontPt = 12;
+    if (defFontSelect && defFontSelect.value === 'custom') {
+        fontPt = parseInt(document.getElementById('posThermalCustomFontSize')?.value, 10) || 12;
+    } else if (defFontSelect) {
+        fontPt = parseInt(defFontSelect.value, 10) || 12;
+    }
+    if (fontPt < 12) fontPt = 12;
+
+    const fontStrat = document.getElementById('posThermalFontStrategy')?.value || s.thermalFontStrategy || 'native';
+    const fontLabel = fontStrat === 'monospace' ? 'Monospace' : (fontStrat === 'custom_ttf' ? 'Custom TTF' : 'Native');
+
+    const orientation = (document.getElementById('posA4Orientation')?.value || s.a4Orientation || 'portrait');
+    const orientLabel = orientation === 'landscape' ? 'Landscape' : 'Portrait';
+
+    const copies = parseInt(document.getElementById('posPrintCopies')?.value, 10) || s.copies || 1;
+
+    const selectedPrinterOpt = document.getElementById('posPrinterSelect')?.selectedOptions[0];
+    const printerName = selectedPrinterOpt ? selectedPrinterOpt.text : (s.printerName || 'AUTO DETECT');
+
+    // Update live Active Configuration Card badges at top of modal
+    const activePrinterEl = document.getElementById('posActivePrinterVal');
+    if (activePrinterEl) activePrinterEl.innerText = printerName.split('(')[0].trim() || 'AUTO DETECT';
+
+    const activeWidthEl = document.getElementById('posActiveWidthVal');
+    if (activeWidthEl) activeWidthEl.innerText = widthMm + ' mm' + (widthMm === 210 ? ' (Max)' : '');
+
+    const activeFontNameEl = document.getElementById('posActiveFontNameVal');
+    if (activeFontNameEl) activeFontNameEl.innerText = fontName;
+
+    const activeFontEl = document.getElementById('posActiveFontVal');
+    if (activeFontEl) activeFontEl.innerText = fontPt + ' pt';
+
+    const fontBadge = document.getElementById('posThermalFontSizeBadge');
+    if (fontBadge) fontBadge.innerText = fontPt + ' pt';
+
+    const fontRange = document.getElementById('posThermalFontSizeRange');
+    if (fontRange && fontPt >= 12 && fontPt <= 20) {
+        fontRange.value = fontPt;
+    }
+
+    const activeA4El = document.getElementById('posActiveA4Val');
+    if (activeA4El) activeA4El.innerText = 'A4 ' + orientLabel;
+
+    const activeCopiesEl = document.getElementById('posActiveCopiesVal');
+    if (activeCopiesEl) activeCopiesEl.innerText = copies + (copies === 1 ? ' Copy' : ' Copies');
 
     const descSpan = document.getElementById('posLayoutDesc');
     if (descSpan) {
-        if (type === 'normal' || widthMm === 210) {
-            descSpan.innerText = `A4 Sheet (210 mm) • Dynamic PDF Content Width: ${a4W} mm (Left-Aligned)`;
-        } else if (widthMm >= 500) {
-            descSpan.innerText = `500 mm Thermal Roll • 400 mm Left-Aligned (PDF Dynamic: ${a4W} mm)`;
-        } else if (widthMm >= 250) {
-            descSpan.innerText = `${widthMm} mm Compact Thermal (PDF Dynamic: ${a4W} mm)`;
-        } else {
-            descSpan.innerText = `${widthMm} mm Mini Thermal (PDF Dynamic: ${a4W} mm)`;
-        }
+        descSpan.innerText = `Primary: Thermal • ${widthMm} mm (Max 210 mm) • ${fontName} ${fontPt} pt min | Secondary: A4 (${orientLabel}) | PDF: Preview Only`;
     }
 }
 
@@ -4932,7 +5299,7 @@ function initPOSPrinterDetection(forceRefresh = false) {
                     name: 'Local ESC/POS Thermal Agent (127.0.0.1:9100)',
                     type: 'thermal',
                     connection: 'Local Service',
-                    paperWidth: 500
+                    paperWidth: 210
                 });
                 resolve();
             })
@@ -4953,7 +5320,7 @@ function initPOSPrinterDetection(forceRefresh = false) {
                             name: (d.productName || 'USB Thermal POS Device') + ' (USB Direct)',
                             type: 'thermal',
                             connection: 'USB Hardware',
-                            paperWidth: 500
+                            paperWidth: 210
                         });
                     });
                     resolve();
@@ -4976,7 +5343,7 @@ function initPOSPrinterDetection(forceRefresh = false) {
                             name: p.name + (p.isDefault ? ' (System Default)' : ''),
                             type: isThermal ? 'thermal' : 'normal',
                             connection: 'System Spooler',
-                            paperWidth: isThermal ? 500 : 210,
+                            paperWidth: isThermal ? 210 : 210,
                             isDefault: p.isDefault
                         });
                     });
@@ -4990,7 +5357,7 @@ function initPOSPrinterDetection(forceRefresh = false) {
 
     Promise.all([probeLocalAgent, probeWebUSB, probeChromiumPrinters]).then(() => {
         if (select) {
-            select.innerHTML = '<option value="system_default">✓ System Default Printer (via Browser / OS Print Dialog)</option>';
+            select.innerHTML = '<option value="system_default">AUTO DETECT (System Default / Browser Print Dialog)</option>';
             if (posDetectedPrinters.length > 0) {
                 posDetectedPrinters.forEach((p) => {
                     const opt = document.createElement('option');
@@ -5008,7 +5375,7 @@ function initPOSPrinterDetection(forceRefresh = false) {
             if (posDetectedPrinters.length > 0) {
                 statusBox.innerHTML = '<span style="color: #16a34a;"><i class="fa fa-check-circle"></i> ' + posDetectedPrinters.length + ' printer/service(s) detected via direct print bridge.</span>';
             } else {
-                statusBox.innerHTML = '<span style="color: #0284c7;"><i class="fa fa-info-circle"></i> Browser / System Print Dialog Active (500 mm Thermal & A4 Layouts Ready).</span>';
+                statusBox.innerHTML = '<span style="color: #0284c7;"><i class="fa fa-info-circle"></i> Auto Detect Active &bull; Ready (Browser / OS Print Dialog).</span>';
             }
         }
     });
@@ -5016,21 +5383,26 @@ function initPOSPrinterDetection(forceRefresh = false) {
 
 function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docType = 'receipt', requestedFormat = null) {
     const s = getPOSPrintSettings();
-    let paperWidthMm = (docType === 'po') ? 500 : (s.paperWidthMm || 500);
-    let contentWidthMm = (paperWidthMm >= 450) ? 450 : ((paperWidthMm === 80) ? 72 : ((paperWidthMm === 58) ? 48 : Math.max(40, paperWidthMm - 10)));
+    let paperWidthMm = (docType === 'po') ? 210 : (s.paperWidthMm || 210);
+    // Strict cap at 210mm for thermal
+    if (paperWidthMm > MAX_THERMAL_WIDTH_MM && docType !== 'a4' && requestedFormat !== 'pdfA4' && requestedFormat !== 'a4' && requestedFormat !== '210') {
+        paperWidthMm = MAX_THERMAL_WIDTH_MM;
+    }
+    let contentWidthMm = (paperWidthMm >= 180) ? 195 : ((paperWidthMm === 80) ? 72 : ((paperWidthMm === 58) ? 50 : ((paperWidthMm <= 52) ? 44 : Math.max(40, paperWidthMm - 8))));
     let isA4 = false;
     let isPdfPreview = false;
 
     let isA4PDF = (requestedFormat === 'pdfA4' || requestedFormat === 'a4' || requestedFormat === '210');
-    let is500mmThermalPDF = (requestedFormat === 'pdf500' || (requestedFormat === 'pdf' && docType === 'po'));
-    let is500mmThermal = (requestedFormat === 'thermal500' || requestedFormat === '500' || requestedFormat === 'thermal400' || requestedFormat === '400');
+    let is210mmThermalPDF = (requestedFormat === 'pdf210' || requestedFormat === 'pdf200' || requestedFormat === 'pdf500' || (requestedFormat === 'pdf' && docType === 'po'));
+    let is210mmThermal = (requestedFormat === 'thermal210' || requestedFormat === '210' || requestedFormat === 'thermal200' || requestedFormat === '200' || requestedFormat === 'thermal500' || requestedFormat === '500' || requestedFormat === 'thermal400' || requestedFormat === '400');
     let is80mmThermal = (requestedFormat === 'thermal80' || requestedFormat === '80' || requestedFormat === 'thermal');
     let is58mmThermal = (requestedFormat === 'thermal58' || requestedFormat === '58');
-    let is250mmThermal = (requestedFormat === 'thermal250' || requestedFormat === '250');
+    let is50mmThermal = (requestedFormat === 'thermal50' || requestedFormat === '50');
+    let isLegacyWideThermal = (requestedFormat === 'thermal250' || requestedFormat === '250');
 
-    if (is500mmThermalPDF) {
-        paperWidthMm = 500;
-        contentWidthMm = 450;
+    if (is210mmThermalPDF) {
+        paperWidthMm = 210;
+        contentWidthMm = 195;
         isA4 = false;
         isPdfPreview = true;
     } else if (isA4PDF || (requestedFormat === 'pdf' && docType !== 'po')) {
@@ -5038,9 +5410,10 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
         contentWidthMm = getA4PrintWidthMm();
         isA4 = true;
         isPdfPreview = true;
-    } else if (is500mmThermal) {
-        paperWidthMm = 500;
-        contentWidthMm = 450;
+    } else if (is210mmThermal || isLegacyWideThermal) {
+        // Remap legacy 500, 400, 250 and current 200/210 to 210mm thermal roll
+        paperWidthMm = 210;
+        contentWidthMm = 195;
         isA4 = false;
     } else if (is80mmThermal) {
         paperWidthMm = 80;
@@ -5048,39 +5421,38 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
         isA4 = false;
     } else if (is58mmThermal) {
         paperWidthMm = 58;
-        contentWidthMm = 48;
+        contentWidthMm = 50;
         isA4 = false;
-    } else if (is250mmThermal) {
-        paperWidthMm = 250;
-        contentWidthMm = 240;
+    } else if (is50mmThermal) {
+        paperWidthMm = 50;
+        contentWidthMm = 44;
         isA4 = false;
     } else if (requestedFormat && !isNaN(parseInt(requestedFormat, 10))) {
         let reqW = parseInt(requestedFormat, 10);
         if (reqW === 210) {
             paperWidthMm = 210;
-            contentWidthMm = getA4PrintWidthMm();
-            isA4 = true;
-            isPdfPreview = true;
+            contentWidthMm = 195;
+            isA4 = false;
         } else if (reqW === 80) {
             paperWidthMm = 80;
             contentWidthMm = 72;
             isA4 = false;
         } else if (reqW === 58) {
             paperWidthMm = 58;
-            contentWidthMm = 48;
+            contentWidthMm = 50;
             isA4 = false;
-        } else if (reqW >= 450) {
-            paperWidthMm = 500;
-            contentWidthMm = 450;
+        } else if (reqW <= 52) {
+            paperWidthMm = 50;
+            contentWidthMm = 44;
             isA4 = false;
-        } else if (reqW <= 200) {
+        } else if (reqW >= 200) {
+            // Remap any request >= 200mm to 210mm maximum
             paperWidthMm = 210;
-            contentWidthMm = reqW;
-            isA4 = true;
-            isPdfPreview = true;
+            contentWidthMm = 195;
+            isA4 = false;
         } else {
             paperWidthMm = reqW;
-            contentWidthMm = Math.max(40, reqW - 10);
+            contentWidthMm = Math.max(40, reqW - 8);
             isA4 = false;
         }
     } else {
@@ -5097,21 +5469,21 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             if (retModalSel && retModalSel.value) selVal = retModalSel.value;
         }
 
-        if (selVal === 'pdf500') {
-            paperWidthMm = 500;
-            contentWidthMm = 450;
+        if (selVal === 'pdf200' || selVal === 'pdf500') {
+            paperWidthMm = 210;
+            contentWidthMm = 195;
             isA4 = false;
             isPdfPreview = true;
         } else {
-            let defaultWidth = (docType === 'po') ? 500 : (s.paperWidthMm || 500);
+            let defaultWidth = (docType === 'po') ? 210 : (s.paperWidthMm || 210);
             let chosenWidth = selVal ? parseInt(selVal, 10) : defaultWidth;
             if (chosenWidth === 210) {
                 paperWidthMm = 210;
-                contentWidthMm = getA4PrintWidthMm();
-                isA4 = true;
-            } else if (chosenWidth >= 450) {
-                paperWidthMm = 500;
-                contentWidthMm = 450;
+                contentWidthMm = 195;
+                isA4 = false;
+            } else if (chosenWidth >= 200) {
+                paperWidthMm = 210;
+                contentWidthMm = 195;
                 isA4 = false;
             } else if (chosenWidth === 80) {
                 paperWidthMm = 80;
@@ -5119,70 +5491,48 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
                 isA4 = false;
             } else if (chosenWidth === 58) {
                 paperWidthMm = 58;
-                contentWidthMm = 48;
+                contentWidthMm = 50;
                 isA4 = false;
-            } else if (chosenWidth === 250) {
-                paperWidthMm = 250;
-                contentWidthMm = 240;
+            } else if (chosenWidth <= 52) {
+                paperWidthMm = 50;
+                contentWidthMm = 44;
                 isA4 = false;
-            } else if (chosenWidth <= 200) {
-                paperWidthMm = 210;
-                contentWidthMm = chosenWidth;
-                isA4 = true;
             } else {
                 paperWidthMm = chosenWidth;
-                contentWidthMm = Math.max(40, chosenWidth - 10);
+                contentWidthMm = Math.max(40, chosenWidth - 8);
                 isA4 = false;
             }
         }
     }
 
     const isThermal = !isA4;
-    const is500mm = isThermal && paperWidthMm >= 400;
-    const is58mm = isThermal && (paperWidthMm <= 65 || contentWidthMm <= 55);
+    const is210mm = isThermal && paperWidthMm >= 180;
+    const is50mm = isThermal && paperWidthMm <= 52;
+    const is58mm = isThermal && (!is50mm && (paperWidthMm <= 65 || contentWidthMm <= 55));
 
-    // Font stack: High-contrast Monospace for thermal receipt rolls, Arial for A4
-    const fontStack = isThermal 
-        ? "'Courier New', Consolas, 'Liberation Mono', monospace" 
+    // Font stack: User-configured font name with high-contrast Monospace fallback for thermal rolls, Arial for A4
+    const fontName = (s.thermalFontName && s.thermalFontName.trim()) ? s.thermalFontName.replace(/['"<>;]/g, '').trim() : 'Courier New';
+    let fontStack = isThermal 
+        ? `'${fontName}', 'Courier New', Consolas, 'Liberation Mono', monospace` 
         : "Arial, Helvetica, sans-serif";
-
-    // Dynamic Header Font Size
-    let headerFontSizePt = 12;
-    if (is500mm) {
-        headerFontSizePt = 16.0;
-    } else if (is58mm) {
-        headerFontSizePt = 10.0;
-    } else if (isThermal) {
-        headerFontSizePt = 11.5;
-    } else if (contentWidthMm < 65) {
-        headerFontSizePt = 8.5;
-    } else if (contentWidthMm < 80) {
-        headerFontSizePt = 10.0;
-    } else {
-        headerFontSizePt = 12.0;
+    if (isThermal && s.thermalFontStrategy === 'monospace') {
+        fontStack = `'${fontName}', 'Courier New', Courier, monospace`;
+    } else if (isThermal && s.thermalFontStrategy === 'custom_ttf') {
+        fontStack = `'${fontName}', 'Merchant Copy', 'Receipt Font', 'Courier New', monospace`;
     }
 
-    // Dynamic Body and Total font sizes
-    let bodyFontSizePt = '10pt';
-    let totalFontSizePt = '12pt';
-    if (is500mm) {
-        bodyFontSizePt = '12pt';
-        totalFontSizePt = '15pt';
-    } else if (is58mm) {
-        bodyFontSizePt = '8.5pt';
-        totalFontSizePt = '10.5pt';
-    } else if (isThermal) {
-        bodyFontSizePt = '9.5pt';
-        totalFontSizePt = '12pt';
-    } else if (contentWidthMm <= 55) {
-        bodyFontSizePt = '7.5pt';
-        totalFontSizePt = '10.5pt';
-    } else if (contentWidthMm <= 80) {
-        bodyFontSizePt = '9.5pt';
-        totalFontSizePt = '12pt';
-    } else {
-        bodyFontSizePt = '10pt';
-        totalFontSizePt = '12pt';
+    // Dynamic Header Font Size (Enterprise Commercial POS Standard)
+    let headerFontSizePt = 16.0;
+    let bodyFontSizePt = '12pt';
+    let totalFontSizePt = '15.5pt';
+
+    // Thermal Typography Customization (Strictly enforcing >= 12pt for thermal roll)
+    if (isThermal) {
+        const minPt = Math.max(12, Number(s.thermalMinFontSize) || 12);
+        const defPt = Math.max(minPt, Number(s.thermalDefaultFontSize) || 12);
+        bodyFontSizePt = defPt + 'pt';
+        headerFontSizePt = Math.max(15.0, defPt + 3.5);
+        totalFontSizePt = (defPt + 2.5) + 'pt';
     }
 
     // Dynamic height calculation for valid @page size
@@ -5201,11 +5551,13 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
 
     // Container margin & padding:
     const containerMargin = 'margin: 0 !important; margin-left: 0 !important; margin-right: auto !important;';
-    const containerPadding = is500mm
-        ? '8mm 12mm'
-        : (is58mm 
-            ? '1mm 1.5mm' 
-            : (isThermal ? '2mm 2.5mm' : ((contentWidthMm <= 80) ? '2mm 2.5mm' : '4mm 4mm')));
+    const containerPadding = is210mm
+        ? '6mm 10mm'
+        : (is50mm
+            ? '1mm 1.5mm'
+            : (is58mm 
+                ? '1.5mm 2mm' 
+                : (isThermal ? '2.5mm 3.5mm' : ((contentWidthMm <= 80) ? '2mm 2.5mm' : '4mm 4mm'))));
 
     let wrappedContent = `
         <div class="pos-print-container pos-receipt-container" style="width: ${contentWidthMm}mm; max-width: ${contentWidthMm}mm; ${containerMargin} padding: ${containerPadding}; text-align: left; box-sizing: border-box; overflow: hidden;">
@@ -5225,6 +5577,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             print-color-adjust: exact !important;
             ${isThermal ? 'color: #000000 !important; text-shadow: none !important;' : ''}
         }
+        ${(isThermal && s.thermalBoldImportant !== false) ? 'strong, b, th, .pos-receipt-total, .receipt-total-val, .pos-company-header { font-weight: 800 !important; }' : ''}
         @page {
             size: ${paperWidthMm}mm ${isA4 ? pageHeightMm + 'mm' : 'auto'};
             margin: 0;
@@ -5281,7 +5634,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             margin-top: 15mm;
         }
 
-        .pos-print-container, .pos-receipt-container, .pos-receipt-400, .pdf-receipt-500 {
+        .pos-print-container, .pos-receipt-container {
             width: ${contentWidthMm}mm !important;
             max-width: ${contentWidthMm}mm !important;
             box-sizing: border-box !important;
@@ -5313,11 +5666,11 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             font-size: ${bodyFontSizePt} !important;
             border-color: #000000 !important;
         }
-        .pos-receipt-container .pos-total-row, .pos-receipt-container tr[style*="font-size: 12pt"], .pos-receipt-container tr[style*="font-size: 13pt"] {
+        .pos-receipt-container .pos-total-row, .pos-receipt-container tr[style*="font-size: 12pt"], .pos-receipt-container tr[style*="font-size: 13pt"], .pos-receipt-container tr[style*="font-size: 14pt"], .pos-receipt-container tr[style*="font-size: 15pt"] {
             font-size: ${totalFontSizePt} !important;
             font-weight: bold !important;
         }
-        .pos-receipt-container .pos-total-row td, .pos-receipt-container tr[style*="font-size: 12pt"] td, .pos-receipt-container tr[style*="font-size: 13pt"] td {
+        .pos-receipt-container .pos-total-row td, .pos-receipt-container tr[style*="font-size: 12pt"] td, .pos-receipt-container tr[style*="font-size: 13pt"] td, .pos-receipt-container tr[style*="font-size: 14pt"] td, .pos-receipt-container tr[style*="font-size: 15pt"] td {
             font-size: ${totalFontSizePt} !important;
             font-weight: bold !important;
             border-top: 1pt dashed #000000 !important;
@@ -5340,7 +5693,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
         }
         .pos-receipt-container .item-unit-subprice {
             display: block !important;
-            font-size: 7.8pt !important;
+            font-size: 8.2pt !important;
             line-height: 1.15 !important;
             color: #000000 !important;
         }
@@ -5351,7 +5704,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             width: 70% !important;
             text-align: right !important;
         }
-        ` : (is500mm ? `
+        ` : (is200mm ? `
         .pos-receipt-container .col-item-desc {
             width: 52% !important;
         }
@@ -5430,7 +5783,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
                 box-shadow: 0 4px 14px rgba(0,0,0,0.35);
                 font-family: Arial, sans-serif;
             }
-            .pos-print-container, .pos-receipt-container, .pos-receipt-400, .pdf-receipt-500 {
+            .pos-print-container, .pos-receipt-container {
                 width: ${contentWidthMm}mm !important;
                 max-width: ${contentWidthMm}mm !important;
                 background: #ffffff !important;
@@ -5448,8 +5801,8 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
 
         @media print {
             @page {
-                size: ${paperWidthMm}mm ${isA4 ? pageHeightMm + 'mm' : 'auto'};
-                margin: 0;
+                size: ${isA4 ? '210mm ' + pageHeightMm + 'mm' : paperWidthMm + 'mm auto'};
+                margin: ${isA4 ? '12mm 15mm' : '0'};
             }
             .no-print, .pdf-preview-toolbar {
                 display: none !important;
@@ -5467,7 +5820,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
                 min-height: 0 !important;
                 text-align: left !important;
             }
-            .pos-print-container, .pos-receipt-container, .pos-receipt-400, .pdf-receipt-500 {
+            .pos-print-container, .pos-receipt-container {
                 width: ${contentWidthMm}mm !important;
                 max-width: ${contentWidthMm}mm !important;
                 ${containerMargin}
@@ -5488,7 +5841,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
     <div class="no-print pdf-preview-toolbar">
         <div style="display: flex; align-items: center; gap: 10px;">
             <span style="background: #0284c7; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; text-transform: uppercase;">
-                ${isPdfPreview && paperWidthMm === 500 ? '500 mm Thermal PDF (Preview / Test)' : (isA4 ? 'PDF Document (' + contentWidthMm + ' mm)' : paperWidthMm + ' mm Thermal Roll')}
+                ${isPdfPreview && paperWidthMm === 200 ? '200 mm Thermal PDF (Preview / Test)' : (isA4 ? 'PDF Document (' + contentWidthMm + ' mm)' : paperWidthMm + ' mm Thermal Roll')}
             </span>
             <span style="font-size: 14px; font-weight: bold;">
                 ${docTitle} (${contentWidthMm}mm &bull; ${isThermal ? 'Thermal Monospace' : 'Left Aligned'})
@@ -5527,16 +5880,29 @@ function executePOSPrintJob(htmlContent, autoTriggerPrint = true) {
 
 function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
     const s = getPOSPrintSettings();
-    let widthMm = requestedWidthMm || s.paperWidthMm || 80;
-    if (widthMm === 210 || widthMm === 500) {
-        widthMm = 80;
+    let widthMm = requestedWidthMm || s.paperWidthMm || 210;
+    if (requestedWidthMm) {
+        widthMm = requestedWidthMm;
     }
-    widthMm = Math.max(48, Math.min(120, parseInt(widthMm, 10) || 80));
+    if (widthMm > MAX_THERMAL_WIDTH_MM) {
+        widthMm = MAX_THERMAL_WIDTH_MM;
+    }
+    const is210mm = (widthMm >= 180);
+    const is50mm = (widthMm <= 52);
+    const is58mm = (!is50mm && widthMm <= 65);
+    const actualWidthMm = is210mm ? 210 : (is50mm ? 50 : (is58mm ? 58 : 80));
+    const contentWidthMm = is210mm ? 195 : (is50mm ? 44 : (is58mm ? 50 : 72));
+    
+    // Thermal Font Selection
+    const fontName = s.thermalFontName || 'Courier New';
+    const fontStack = `'${fontName.replace(/'/g, "\\'")}', 'Courier New', Courier, monospace, 'Lucida Console', Arial, sans-serif`;
 
-    const is58mm = widthMm <= 65;
-    const fontSizePt = is58mm ? 8.2 : 9.5;
-    const titleFontSizePt = is58mm ? 9.5 : 11.0;
-    const padding = is58mm ? '1.5mm 1.5mm' : '2.5mm 3mm';
+    // Hard minimum 12 pt for thermal font size
+    const baseFontSizePt = Math.max(MIN_THERMAL_FONT_SIZE, parseFloat(s.thermalDefaultFontSize) || MIN_THERMAL_FONT_SIZE);
+    const fontSizePt = is210mm ? Math.max(12.0, baseFontSizePt) : (is50mm ? 12.0 : (is58mm ? 12.0 : Math.max(12.0, baseFontSizePt)));
+    const titleFontSizePt = is210mm ? Math.max(16.0, baseFontSizePt + 3) : (is50mm ? 13.0 : (is58mm ? 13.5 : Math.max(14.0, baseFontSizePt + 2)));
+    const totalFontSizePt = is210mm ? Math.max(15.5, baseFontSizePt + 2.5) : (is50mm ? 12.5 : (is58mm ? 13.0 : Math.max(13.5, baseFontSizePt + 1.5)));
+    const padding = is210mm ? '6mm 8mm' : (is50mm ? '1mm 1.5mm' : (is58mm ? '1.5mm 2mm' : '2.5mm 3mm'));
 
     const supplierName = orderData.supplier_name || 'SAM & INRI CONSTRUCTION SUPPLY';
     const orderNo = orderData.payment_id || 'PO-000000';
@@ -5598,7 +5964,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             print-color-adjust: exact !important;
         }
         @page {
-            size: ${widthMm}mm auto;
+            size: ${actualWidthMm}mm auto;
             margin: 0;
         }
         html, body {
@@ -5606,15 +5972,15 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: 'Courier New', Courier, monospace, 'Lucida Console', Arial, sans-serif !important;
+            font-family: ${fontStack} !important;
             font-size: ${fontSizePt}pt !important;
             line-height: 1.3 !important;
-            width: ${widthMm}mm !important;
+            width: ${actualWidthMm}mm !important;
             height: auto !important;
         }
         .thermal-receipt {
-            width: ${widthMm}mm !important;
-            max-width: ${widthMm}mm !important;
+            width: ${contentWidthMm}mm !important;
+            max-width: ${contentWidthMm}mm !important;
             padding: ${padding} !important;
             margin: 0 !important;
             background: #ffffff !important;
@@ -5692,7 +6058,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             }
             .thermal-preview-toolbar {
                 width: 100%;
-                max-width: ${widthMm}mm;
+                max-width: ${actualWidthMm}mm;
                 margin-bottom: 12px;
                 background: #0f172a;
                 color: #ffffff;
@@ -5727,7 +6093,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
 </head>
 <body>
     <div class="no-print thermal-preview-toolbar">
-        <span style="font-weight: bold;">🖨️ Thermal Receipt (${widthMm}mm)</span>
+        <span style="font-weight: bold;">🖨️ Thermal Receipt (${actualWidthMm}mm)</span>
         <div style="display: flex; gap: 6px;">
             <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">Print</button>
             <button type="button" onclick="window.close()" style="background: #64748b; color: #fff; border: none; padding: 4px 8px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">✕</button>
@@ -5770,7 +6136,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             ${discountRow}
             <tr style="font-weight: bold;">
                 <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000;">TOTAL</td>
-                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; white-space: nowrap;">${total}</td>
+                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${total}</td>
             </tr>
         </table>
 
@@ -5789,17 +6155,18 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
 </html>`;
 }
 
-function testPrintThermalPaidOrder(widthMm = 80) {
+function testPrintThermalPaidOrder(widthMm = 210) {
     const s = getPOSPrintSettings();
-    let targetWidth = widthMm || s.paperWidthMm || 80;
-    if (targetWidth === 210 || targetWidth === 500) targetWidth = 80;
+    let targetWidth = widthMm || s.paperWidthMm || 210;
+    if (targetWidth > MAX_THERMAL_WIDTH_MM) targetWidth = MAX_THERMAL_WIDTH_MM;
+    if (targetWidth === 200) targetWidth = 210;
     
     const sampleOrderData = {
         supplier_name: 'SAM & INRI CONSTRUCTION SUPPLY',
         supplier_phone: '09612735733',
-        payment_id: 'PO-000123',
+        payment_id: 'PO-TEST-' + targetWidth + 'MM',
         payment_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        customer_name: 'Juan Dela Cruz',
+        customer_name: 'Walk-in Customer (Test)',
         payment_method: 'Cash',
         payment_status: 'PAID',
         items: [
@@ -5817,59 +6184,55 @@ function testPrintThermalPaidOrder(widthMm = 80) {
     executePOSPrintJob(html, true);
 }
 
-function testPrintPOS(format = 'thermal500') {
-    if (format === 'thermal' || format === 'thermal80' || format === 'thermalPaidOrder') {
-        testPrintThermalPaidOrder(80);
+function testPrintPOS(format = 'thermal210') {
+    if (format === 'thermal50') {
+        testPrintThermalPaidOrder(50);
         return;
     } else if (format === 'thermal58') {
         testPrintThermalPaidOrder(58);
         return;
+    } else if (format === 'thermal' || format === 'thermal80' || format === 'thermalPaidOrder') {
+        testPrintThermalPaidOrder(80);
+        return;
+    } else if (format === 'thermal210' || format === 'thermal200' || format === '210' || format === '200') {
+        testPrintThermalPaidOrder(210);
+        return;
     }
     const s = getPOSPrintSettings();
-    let isA4 = (format === 'pdfA4' || format === 'a4' || format === '210');
-    let isPdfPreview = (format === 'pdf500' || format === 'pdf' || format === 'pdfA4' || format === 'a4');
-    let widthMm = 450;
-    let rollMm = 500;
+    let isA4 = (format === 'pdfA4' || format === 'a4');
+    let isPdfPreview = (format === 'pdf' || format === 'pdfA4' || format === 'a4' || format === 'pdf_preview');
+    let widthMm = 195;
+    let rollMm = 210;
 
     if (isA4) {
         rollMm = 210;
         widthMm = getA4PrintWidthMm();
-    } else if (format === 'pdf500' || format === 'thermal500' || format === '500') {
-        rollMm = 500;
-        widthMm = 450;
-        isA4 = false;
-    } else if (format === 'thermal400') {
-        rollMm = 500;
-        widthMm = 400;
-    } else if (format === 'thermal250') {
-        rollMm = 250;
-        widthMm = 240;
     } else if (format === 'custom') {
-        rollMm = s.paperWidthMm || 500;
-        if (rollMm === 210 || (rollMm <= 200 && rollMm !== 80 && rollMm !== 58)) {
-            isA4 = true;
-            widthMm = (rollMm <= 200) ? rollMm : getA4PrintWidthMm();
+        rollMm = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 210);
+        if (rollMm === 210) {
+            isA4 = false;
+            widthMm = 195;
         } else {
-            widthMm = (rollMm >= 500) ? 450 : Math.max(40, rollMm - 8);
+            widthMm = Math.max(40, rollMm - 8);
         }
     } else {
-        rollMm = 500;
-        widthMm = 450;
+        rollMm = 210;
+        widthMm = 195;
     }
 
-    let headerFontSizePt = (widthMm >= 400) ? '16pt' : ((widthMm < 60) ? '8.5pt' : ((widthMm < 75) ? '10pt' : ((widthMm < 90) ? '11pt' : '12pt')));
+    let headerFontSizePt = (widthMm >= 180) ? '16pt' : ((widthMm < 60) ? '12pt' : ((widthMm < 75) ? '12pt' : ((widthMm < 90) ? '13pt' : '14pt')));
 
     const testContent = `
         <!-- 1. Store Header & Title -->
         <div style="text-align: left; margin-bottom: 8px; border-bottom: 1.5pt solid #000; padding-bottom: 6px; width: 100%;">
             <div class="pos-company-header" style="font-size: ${headerFontSizePt}; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: visible; color: #000;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
-            <div style="font-size: 9.5pt; margin-top: 2px; color: #000;">Tel: 09612735733</div>
-            <div style="font-size: 10.5pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.3px; color: #000;">${isPdfPreview && rollMm === 500 ? '500 MM THERMAL PDF PREVIEW TEST (' + widthMm + ' MM WIDTH / ' + rollMm + ' MM ROLL)' : (isA4 ? 'PDF PRINT TEST (' + widthMm + ' MM WIDTH)' : 'THERMAL TEST (' + widthMm + ' MM / ' + rollMm + ' MM ROLL)')}</div>
-            <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; color: #000;">(CALIBRATED &bull; LEFT ALIGNED)</div>
+            <div style="font-size: 12pt; margin-top: 2px; color: #000;">Tel: 09612735733</div>
+            <div style="font-size: 12.5pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.3px; color: #000;">${isPdfPreview && rollMm === 210 ? '210 MM THERMAL PDF PREVIEW TEST (' + widthMm + ' MM WIDTH / ' + rollMm + ' MM ROLL)' : (isA4 ? 'PDF PRINT TEST (' + widthMm + ' MM WIDTH)' : 'THERMAL TEST (' + widthMm + ' MM / ' + rollMm + ' MM ROLL)')}</div>
+            <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000;">(CALIBRATED &bull; LEFT ALIGNED)</div>
         </div>
 
         <!-- 2. Test Info Grid -->
-        <table style="width: 100%; font-size: 9.5pt; line-height: 1.25; margin-bottom: 8px; border-collapse: collapse; border-bottom: 1.5pt solid #000; padding-bottom: 6px;">
+        <table style="width: 100%; font-size: 12pt; line-height: 1.25; margin-bottom: 8px; border-collapse: collapse; border-bottom: 1.5pt solid #000; padding-bottom: 6px;">
             <tr>
                 <td style="width: 52%; vertical-align: top; padding: 2px 4px 4px 0; text-align: left;">
                     <div><strong>TEST REF:</strong> <span style="font-weight: bold;">TEST-${widthMm}MM-${Date.now().toString().slice(-5)}</span></div>
@@ -5885,7 +6248,7 @@ function testPrintPOS(format = 'thermal500') {
         </table>
 
         <!-- 3. Items Table -->
-        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9.5pt; line-height: 1.25; margin-bottom: 8px;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12pt; line-height: 1.25; margin-bottom: 8px;">
             <thead>
                 <tr style="border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000;">
                     <th style="padding: 4pt 2pt; text-align: left; font-weight: bold; width: 46%;">ITEM</th>
@@ -5898,7 +6261,7 @@ function testPrintPOS(format = 'thermal500') {
                 <tr style="border-bottom: 0.5pt solid #e5e7eb;">
                     <td style="padding: 4pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
                         <strong>Deformed Steel Bar 16mm</strong>
-                        <div style="font-size: 8.5pt; color: #333; margin-top: 1px;">Grade 40, Length: 6.0m</div>
+                        <div style="font-size: 12pt; color: #333; margin-top: 1px;">Grade 40, Length: 6.0m</div>
                     </td>
                     <td style="padding: 4pt 2pt; text-align: center; vertical-align: top;">10</td>
                     <td style="padding: 4pt 2pt; text-align: right; vertical-align: top;">₱485.00</td>
@@ -5907,7 +6270,7 @@ function testPrintPOS(format = 'thermal500') {
                 <tr style="border-bottom: 0.5pt solid #e5e7eb;">
                     <td style="padding: 4pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
                         <strong>Portland Cement 40kg</strong>
-                        <div style="font-size: 8.5pt; color: #333; margin-top: 1px;">Type 1P Premium Hydraulic Cement</div>
+                        <div style="font-size: 12pt; color: #333; margin-top: 1px;">Type 1P Premium Hydraulic Cement</div>
                     </td>
                     <td style="padding: 4pt 2pt; text-align: center; vertical-align: top;">20</td>
                     <td style="padding: 4pt 2pt; text-align: right; vertical-align: top;">₱245.00</td>
@@ -5922,22 +6285,22 @@ function testPrintPOS(format = 'thermal500') {
                 </tr>
                 <tr style="border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000;">
                     <td colspan="2" style="padding: 4pt 0;"></td>
-                    <td style="padding: 4pt 2pt; text-align: right; font-size: 11pt; font-weight: bold;">TOTAL DUE:</td>
-                    <td style="padding: 4pt 2pt; text-align: right; font-size: 11pt; font-weight: bold;">₱9,750.00</td>
+                    <td style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">TOTAL DUE:</td>
+                    <td style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">₱9,750.00</td>
                 </tr>
             </tfoot>
         </table>
 
         <!-- 4. Footer -->
-        <div style="text-align: left; margin-top: 8px; border-top: 1pt dashed #000; padding-top: 6px; font-size: 9pt; line-height: 1.25; width: 100%;">
-            <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">*** ${isPdfPreview && rollMm === 500 ? '500 MM THERMAL PDF PREVIEW (' + widthMm + ' MM WIDTH / ' + rollMm + ' MM ROLL)' : (isA4 ? 'PDF PRINT WIDTH CALIBRATED (' + widthMm + ' MM)' : widthMm + ' MM THERMAL PRINT CALIBRATED (' + rollMm + ' MM ROLL)')} ***</div>
+        <div style="text-align: left; margin-top: 8px; border-top: 1pt dashed #000; padding-top: 6px; font-size: 12pt; line-height: 1.25; width: 100%;">
+            <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">*** ${isPdfPreview && rollMm === 210 ? '210 MM THERMAL PDF PREVIEW (' + widthMm + ' MM WIDTH / ' + rollMm + ' MM ROLL)' : (isA4 ? 'PDF PRINT WIDTH CALIBRATED (' + widthMm + ' MM)' : widthMm + ' MM THERMAL PRINT CALIBRATED (' + rollMm + ' MM ROLL)')} ***</div>
             <div>Print layout is strictly read-only.</div>
-            <div style="font-size: 8pt; color: #555; margin-top: 2px;">eConstruction Supply SaaS &bull; Point of Sale Print Engine</div>
+            <div style="font-size: 11pt; color: #555; margin-top: 2px;">eConstruction Supply SaaS &bull; Point of Sale Print Engine</div>
         </div>
     `;
 
-    const title = (format === 'pdf500' || (isPdfPreview && rollMm === 500))
-        ? `POS 500mm Thermal PDF Test (${widthMm}mm Width • Roll Preview)`
+    const title = (format === 'pdf' || (isPdfPreview && rollMm === 210))
+        ? `POS 210mm Thermal PDF Test (${widthMm}mm Width • Roll Preview)`
         : (isA4 ? `POS PDF Test (${widthMm}mm Width • Left-Aligned)` : `POS ${widthMm}mm Thermal Test (${rollMm}mm Roll)`);
     const html = generatePOSPrintHTML(testContent, title, 'test', format);
     executePOSPrintJob(html, true);
@@ -5953,7 +6316,7 @@ function printPOSReceipt(format = null) {
         alert('Receipt print area not found.');
         return;
     }
-    const isPdf = (format === 'pdf' || format === 'pdf500' || format === 'pdfA4');
+    const isPdf = (format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 'pdfA4');
     const title = isPdf ? 'Official Sales Receipt (PDF)' : 'Official Sales Receipt (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'receipt', format);
     executePOSPrintJob(html, true);
@@ -5969,7 +6332,7 @@ function printReturnSlip(format = null) {
         alert('Return slip print area not found.');
         return;
     }
-    const isPdf = (format === 'pdf' || format === 'pdf500' || format === 'pdfA4');
+    const isPdf = (format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 'pdfA4');
     const title = isPdf ? 'Official Return Slip (PDF)' : 'Official Return Slip (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'return', format);
     executePOSPrintJob(html, true);
@@ -5985,16 +6348,16 @@ function printPOSPurchaseOrder(format = null) {
         alert('Purchase Order print area not found.');
         return;
     }
-    const isPdf = (format === 'pdf' || format === 'pdf500' || format === 'pdfA4');
-    const title = (format === 'pdf500' || format === 'pdf')
-        ? 'Purchase Order Voucher (500mm Thermal PDF Preview)'
-        : (isPdf ? 'Purchase Order Voucher (PDF)' : 'Purchase Order Voucher (500mm Thermal Roll)');
-    const html = generatePOSPrintHTML(printArea.innerHTML, title, 'po', format || (isPdf ? 'pdf500' : '500'));
+    const isPdf = (format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 'pdfA4');
+    const title = (format === 'pdf200' || format === 'pdf500' || format === 'pdf')
+        ? 'Purchase Order Voucher (200mm Thermal PDF Preview)'
+        : (isPdf ? 'Purchase Order Voucher (PDF)' : 'Purchase Order Voucher (200mm Thermal Roll)');
+    const html = generatePOSPrintHTML(printArea.innerHTML, title, 'po', format || (isPdf ? 'pdf200' : '200'));
     executePOSPrintJob(html, true);
 }
 
 function previewPOSPurchaseOrderPDF() {
-    printPOSPurchaseOrder('pdf500');
+    printPOSPurchaseOrder('pdf200');
 }
 
 

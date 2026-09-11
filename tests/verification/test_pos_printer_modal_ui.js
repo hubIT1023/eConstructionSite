@@ -1,0 +1,348 @@
+/**
+ * Verification Suite for POS Printer Configuration / Setup UI & Integration
+ * File: tests/verification/test_pos_printer_modal_ui.js
+ * 
+ * Verifies that supplier/pos.php complies with:
+ * 1. 210mm maximum & default thermal width standard (zero 500mm, 400mm, 250mm)
+ * 2. Title: "Printer Configuration / Setup"
+ * 3. Printer detection (Auto Detect by default, Refresh Detection)
+ * 4. Thermal Font Name selection & custom entry with datalist
+ * 5. Thermal Font Size selection & custom entry with 12pt hard minimum
+ * 6. Isolated test buttons: 210mm, 80mm, 58mm, 50mm (50mm never touches saved config)
+ * 7. Active Configuration summary card at the top
+ * 8. Secondary A4 printer & PDF preview only card
+ * 9. Print copies (1-5)
+ * 10. Backward compatibility with legacy hidden inputs
+ */
+const fs = require('fs');
+const path = require('path');
+
+const ROOT_DIR = path.resolve(__dirname, '../../');
+const posPath = path.join(ROOT_DIR, 'supplier/pos.php');
+const posContent = fs.readFileSync(posPath, 'utf8');
+
+let allPassed = true;
+let totalChecks = 0;
+let passedChecks = 0;
+
+function assert(condition, message) {
+    totalChecks++;
+    if (condition) {
+        passedChecks++;
+        console.log(`  [PASS] ${message}`);
+    } else {
+        allPassed = false;
+        console.error(`  [FAIL] ${message}`);
+    }
+}
+
+console.log('================================================================');
+console.log('POS PRINTER CONFIGURATION / SETUP UI - VERIFICATION SUITE');
+console.log('================================================================\n');
+
+// 1. Modal Uniqueness & Title
+console.log('--- 1. Modal Uniqueness & Header Title ---');
+const modalMatches = posContent.match(/id=["']posPrinterModal["']/g);
+assert(modalMatches && modalMatches.length === 1, 'Exactly one #posPrinterModal in pos.php (no duplicates)');
+
+const modalStart = posContent.indexOf('id="posPrinterModal"');
+const modalEnd = posContent.indexOf('</div>', posContent.indexOf('class="modal-footer"', modalStart) + 400);
+const modalBlock = posContent.substring(modalStart, modalEnd);
+
+assert(
+    modalBlock.includes('Printer Configuration / Setup') &&
+    modalBlock.includes('Configure thermal, A4 and PDF output'),
+    'Modal title is "Printer Configuration / Setup" with subtitle "Configure thermal, A4 and PDF output"'
+);
+
+// 2. Detection Section
+console.log('\n--- 2. Printer Detection Section ---');
+assert(
+    modalBlock.includes('PRINTER DETECTION') &&
+    modalBlock.includes('Auto Detect Active') &&
+    modalBlock.includes('refreshPOSPrinters()') &&
+    modalBlock.includes('Refresh Detection'),
+    'Detection section shows Auto Detect by default and includes Refresh Detection button'
+);
+
+// 3. Active Configuration Card (Top Placement)
+console.log('\n--- 3. Active Configuration Card (Top Placement) ---');
+assert(
+    modalBlock.includes('ACTIVE CONFIGURATION') &&
+    modalBlock.includes('id="posActiveWidthVal"') &&
+    modalBlock.includes('id="posActiveFontNameVal"') &&
+    modalBlock.includes('id="posActiveFontVal"') &&
+    modalBlock.includes('id="posActiveA4Val"') &&
+    modalBlock.includes('id="posLayoutDesc"'),
+    'Active Configuration Card is present with live width, font name, font size, A4 and layout badges'
+);
+
+const topCardIndex = modalBlock.indexOf('ACTIVE CONFIGURATION');
+const section1Index = modalBlock.indexOf('PRIMARY — THERMAL PRINTER') !== -1 ? modalBlock.indexOf('PRIMARY — THERMAL PRINTER') : modalBlock.indexOf('PRIMARY &mdash; THERMAL PRINTER');
+assert(
+    topCardIndex !== -1 && section1Index !== -1 && topCardIndex < section1Index,
+    'Active Configuration Card is positioned at the top of the modal body, before Primary Thermal section'
+);
+
+// 4. Primary Thermal Printer (Max 210mm, Presets, Datalist Font, >=12pt Size)
+console.log('\n--- 4. Primary Thermal Printer Section (210mm Max & Typography) ---');
+assert(
+    modalBlock.includes('id="posPrinterSelect"') &&
+    modalBlock.includes('id="posPaperWidth"'),
+    'Primary Thermal Section contains posPrinterSelect and posPaperWidth'
+);
+
+assert(
+    modalBlock.includes('<option value="210" selected>210 mm — Default / Maximum</option>') &&
+    modalBlock.includes('<option value="80">80 mm') &&
+    modalBlock.includes('<option value="58">58 mm') &&
+    modalBlock.includes('<option value="custom">Custom (Max 210 mm)...</option>'),
+    'posPaperWidth includes 210mm default/max, 80mm, 58mm, and custom (max 210mm) options'
+);
+
+assert(
+    !modalBlock.includes('<option value="500"') &&
+    !modalBlock.includes('500 mm Roll') &&
+    !modalBlock.includes('500mm Roll') &&
+    !modalBlock.includes('<option value="400"') &&
+    !modalBlock.includes('<option value="250"'),
+    'Strict standard: ZERO 500mm, 400mm, or 250mm options inside #posPrinterModal'
+);
+
+assert(
+    modalBlock.includes('id="posCustomWidthGroup"') &&
+    modalBlock.includes('id="posCustomWidthInput"') &&
+    modalBlock.includes('max="210"'),
+    'Custom width input group enforces max="210"'
+);
+
+// 5. Thermal Font Selection (Name & Size)
+console.log('\n--- 5. Thermal Font Name & Size Options ---');
+assert(
+    modalBlock.includes('id="posThermalFontName"') &&
+    modalBlock.includes('list="posThermalFontList"') &&
+    modalBlock.includes('id="posThermalFontList"'),
+    'Thermal Font Name includes editable text input with datalist (#posThermalFontList)'
+);
+
+assert(
+    modalBlock.includes('<option value="Courier New">') &&
+    modalBlock.includes('<option value="Consolas">') &&
+    modalBlock.includes('<option value="Lucida Console">') &&
+    modalBlock.includes('<option value="Arial">') &&
+    modalBlock.includes('<option value="Tahoma">') &&
+    modalBlock.includes('<option value="Verdana">'),
+    'Font datalist includes standard monospace and system fonts (Courier New, Consolas, Lucida Console, Arial, etc.)'
+);
+
+assert(
+    modalBlock.includes('id="posThermalDefaultFontSize"') &&
+    modalBlock.includes('Standard Range (12 pt — 20 pt)') &&
+    modalBlock.includes('value="12"') &&
+    modalBlock.includes('value="13"') &&
+    modalBlock.includes('value="14"') &&
+    modalBlock.includes('value="15"') &&
+    modalBlock.includes('value="16"') &&
+    modalBlock.includes('value="17"') &&
+    modalBlock.includes('value="18"') &&
+    modalBlock.includes('value="19"') &&
+    modalBlock.includes('value="20"') &&
+    modalBlock.includes('value="custom">Custom pt...</option>'),
+    'Thermal font size selector includes full range options from 12 pt to 20 pt (12, 13, 14, 15, 16, 17, 18, 19, 20 pt) and custom'
+);
+
+assert(
+    modalBlock.includes('id="posThermalFontSizeRange"') &&
+    modalBlock.includes('min="12"') &&
+    modalBlock.includes('max="20"') &&
+    modalBlock.includes('handleFontSizeRangeInput'),
+    'Interactive font size range slider (12 pt to 20 pt) is present and hooked to handleFontSizeRangeInput'
+);
+
+assert(
+    modalBlock.includes('id="posThermalFontSizeBadge"'),
+    'Live font size badge is present alongside the font size range control'
+);
+
+assert(
+    modalBlock.includes('id="posThermalCustomFontSize"') &&
+    modalBlock.includes('min="12"'),
+    'Custom font size input strictly enforces min="12"'
+);
+
+assert(
+    modalBlock.includes('id="posThermalCustomSizeGroup"') &&
+    !modalBlock.includes('id="posThermalCustomSizeGroup" style="display: none;') &&
+    !modalBlock.includes('id="posThermalCustomSizeGroup" style="display:none;'),
+    'Custom font size input group (posThermalCustomSizeGroup) is always displayed and never hidden (no display:none)'
+);
+
+assert(
+    modalBlock.includes('id="posThermalBoldImportant"'),
+    'Thermal bold important text checkbox is present'
+);
+
+// 6. Dedicated Test Profiles (210mm, 80mm, 58mm, 50mm)
+console.log('\n--- 6. Dedicated Test Profiles (210mm, 80mm, 58mm, 50mm) ---');
+assert(
+    modalBlock.includes("onclick=\"testPrintPOS('thermal210')\"") &&
+    modalBlock.includes('Test 210 mm'),
+    'Dedicated Test 210 mm button present'
+);
+
+assert(
+    modalBlock.includes("onclick=\"testPrintPOS('thermal80')\"") &&
+    modalBlock.includes('Test 80 mm'),
+    'Dedicated Test 80 mm button present'
+);
+
+assert(
+    modalBlock.includes("onclick=\"testPrintPOS('thermal58')\"") &&
+    modalBlock.includes('Test 58 mm'),
+    'Dedicated Test 58 mm button present'
+);
+
+assert(
+    modalBlock.includes("onclick=\"testPrintPOS('thermal50')\"") &&
+    modalBlock.includes('Test 50 mm'),
+    'Dedicated Test 50 mm button present (must run isolated print job)'
+);
+
+// 7. Section 2: Secondary Standard A4 Printer
+console.log('\n--- 7. Section 2: Secondary Standard A4 Printer ---');
+assert(
+    modalBlock.includes('id="posA4PrinterSelect"') &&
+    modalBlock.includes('A4 (210 &times; 297 mm)') &&
+    modalBlock.includes('id="posA4Orientation"') &&
+    modalBlock.includes('value="portrait"') &&
+    modalBlock.includes('value="landscape"'),
+    'Secondary A4 Section includes posA4PrinterSelect, standard A4 dimensions, and orientation options'
+);
+
+assert(
+    modalBlock.includes('Thermal roll width and thermal font settings do not alter A4 print layout'),
+    'Section 2 explicitly notes thermal settings do not alter A4 layout'
+);
+
+assert(
+    modalBlock.includes('onclick="testPrintA4PDF()"') &&
+    modalBlock.includes('Test A4 Print'),
+    'Section 2 includes Test A4 Print button'
+);
+
+// 8. Section 3: Preview Only PDF
+console.log('\n--- 8. Section 3: Preview Only PDF ---');
+assert(
+    modalBlock.includes('PDF PREVIEW / EXPORT') &&
+    modalBlock.includes('PDF is for preview/export only') &&
+    modalBlock.includes('It is not a physical printer') &&
+    modalBlock.includes('Preview PDF'),
+    'PDF is clearly designated as Preview Only and never a physical printer'
+);
+
+// 9. Section 4: Print Copies (1-5) & Footer Actions
+console.log('\n--- 9. Section 4: Print Copies & Footer Actions ---');
+assert(
+    modalBlock.includes('id="posPrintCopies"') &&
+    modalBlock.includes('<option value="1" selected>1</option>') &&
+    modalBlock.includes('<option value="5">5</option>'),
+    'Print copies dropdown allows selecting 1 to 5 copies'
+);
+
+assert(
+    modalBlock.includes('data-dismiss="modal"') &&
+    modalBlock.includes('Cancel') &&
+    modalBlock.includes('onclick="savePOSPrinterSettings()"') &&
+    modalBlock.includes('Save Configuration'),
+    'Modal footer includes Cancel and Save Configuration buttons'
+);
+
+// 10. Backward Compatibility Hidden Elements
+console.log('\n--- 10. Backward Compatibility Hidden Elements ---');
+assert(
+    modalBlock.includes('id="posPrinterType"') &&
+    modalBlock.includes('id="posA4PrintWidthInput"') &&
+    modalBlock.includes('id="posA4PrintWidthRange"') &&
+    modalBlock.includes('id="posPdfWidthBadgeVal"') &&
+    modalBlock.includes('id="posModeRadioThermal"') &&
+    modalBlock.includes('id="posModeRadioNormal"') &&
+    modalBlock.includes('id="posModeRadioPdf"'),
+    'All legacy hidden elements are preserved for backward compatibility'
+);
+
+// 11. JavaScript Engine Handlers & 210mm / Font Size Normalization
+console.log('\n--- 11. JavaScript Engine Handlers & Normalization ---');
+assert(
+    posContent.includes('const MAX_THERMAL_WIDTH_MM = 210;') &&
+    posContent.includes('const MIN_THERMAL_FONT_SIZE = 12;') &&
+    posContent.includes('paperWidthMm: 210,') &&
+    posContent.includes("thermalFontName: 'Courier New',"),
+    'JavaScript defines MAX_THERMAL_WIDTH_MM = 210, MIN_THERMAL_FONT_SIZE = 12, default font and 210mm paper width'
+);
+
+assert(
+    posContent.includes('posPrinterSettings.paperWidthMm > MAX_THERMAL_WIDTH_MM') &&
+    posContent.includes('posPrinterSettings.paperWidthMm = MAX_THERMAL_WIDTH_MM;'),
+    'getPOSPrintSettings auto-normalizes any thermal paper width > 210mm to 210mm'
+);
+
+assert(
+    posContent.includes('posPrinterSettings.thermalMinFontSize < 12') &&
+    posContent.includes('posPrinterSettings.thermalDefaultFontSize < 12'),
+    'getPOSPrintSettings auto-normalizes font sizes < 12 pt to 12 pt'
+);
+
+assert(
+    posContent.includes('Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, customW))'),
+    'savePOSPrinterSettings strictly clamps custom thermal width between 40mm and 210mm'
+);
+
+assert(
+    posContent.includes('format === \'thermal50\'') &&
+    posContent.includes('testPrintThermalPaidOrder(50);'),
+    'testPrintPOS routes thermal50 to testPrintThermalPaidOrder(50) without altering saved config'
+);
+
+assert(
+    posContent.includes('function generatePaidOrderThermalHTML(orderData, requestedWidthMm)') &&
+    posContent.includes('const is50mm = (widthMm <= 52);') &&
+    posContent.includes('const is210mm = (widthMm >= 180);'),
+    'generatePaidOrderThermalHTML handles 210mm and 50mm profile dimensions'
+);
+
+// 12. Top Status Button
+console.log('\n--- 12. POS Top Header Printer Status Button ---');
+assert(
+    posContent.includes('id="posPrinterStatusBtn"') &&
+    posContent.includes('Printer: 210mm') &&
+    posContent.includes('Printer Configuration / Setup (Auto Detect, 210mm / 80mm / 58mm / A4)'),
+    'Header status button shows 210mm default and proper title'
+);
+
+// 13. Document Dialogs (Receipt, PO, Return) Free of 500mm Buttons
+console.log('\n--- 13. Document Dialogs Free of 500mm Options ---');
+const successModalBlock = posContent.substring(posContent.indexOf('id="posSuccessModal"'), posContent.indexOf('id="posSuccessModal"') + 3500);
+assert(
+    !successModalBlock.includes('>500mm<') &&
+    !successModalBlock.includes('>500 mm<') &&
+    !successModalBlock.includes('value="500"'),
+    'Success Receipt modal has no 500mm button options'
+);
+
+const poSuccessModalBlock = posContent.substring(posContent.indexOf('id="posPOSuccessModal"'), posContent.indexOf('id="posPOSuccessModal"') + 3500);
+assert(
+    !poSuccessModalBlock.includes('>500mm<') &&
+    !poSuccessModalBlock.includes('>500 mm<') &&
+    !poSuccessModalBlock.includes('value="500"'),
+    'PO Success modal has no 500mm button options'
+);
+
+console.log('\n================================================================');
+console.log(`RESULTS: ${passedChecks}/${totalChecks} checks passed.`);
+if (allPassed) {
+    console.log('STATUS: ALL PRINTER CONFIGURATION / SETUP UI VERIFICATION CHECKS PASSED!');
+} else {
+    console.error('STATUS: VERIFICATION FAILED - PLEASE REVIEW LOGGED ERRORS.');
+    process.exit(1);
+}
+console.log('================================================================');

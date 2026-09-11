@@ -911,9 +911,16 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
 
                                                     </div>
                                                 </div>
-                                                <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px;">
-                                                    <button type="button" class="btn btn-primary" onclick="printReceipt('po-print-area-<?php echo $row['id']; ?>')"><i class="fa fa-print"></i> Print Purchase Order</button>
-                                                    <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                                                <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                                        <button type="button" class="btn btn-primary" onclick="printReceipt('po-print-area-<?php echo $row['id']; ?>', 'a4')" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7;">
+                                                            <i class="fa fa-print"></i> Print Purchase Order (A4 / Standard)
+                                                        </button>
+                                                        <button type="button" class="btn btn-default" onclick="printReceipt('po-print-area-<?php echo $row['id']; ?>', 'pdf')" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;">
+                                                            <i class="fa fa-file-pdf-o text-danger"></i> PDF Document
+                                                        </button>
+                                                    </div>
+                                                    <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700;">Close</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1092,17 +1099,23 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                  ];
                                                  $po_thermal_json = htmlspecialchars(json_encode($po_order_thermal_data), ENT_QUOTES, 'UTF-8');
                                                  ?>
-                                                 <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                                                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                                         <button type="button" class="btn btn-primary" onclick="printPaidOrderThermal(<?php echo $po_thermal_json; ?>)" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7;">
-                                                             <i class="fa fa-print"></i> Thermal Receipt (80mm/58mm)
-                                                         </button>
-                                                         <button type="button" class="btn btn-default" onclick="printReceipt('receipt-print-area-<?php echo $row['id']; ?>', 'pdf')" style="font-weight: 700; background: #fff; border-color: #cbd5e1; color: #334155;">
-                                                             <i class="fa fa-file-pdf-o text-danger"></i> PDF / A4 Receipt
-                                                         </button>
-                                                     </div>
-                                                     <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700;">Close</button>
-                                                 </div>
+                                                  <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                                      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                                          <!-- MODE 1: THERMAL PRINTER (PRIMARY / DEFAULT / PRODUCTION: 500mm Wide Roll) -->
+                                                          <button type="button" class="btn btn-primary" onclick="printPaidOrderThermal(<?php echo $po_thermal_json; ?>, 500)" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7;" title="Print on 500mm Wide Thermal Roll (Primary Default Standard)">
+                                                              <i class="fa fa-print"></i> Thermal Receipt (500mm Default)
+                                                          </button>
+                                                          <!-- Compact Thermal Fallback (80mm / 58mm) -->
+                                                          <button type="button" class="btn btn-default" onclick="printPaidOrderThermal(<?php echo $po_thermal_json; ?>, 80)" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Print on 80mm or 58mm Thermal Roll">
+                                                              <i class="fa fa-print"></i> 80mm / 58mm
+                                                          </button>
+                                                          <!-- MODE 2: PDF PRINTER / MODE 3: STANDARD A4 PRINTER -->
+                                                          <button type="button" class="btn btn-default" onclick="printReceipt('receipt-print-area-<?php echo $row['id']; ?>', 'pdf')" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Standard A4 or PDF Document">
+                                                              <i class="fa fa-file-pdf-o text-danger"></i> PDF / A4 Receipt
+                                                          </button>
+                                                      </div>
+                                                      <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700;">Close</button>
+                                                  </div>
                                              </div>
                                          </div>
                                      </div>
@@ -1161,8 +1174,9 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
 <script>
 function getPOSPrintSettings() {
     let settings = {
+        printerMode: 'thermal',
         printerType: 'thermal',
-        paperWidthMm: 80,
+        paperWidthMm: 500, // ENTERPRISE STANDARD: 500mm Thermal Roll is Primary & Default
         printWidthA4Mm: 80,
         copies: 1
     };
@@ -1188,16 +1202,19 @@ function escapeHtml(text) {
 
 function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
     const s = getPOSPrintSettings();
-    let widthMm = requestedWidthMm || s.paperWidthMm || 80;
-    if (widthMm === 210 || widthMm === 500) {
-        widthMm = 80;
-    }
-    widthMm = Math.max(48, Math.min(120, parseInt(widthMm, 10) || 80));
+    let widthMm = requestedWidthMm || s.paperWidthMm || 500;
+    const is500mm = (parseInt(widthMm, 10) === 500 || widthMm === '500');
+    const is58mm = (!is500mm && parseInt(widthMm, 10) <= 65);
+    const is80mm = (!is500mm && !is58mm);
 
-    const is58mm = widthMm <= 65;
-    const fontSizePt = is58mm ? 8.2 : 9.5;
-    const titleFontSizePt = is58mm ? 9.5 : 11.0;
-    const padding = is58mm ? '1.5mm 1.5mm' : '2.5mm 3mm';
+    widthMm = is500mm ? 500 : (is58mm ? 58 : 80);
+
+    // Enterprise Commercial POS Typography Standard
+    const fontSizePt = is500mm ? 12.0 : (is58mm ? 8.5 : 9.8);
+    const titleFontSizePt = is500mm ? 16.0 : (is58mm ? 10.5 : 12.0);
+    const subtitleFontSizePt = is500mm ? 13.5 : (is58mm ? 9.5 : 11.0);
+    const totalFontSizePt = is500mm ? 15.5 : (is58mm ? 11.0 : 12.5);
+    const padding = is500mm ? '8mm 12mm' : (is58mm ? '1.5mm 1.5mm' : '2.5mm 3mm');
 
     const supplierName = orderData.supplier_name || 'SAM & INRI CONSTRUCTION SUPPLY';
     const orderNo = orderData.payment_id || 'PO-000000';
@@ -1212,12 +1229,16 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
         const itemName = item.name || 'Item';
         const itemQty = parseInt(item.qty, 10) || 1;
         const itemAmount = parseFloat(item.amount || (parseFloat(item.price || 0) * itemQty)).toFixed(2);
+        const unitPrice = parseFloat(item.price || 0).toFixed(2);
         
         itemsRows += `
             <tr>
-                <td style="text-align: left; padding: 2.5px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">${escapeHtml(itemName)}</td>
-                <td style="text-align: center; padding: 2.5px 4px; vertical-align: top; white-space: nowrap;">${itemQty}</td>
-                <td style="text-align: right; padding: 2.5px 0; vertical-align: top; white-space: nowrap;">${itemAmount}</td>
+                <td style="text-align: left; padding: 3px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">
+                    <div style="font-weight: bold; color: #000000;">${escapeHtml(itemName)}</div>
+                    <div style="font-size: ${is500mm ? '11pt' : (is58mm ? '8.2pt' : '8.8pt')}; color: #000000;">@ &#8369;${unitPrice}</div>
+                </td>
+                <td style="text-align: center; padding: 3px 4px; vertical-align: top; white-space: nowrap; color: #000000;">${itemQty}</td>
+                <td style="text-align: right; padding: 3px 0; vertical-align: top; white-space: nowrap; color: #000000; font-weight: bold;">&#8369;${itemAmount}</td>
             </tr>
         `;
     });
@@ -1231,8 +1252,8 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
     if (delivery > 0) {
         deliveryRow = `
             <tr>
-                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Delivery Fee:</td>
-                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;">${delivery.toFixed(2)}</td>
+                <td colspan="2" style="text-align: left; padding: 2px 0; color: #000000;">Delivery Fee:</td>
+                <td style="text-align: right; padding: 2px 0; white-space: nowrap; color: #000000;">&#8369;${delivery.toFixed(2)}</td>
             </tr>
         `;
     }
@@ -1241,8 +1262,8 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
     if (discount > 0) {
         discountRow = `
             <tr>
-                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Discount:</td>
-                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;">-${discount.toFixed(2)}</td>
+                <td colspan="2" style="text-align: left; padding: 2px 0; color: #000000;">Discount:</td>
+                <td style="text-align: right; padding: 2px 0; white-space: nowrap; color: #000000;">-&#8369;${discount.toFixed(2)}</td>
             </tr>
         `;
     }
@@ -1267,11 +1288,13 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: 'Courier New', Courier, monospace, 'Lucida Console', Arial, sans-serif !important;
+            font-family: 'Courier New', Consolas, 'Liberation Mono', monospace, 'Lucida Console', Arial, sans-serif !important;
             font-size: ${fontSizePt}pt !important;
-            line-height: 1.3 !important;
+            line-height: 1.35 !important;
             width: ${widthMm}mm !important;
             height: auto !important;
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
         }
         .thermal-receipt {
             width: ${widthMm}mm !important;
@@ -1284,30 +1307,32 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
         }
         .thermal-header {
             text-align: center;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
         }
         .thermal-title {
             font-size: ${titleFontSizePt}pt;
-            font-weight: bold;
+            font-weight: 900;
             text-transform: uppercase;
             line-height: 1.25;
             color: #000000;
+            letter-spacing: 0.5px;
         }
         .thermal-subtitle {
-            font-size: ${fontSizePt}pt;
-            font-weight: bold;
+            font-size: ${subtitleFontSizePt}pt;
+            font-weight: 800;
             text-transform: uppercase;
-            margin-top: 2px;
+            margin-top: 3px;
             color: #000000;
         }
         .thermal-meta {
             margin: 6px 0;
             font-size: ${fontSizePt}pt;
             line-height: 1.35;
+            color: #000000;
         }
         .thermal-divider {
-            border-top: 1pt dashed #000000;
-            margin: 5px 0;
+            border-top: 1.5pt dashed #000000;
+            margin: 6px 0;
         }
         .thermal-table {
             width: 100% !important;
@@ -1317,10 +1342,10 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             font-size: ${fontSizePt}pt !important;
         }
         .thermal-table th {
-            padding: 3px 0 !important;
-            border-top: 1pt dashed #000000 !important;
-            border-bottom: 1pt dashed #000000 !important;
-            font-weight: bold !important;
+            padding: 4px 0 !important;
+            border-top: 1.5pt dashed #000000 !important;
+            border-bottom: 1.5pt dashed #000000 !important;
+            font-weight: 800 !important;
             text-transform: uppercase !important;
             color: #000000 !important;
         }
@@ -1338,7 +1363,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
         }
         .thermal-footer {
             text-align: center;
-            margin-top: 8px;
+            margin-top: 10px;
             font-size: ${fontSizePt}pt;
             color: #000000;
         }
@@ -1398,11 +1423,11 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
     <div class="thermal-receipt">
         <div class="thermal-header">
             <div class="thermal-title">${escapeHtml(supplierName)}</div>
-            <div class="thermal-subtitle">PAID ORDER</div>
+            <div class="thermal-subtitle">PAID ORDER RECEIPT</div>
         </div>
 
         <div class="thermal-meta">
-            <div>Order No: ${escapeHtml(orderNo)}</div>
+            <div>Order No: <strong>${escapeHtml(orderNo)}</strong></div>
             <div>Date: ${escapeHtml(dateStr)}</div>
             <div>Customer: ${escapeHtml(customerName)}</div>
         </div>
@@ -1424,26 +1449,27 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
 
         <table class="thermal-totals">
             <tr>
-                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Subtotal</td>
-                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;">${subtotal}</td>
+                <td colspan="2" style="text-align: left; padding: 2px 0;">Subtotal</td>
+                <td style="text-align: right; padding: 2px 0; white-space: nowrap;">&#8369;${subtotal}</td>
             </tr>
             ${deliveryRow}
             ${discountRow}
-            <tr style="font-weight: bold;">
-                <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000;">TOTAL</td>
-                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; white-space: nowrap;">${total}</td>
+            <tr style="font-weight: 900; font-size: ${totalFontSizePt}pt;">
+                <td colspan="2" style="text-align: left; padding: 4px 0; border-top: 1.5pt dashed #000000; color: #000000;">TOTAL</td>
+                <td style="text-align: right; padding: 4px 0; border-top: 1.5pt dashed #000000; white-space: nowrap; color: #000000;">&#8369;${total}</td>
             </tr>
         </table>
 
         <div class="thermal-divider"></div>
 
-        <div class="thermal-meta" style="margin-top: 4px;">
+        <div class="thermal-meta" style="margin-top: 6px;">
             <div><strong>PAYMENT STATUS:</strong> ${escapeHtml(paymentStatus)}</div>
             <div><strong>Payment Method:</strong> ${escapeHtml(paymentMethod)}</div>
         </div>
 
         <div class="thermal-footer">
-            <div>Thank you</div>
+            <div style="font-weight: bold;">THANK YOU FOR YOUR BUSINESS!</div>
+            <div style="font-size: ${is500mm ? '10pt' : '8pt'}; color: #000000; margin-top: 4px;">eConstruction Supply SaaS POS</div>
         </div>
     </div>
 </body>

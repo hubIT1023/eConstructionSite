@@ -501,9 +501,16 @@ try {
             <div class="modal-body" id="returnSlipContentArea" style="padding: 20px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
                 <!-- Dynamically generated -->
             </div>
-            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-danger" onclick="executeReturnSlipPrint()"><i class="fa fa-print"></i> Print Slip</button>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn btn-default" onclick="executeReturnSlipPrint('a4')" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Print standard A4 / PDF Return Voucher">
+                        <i class="fa fa-file-pdf-o text-danger"></i> PDF / A4 Slip
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="executeReturnSlipPrint('500')" style="font-weight: 700;" title="Print on 500mm Wide Thermal Roll (Primary Default Standard)">
+                        <i class="fa fa-print"></i> Print Slip (500mm Thermal)
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -865,10 +872,39 @@ function renderAndShowReturnSlip(data) {
     $('#modalReturnSlipPrint').modal('show');
 }
 
-function executeReturnSlipPrint() {
+function executeReturnSlipPrint(requestedFormat) {
     const printArea = document.getElementById('returnSlipContentArea');
     if (!printArea) return;
     
+    // Read user settings
+    let widthMm = 500;
+    let isThermal = true;
+    try {
+        const saved = localStorage.getItem('pos_printer_settings');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            widthMm = parseInt(parsed.paperWidthMm, 10) || 500;
+            isThermal = (parsed.printerType !== 'normal' && parsed.printerMode !== 'normal');
+        }
+    } catch (e) {}
+
+    if (requestedFormat) {
+        if (requestedFormat === 'a4' || requestedFormat === 'pdf' || requestedFormat === '210') {
+            widthMm = 210;
+            isThermal = false;
+        } else {
+            widthMm = parseInt(requestedFormat, 10) || 500;
+            isThermal = true;
+        }
+    }
+
+    const isA4 = (widthMm === 210 || !isThermal);
+    const is500mm = (!isA4 && widthMm >= 450);
+    const is58mm = (!isA4 && !is500mm && widthMm <= 65);
+    const actualWidthMm = isA4 ? 210 : (is500mm ? 500 : (is58mm ? 58 : 80));
+
+    const bodyFontPt = isA4 ? 10.0 : (is500mm ? 12.0 : (is58mm ? 8.5 : 9.8));
+
     const printWindow = window.open('', '_blank', 'width=850,height=900');
     if (!printWindow) {
         showPageAlert('Print popup was blocked by browser. Please allow popups.', 'warning');
@@ -880,19 +916,61 @@ function executeReturnSlipPrint() {
         <html>
         <head>
             <meta charset="utf-8">
-            <title>Official Return Receipt</title>
+            <title>Official Return Receipt - ${actualWidthMm}mm</title>
             <style>
-                * { box-sizing: border-box; }
-                body { font-family: 'Courier New', Courier, monospace, sans-serif; color: #000; margin: 0; padding: 20px; background: #fff; font-size: 13px; line-height: 1.5; }
+                * {
+                    box-sizing: border-box;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                body {
+                    font-family: ${!isA4 ? "'Courier New', Consolas, 'Liberation Mono', monospace, Arial, sans-serif" : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"} !important;
+                    color: #000000 !important;
+                    margin: 0;
+                    padding: 0;
+                    background: #ffffff !important;
+                    font-size: ${bodyFontPt}pt !important;
+                    line-height: 1.4 !important;
+                    font-variant-numeric: tabular-nums;
+                    font-weight: 500;
+                }
                 table { width: 100%; border-collapse: collapse; }
-                th, td { vertical-align: top; padding: 6px 8px; }
+                th, td { vertical-align: top; padding: ${is500mm ? '6px 10px' : '4px 6px'}; color: #000000 !important; }
+                th { font-weight: 800 !important; border-bottom: 1.5pt dashed #000000 !important; border-top: 1.5pt dashed #000000 !important; }
+
+                @media screen {
+                    body { padding: 20px; background: #334155; display: flex; justify-content: center; }
+                    .return-slip-box {
+                        width: ${actualWidthMm}mm;
+                        max-width: 100%;
+                        background: #ffffff;
+                        padding: ${is500mm ? '12mm 16mm' : (isA4 ? '12mm 15mm' : '4mm')};
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                        border-radius: 4px;
+                    }
+                }
                 @media print {
-                    body { padding: 0 !important; }
+                    @page {
+                        ${isA4 ? 'size: 210mm 297mm; margin: 12mm 15mm;' : `size: ${actualWidthMm}mm auto; margin: 0;`}
+                    }
+                    body {
+                        margin: 0 !important;
+                        padding: ${is500mm ? '8mm 12mm' : (isA4 ? '0' : '2mm')} !important;
+                        width: ${actualWidthMm}mm !important;
+                        max-width: ${actualWidthMm}mm !important;
+                        background: #ffffff !important;
+                    }
+                    .return-slip-box {
+                        width: 100% !important;
+                        max-width: ${actualWidthMm}mm !important;
+                        box-shadow: none !important;
+                        padding: 0 !important;
+                    }
                 }
             </style>
         </head>
         <body>
-            <div style="max-width: 500mm; margin: 0 auto;">
+            <div class="return-slip-box">
                 ${printArea.innerHTML}
             </div>
         </body>

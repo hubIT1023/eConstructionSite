@@ -639,10 +639,13 @@ foreach ($pending_pos as $po) {
                                     <span style="font-size: 11.5px; color: #64748b;">
                                         <i class="fa fa-lock text-muted"></i> Read-only mode &bull; No changes allowed
                                     </span>
-                                    <div>
+                                    <div style="display: flex; gap: 6px;">
                                         <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 700;">Close</button>
-                                        <button type="button" class="btn btn-primary btn-sm" onclick="reprintPOCreated('poPrintVoucher-<?php echo $po_id; ?>')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1;">
-                                            <i class="fa fa-print"></i> Reprint PO
+                                        <button type="button" class="btn btn-default btn-sm" onclick="reprintPOCreated('poPrintVoucher-<?php echo $po_id; ?>', 210)" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Print standard A4 / PDF Voucher">
+                                            <i class="fa fa-file-pdf-o text-danger"></i> A4 / PDF
+                                        </button>
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="reprintPOCreated('poPrintVoucher-<?php echo $po_id; ?>', 500)" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1;" title="Print on 500mm Wide Thermal Roll (Primary Default Standard)">
+                                            <i class="fa fa-print"></i> Reprint PO (500mm Thermal)
                                         </button>
                                     </div>
                                 </div>
@@ -686,7 +689,7 @@ foreach ($pending_pos as $po) {
 // ==========================================
 // REPRINT PO CREATED VOUCHER ENGINE
 // ==========================================
-function reprintPOCreated(elementId) {
+function reprintPOCreated(elementId, requestedWidthMm) {
     const el = document.getElementById(elementId);
     if (!el) {
         alert('PO Voucher template not found.');
@@ -704,11 +707,25 @@ function reprintPOCreated(elementId) {
             const parsed = JSON.parse(saved);
             widthMm = parseInt(parsed.paperWidthMm, 10) || 500;
             copies = Math.min(5, Math.max(1, parseInt(parsed.copies, 10) || 1));
-            isThermal = (parsed.printerType !== 'normal');
+            isThermal = (parsed.printerType !== 'normal' && parsed.printerMode !== 'normal');
         }
     } catch (e) {
         console.warn('Could not read pos_printer_settings', e);
     }
+
+    if (requestedWidthMm) {
+        widthMm = parseInt(requestedWidthMm, 10) || 500;
+        isThermal = (widthMm !== 210);
+    }
+
+    const isA4 = (widthMm === 210 || (!isThermal && widthMm !== 500));
+    const is500mm = (!isA4 && widthMm >= 450);
+    const is58mm = (!isA4 && !is500mm && widthMm <= 65);
+    const is80mm = (!isA4 && !is500mm && !is58mm);
+
+    const actualWidthMm = isA4 ? 210 : (is500mm ? 500 : (is58mm ? 58 : 80));
+    const bodyFontPt = isA4 ? 10.0 : (is500mm ? 12.0 : (is58mm ? 8.5 : 9.8));
+    const titleFontPt = isA4 ? 14.0 : (is500mm ? 16.0 : (is58mm ? 10.5 : 12.0));
 
     let copiesHtml = '';
     for (let c = 0; c < copies; c++) {
@@ -727,29 +744,36 @@ function reprintPOCreated(elementId) {
         <html>
         <head>
             <meta charset="utf-8">
-            <title>Customer Purchase Order Voucher (UNPAID)</title>
+            <title>Customer Purchase Order Voucher (UNPAID) - ${actualWidthMm}mm</title>
             <style>
-                * { box-sizing: border-box; }
+                * {
+                    box-sizing: border-box;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
                 body {
-                    font-family: ${isThermal ? "'Courier New', Courier, monospace, 'Helvetica Neue', Helvetica, Arial, sans-serif" : "'Helvetica Neue', Helvetica, Arial, sans-serif"};
-                    color: #000000;
+                    font-family: ${!isA4 ? "'Courier New', Consolas, 'Liberation Mono', monospace, Arial, sans-serif" : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"} !important;
+                    color: #000000 !important;
                     margin: 0;
                     padding: 0;
-                    background: #ffffff;
-                    font-size: ${widthMm >= 500 ? '14px' : (widthMm <= 80 ? '11px' : '13px')};
-                    line-height: 1.5;
+                    background: #ffffff !important;
+                    font-size: ${bodyFontPt}pt !important;
+                    line-height: 1.4 !important;
+                    font-variant-numeric: tabular-nums;
+                    font-weight: 500;
                 }
                 table { width: 100%; border-collapse: collapse; }
-                th, td { vertical-align: top; padding: ${widthMm >= 500 ? '8px 12px' : '5px 6px'}; }
+                th, td { vertical-align: top; padding: ${is500mm ? '6px 10px' : '4px 6px'}; color: #000000 !important; }
+                th { font-weight: 800 !important; border-bottom: 1.5pt dashed #000000 !important; border-top: 1.5pt dashed #000000 !important; }
                 .pos-page-break { page-break-before: always; margin-top: 25px; }
 
                 @media screen {
                     body { padding: 25px; background: #f1f5f9; display: flex; justify-content: center; }
                     .pos-print-container {
-                        width: ${widthMm}mm;
+                        width: ${actualWidthMm}mm;
                         max-width: 100%;
                         background: #ffffff;
-                        padding: ${widthMm >= 500 ? '12mm' : '6mm'};
+                        padding: ${is500mm ? '12mm 16mm' : (isA4 ? '12mm 15mm' : '4mm')};
                         box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                         border-radius: 6px;
                     }
@@ -757,19 +781,18 @@ function reprintPOCreated(elementId) {
 
                 @media print {
                     @page {
-                        size: ${widthMm}mm auto;
-                        margin: ${widthMm >= 500 ? '0' : '4mm'};
+                        ${isA4 ? 'size: 210mm 297mm; margin: 12mm 15mm;' : `size: ${actualWidthMm}mm auto; margin: 0;`}
                     }
                     body {
                         margin: 0 !important;
-                        padding: ${widthMm >= 500 ? '12mm' : '2mm'} !important;
-                        width: ${widthMm}mm !important;
-                        max-width: ${widthMm}mm !important;
-                        background: #fff !important;
+                        padding: ${is500mm ? '8mm 12mm' : (isA4 ? '0' : '2mm')} !important;
+                        width: ${actualWidthMm}mm !important;
+                        max-width: ${actualWidthMm}mm !important;
+                        background: #ffffff !important;
                     }
                     .pos-print-container {
                         width: 100% !important;
-                        max-width: ${widthMm}mm !important;
+                        max-width: ${actualWidthMm}mm !important;
                         box-shadow: none !important;
                         padding: 0 !important;
                     }
