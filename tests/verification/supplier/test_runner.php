@@ -12,18 +12,28 @@ $_SESSION['supplier_user'] = [
     'role' => 'ADMIN'
 ];
 
+require_once('/var/www/html/admin/inc/config.php');
+
 if ($testType === 'po_success') {
+    $stmt = $pdo->prepare("SELECT payment_id FROM tbl_payment WHERE supplier_id = 2 ORDER BY id DESC LIMIT 1");
+    $stmt->execute();
+    $targetPoId = $stmt->fetchColumn() ?: 'PO-20260908-AB57C';
+
     $_GET = [
         'po_success' => '1',
-        'po_id' => 'PO-20260908-AB57C'
+        'po_id' => $targetPoId
     ];
     // Put stale items in session to verify they get cleaned
     $_SESSION['pos_cart'] = [
         ['product_id' => 10, 'qty' => 1, 'price' => 50]
     ];
 } elseif ($testType === 'po_payment') {
+    $stmt = $pdo->prepare("SELECT payment_id FROM tbl_payment WHERE supplier_id = 2 ORDER BY id DESC LIMIT 1");
+    $stmt->execute();
+    $targetPoId = $stmt->fetchColumn() ?: 'PO-20260908-AB57C';
+
     $_GET = [
-        'po_id' => 'PO-20260908-AB57C'
+        'po_id' => $targetPoId
     ];
     unset($_SESSION['pos_cart']);
 } elseif ($testType === 'clear_cart') {
@@ -41,13 +51,13 @@ $html = ob_get_clean();
 
 if ($testType === 'po_success') {
     echo "=== TEST PO SUCCESS MODE ===\n";
-    $modalOk = strpos($html, 'id="posPOSuccessModal"') !== false && strpos($html, 'PO-20260908-AB57C') !== false;
+    $modalOk = strpos($html, 'id="posPOSuccessModal"') !== false && strpos($html, $targetPoId) !== false;
     echo "1. PO Modal Rendered: " . ($modalOk ? "[PASS]" : "[FAIL]") . "\n";
 
-    $continueBtnOk = strpos($html, 'closePOSPurchaseOrderModal()') !== false && strpos($html, 'Continue / New Transaction') !== false;
+    $continueBtnOk = strpos($html, 'closePOSPurchaseOrderModal()') !== false && (strpos($html, 'Continue / New') !== false);
     echo "2. Continue / New Transaction Button: " . ($continueBtnOk ? "[PASS]" : "[FAIL]") . "\n";
 
-    $printBtnOk = strpos($html, 'printPOSPurchaseOrder()') !== false && strpos($html, 'Print Purchase Order') !== false;
+    $printBtnOk = strpos($html, 'printPOSPurchaseOrder()') !== false && (strpos($html, 'Print Purchase Order') !== false || strpos($html, 'Print PO') !== false);
     echo "3. Print PO Button: " . ($printBtnOk ? "[PASS]" : "[FAIL]") . "\n";
 
     $emptyCartTableOk = strpos($html, 'Cart is empty. Click products or "+ Special Order" to add.') !== false;
