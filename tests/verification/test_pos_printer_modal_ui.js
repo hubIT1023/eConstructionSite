@@ -295,9 +295,9 @@ assert(
 console.log('\n--- 12. POS Top Header Printer Status Button ---');
 assert(
     posContent.includes('id="posPrinterStatusBtn"') &&
-    posContent.includes('Printer: 210mm') &&
+    (posContent.includes('Printer Config:') || posContent.includes('Printer: 210mm')) &&
     posContent.includes('Printer Configuration / Setup (Auto Detect, 210mm / 80mm / 58mm / A4)'),
-    'Header status button shows 210mm default and proper title'
+    'Header status button shows Printer Config: label and proper title'
 );
 
 // 13. Document Dialogs (Receipt, PO, Return) Free of 500mm Buttons

@@ -1539,7 +1539,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </div>
                         <div class="col-sm-7 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Printer Configuration / Setup (Auto Detect, 210mm / 80mm / 58mm / A4)">
-                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer: 210mm</span>
+                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer Config:</span>
                             </button>
                             <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Create custom/manual order item not in catalogue">
                                 <i class="fa fa-plus-circle"></i> + Special Order
@@ -5097,7 +5097,7 @@ function updatePOSPrinterBadge() {
         } else if (s.paperWidthMm) {
             modeLabel = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm) + 'mm';
         }
-        btnLabel.innerText = 'Printer: ' + modeLabel;
+        btnLabel.innerText = 'Printer Config: ' + modeLabel;
     }
 }
 
