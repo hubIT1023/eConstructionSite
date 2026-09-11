@@ -2428,32 +2428,52 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
 <!-- Return Request Submitted / Confirmation Modal -->
 <div class="modal fade" id="posReturnSuccessModal" tabindex="-1" role="dialog" style="z-index: 10070;">
-    <div class="modal-dialog" role="document" style="max-width: 550px;">
+    <div class="modal-dialog" role="document" style="max-width: 580px;">
         <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
             
-            <div class="modal-header" style="background-color: #f59e0b; color: #fff; padding: 15px 20px;">
-                <button type="button" class="close" data-dismiss="modal" onclick="closeReturnSuccessModal()" style="color: #fff; opacity: 0.9;">&times;</button>
-                <h4 class="modal-title" style="font-weight: bold; font-size: 17px;">
-                    <i class="fa fa-clock-o"></i> Return Request Submitted Successfully!
+            <div class="modal-header" style="background: #0284c7; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+                <h4 class="modal-title" style="font-weight: 800; font-size: 16px; margin: 0; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa fa-undo"></i> Return Request Submitted Successfully
                 </h4>
+                <button type="button" class="close" data-dismiss="modal" onclick="closeReturnSuccessModal()" style="color: #fff; opacity: 0.95; font-size: 24px; text-shadow: none; border: none; background: transparent;">&times;</button>
             </div>
 
             <div class="modal-body" id="posPrintReturnSlipArea" style="padding: 20px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
                 <!-- Filled dynamically by renderReturnSubmissionSuccessModal(res) -->
             </div>
 
-            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="button" class="btn btn-primary" onclick="printReturnSlip('thermal200')" style="font-weight: 700; border-radius: 6px; padding: 6px 14px; font-size: 13px; background-color: #0284c7; border-color: #0369a1;" title="Print Return Slip on Thermal Roll">
-                        <i class="fa fa-print"></i> Print Slip (Thermal)
-                    </button>
-                    <button type="button" class="btn btn-info" onclick="printReturnSlip('pdf')" style="font-weight: 700; border-radius: 6px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2;" title="Preview Return Slip in PDF layout">
-                        <i class="fa fa-file-pdf-o"></i> PDF Preview
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <!-- Row 1: Thermal Paper Selector & Settings -->
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: inline-flex; align-items: center; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 3px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <label for="posReturnModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fa fa-sliders text-primary"></i> Output Format:
+                        </label>
+                        <select id="posReturnModalPaperSize" class="form-control input-sm receipt-modal-paper-select" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select output format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
+                            <option value="200" selected>⚡ Thermal Printer: 200 mm Roll (Primary Default)</option>
+                            <option value="80">🖨️ Thermal Printer: 80 mm POS Roll (Standard)</option>
+                            <option value="58">🖨️ Thermal Printer: 58 mm POS Roll (Compact)</option>
+                            <option value="210">📄 Standard Printer: A4 Paper Sheet</option>
+                            <option value="pdf">📄 PDF Preview / Export</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-default" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 34px; padding: 5px 12px; font-weight: 600; border-color: #cbd5e1; border-radius: 6px;">
+                        <i class="fa fa-cog text-muted"></i> Settings
                     </button>
                 </div>
-                <button type="button" class="btn btn-primary" onclick="closeReturnSuccessModal()" style="font-weight: 700; border-radius: 6px; padding: 6px 20px; font-size: 13px;">
-                    <i class="fa fa-check"></i> OK, Got It
-                </button>
+
+                <!-- Row 2: Action Buttons (Print Thermal, PDF Preview, Close) -->
+                <div class="pos-success-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-success" onclick="printReturnSlip()" style="font-weight: 800; height: 36px; padding: 6px 16px; font-size: 13px; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 5px rgba(5,150,105,0.25);" title="Native physical print to thermal roll">
+                        <i class="fa fa-print"></i> Print Slip (Thermal)
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="previewPOSReturnPDF()" style="font-weight: 800; height: 36px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2; border-radius: 6px; box-shadow: 0 2px 5px rgba(14,116,144,0.25);" title="Preview Return Slip in PDF preview window">
+                        <i class="fa fa-file-pdf-o"></i> PDF Preview
+                    </button>
+                    <button type="button" class="btn btn-default" onclick="closeReturnSuccessModal()" style="font-weight: 700; height: 36px; padding: 6px 14px; font-size: 13px; border-radius: 6px; border-color: #cbd5e1;">
+                        <i class="fa fa-check"></i> OK, Got It
+                    </button>
+                </div>
             </div>
 
         </div>
@@ -2861,11 +2881,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 <div class="modal fade in" id="posSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.6);">
     <div class="modal-dialog" role="document" style="max-width: 680px;">
         <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 35px rgba(0,0,0,0.3);">
-            <div class="modal-header bg-green" style="background-color: #10b981 !important; color: #fff; padding: 12px 18px;">
-                <button type="button" class="close" data-dismiss="modal" onclick="closeReceiptModal()" style="color: #fff; opacity: 0.9; font-size: 22px;">&times;</button>
-                <h4 class="modal-title" style="font-weight: 700; font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa fa-check-circle"></i> Print Receipt &bull; Sale Completed
+            <div class="modal-header" style="background: #0284c7; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+                <h4 class="modal-title" style="font-weight: 800; font-size: 16px; margin: 0; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa fa-file-text-o"></i> Official Sales Receipt
                 </h4>
+                <button type="button" class="close" data-dismiss="modal" onclick="closeReceiptModal()" style="color: #fff; opacity: 0.95; font-size: 24px; text-shadow: none; border: none; background: transparent;">&times;</button>
             </div>
             
             <div style="padding: 16px 20px 0 20px;">
@@ -3024,7 +3044,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <label for="posReceiptModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
                             <i class="fa fa-sliders text-primary"></i> Output Format:
                         </label>
-                        <select id="posReceiptModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select output format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
+                        <select id="posReceiptModalPaperSize" class="form-control input-sm receipt-modal-paper-select" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select output format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
                             <option value="200" selected>⚡ Thermal Printer: 200 mm Roll (Primary Default)</option>
                             <option value="80">🖨️ Thermal Printer: 80 mm POS Roll (Standard)</option>
                             <option value="58">🖨️ Thermal Printer: 58 mm POS Roll (Compact)</option>
@@ -3039,10 +3059,10 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                 <!-- Row 2: Action Buttons (Print Thermal, PDF Preview, New Sale) -->
                 <div class="pos-success-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn btn-success" onclick="printPOSReceipt('thermal200')" style="font-weight: 800; height: 36px; padding: 6px 16px; font-size: 13px; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 5px rgba(5,150,105,0.25);" title="Native physical print to thermal roll (No PDF conversion)">
+                    <button type="button" class="btn btn-success" onclick="printPOSReceipt()" style="font-weight: 800; height: 36px; padding: 6px 16px; font-size: 13px; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 5px rgba(5,150,105,0.25);" title="Native physical print to thermal roll (Honors Printer Setup)">
                         <i class="fa fa-print"></i> Print Receipt (Thermal)
                     </button>
-                    <button type="button" class="btn btn-info" onclick="printPOSReceipt('pdf')" style="font-weight: 800; height: 36px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2; border-radius: 6px; box-shadow: 0 2px 5px rgba(14,116,144,0.25);" title="Preview thermal layout in PDF preview window">
+                    <button type="button" class="btn btn-info" onclick="previewPOSReceiptPDF()" style="font-weight: 800; height: 36px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2; border-radius: 6px; box-shadow: 0 2px 5px rgba(14,116,144,0.25);" title="Preview thermal layout in PDF preview window">
                         <i class="fa fa-file-pdf-o"></i> PDF Preview
                     </button>
                     <button type="button" class="btn btn-default" onclick="closeReceiptModal()" style="font-weight: 700; height: 36px; padding: 6px 14px; font-size: 13px; border-radius: 6px; border-color: #cbd5e1;">
@@ -3060,11 +3080,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 <div class="modal fade in" id="posPOSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.65); z-index: 10080;">
     <div class="modal-dialog" role="document" style="max-width: 620px;">
         <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.35);">
-            <div class="modal-header" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; padding: 14px 18px;">
-                <button type="button" class="close" data-dismiss="modal" onclick="closePOSPurchaseOrderModal()" style="color: #fff; opacity: 0.9; font-size: 24px;">&times;</button>
-                <h4 class="modal-title" style="font-weight: 800; font-size: 16px; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa fa-file-text-o"></i> Purchase Order Confirmed
+            <div class="modal-header" style="background: #0284c7; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+                <h4 class="modal-title" style="font-weight: 800; font-size: 16px; margin: 0; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa fa-file-text-o"></i> Purchase Order Voucher Confirmed
                 </h4>
+                <button type="button" class="close" data-dismiss="modal" onclick="closePOSPurchaseOrderModal()" style="color: #fff; opacity: 0.95; font-size: 24px; text-shadow: none; border: none; background: transparent;">&times;</button>
             </div>
             
             <div class="modal-body pos-receipt-400" id="posPrintPOArea" style="padding: 16px; font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 12pt; line-height: 1.25; background: #fff; height: auto; min-height: 0;">
@@ -3182,14 +3202,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
             </div>
 
-            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px;">
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <!-- Row 1: Thermal Paper Selector & Settings -->
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 10px;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <div style="display: inline-flex; align-items: center; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 3px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                         <label for="posPOModalPaperSize" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
-                            <i class="fa fa-sliders text-primary"></i> Print Format:
+                            <i class="fa fa-sliders text-primary"></i> Output Format:
                         </label>
-                        <select id="posPOModalPaperSize" class="form-control input-sm" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select print format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
+                        <select id="posPOModalPaperSize" class="form-control input-sm receipt-modal-paper-select" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select output format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
                             <option value="200" selected>⚡ Thermal Printer: 200 mm Roll (Primary Default)</option>
                             <option value="80">🖨️ Thermal Printer: 80 mm POS Roll (Standard)</option>
                             <option value="58">🖨️ Thermal Printer: 58 mm POS Roll (Compact)</option>
@@ -3197,25 +3217,20 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             <option value="pdf">📄 PDF Preview / Export</option>
                         </select>
                     </div>
-                    <div>
-                        <button type="button" class="btn btn-default" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 34px; padding: 5px 12px; font-weight: 600; border-color: #cbd5e1; border-radius: 6px;">
-                            <i class="fa fa-cog text-muted"></i> Settings
-                        </button>
-                    </div>
+                    <button type="button" class="btn btn-default" onclick="openPOSPrinterModal()" title="Printer Setup & Auto-Detection" style="height: 34px; padding: 5px 12px; font-weight: 600; border-color: #cbd5e1; border-radius: 6px;">
+                        <i class="fa fa-cog text-muted"></i> Settings
+                    </button>
                 </div>
 
-                <!-- Row 2: Action Buttons (Print, PDF, Continue) -->
-                <div class="pos-success-actions" style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; flex-wrap: wrap;">
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" class="btn btn-primary" onclick="printPOSPurchaseOrder()" style="background-color: #0284c7; border-color: #0284c7; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(2,132,199,0.3);" title="Direct print to physical thermal printer">
-                            <i class="fa fa-print"></i> Print Purchase Order (Thermal)
-                        </button>
-                        <button type="button" class="btn btn-info" onclick="printPOSPurchaseOrder('pdf')" style="background-color: #0e7490; border-color: #0891b2; font-weight: 800; border-radius: 6px; height: 36px; padding: 6px 14px; font-size: 13px; box-shadow: 0 2px 6px rgba(14,116,144,0.3);" title="Preview thermal layout via PDF">
-                            <i class="fa fa-file-pdf-o"></i> PDF Preview
-                        </button>
-                    </div>
-
-                    <button type="button" class="btn btn-default" onclick="closePOSPurchaseOrderModal()" style="font-weight: 700; border-radius: 6px; height: 36px; padding: 6px 16px; font-size: 13px; border-color: #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <!-- Row 2: Action Buttons (Print Thermal, PDF Preview, Continue) -->
+                <div class="pos-success-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-success" onclick="printPOSPurchaseOrder()" style="font-weight: 800; height: 36px; padding: 6px 16px; font-size: 13px; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 5px rgba(5,150,105,0.25);" title="Native physical print to thermal roll">
+                        <i class="fa fa-print"></i> Print PO (Thermal)
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="previewPOSPurchaseOrderPDF()" style="font-weight: 800; height: 36px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2; border-radius: 6px; box-shadow: 0 2px 5px rgba(14,116,144,0.25);" title="Preview thermal layout in PDF preview window">
+                        <i class="fa fa-file-pdf-o"></i> PDF Preview
+                    </button>
+                    <button type="button" class="btn btn-default" onclick="closePOSPurchaseOrderModal()" style="font-weight: 700; height: 36px; padding: 6px 14px; font-size: 13px; border-radius: 6px; border-color: #cbd5e1;">
                         <i class="fa fa-arrow-right"></i> Continue / New
                     </button>
                 </div>
@@ -5167,31 +5182,39 @@ function updatePOSPrinterBadge() {
 
 function syncModalPaperSizeSelects() {
     const s = getPOSPrintSettings();
-    const widthMm = String(Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 210));
+    const widthMm = parseInt(s.paperWidthMm, 10) || 80;
     const selects = ['posReceiptModalPaperSize', 'posPOModalPaperSize', 'posReturnModalPaperSize'];
     selects.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             if (s.printerMode === 'pdf') {
-                el.value = 'pdf200';
-            } else if (s.printerType === 'normal' || s.paperWidthMm === 210) {
+                el.value = 'pdf';
+            } else if (s.printerType === 'normal') {
                 el.value = '210';
+            } else if (widthMm <= 52) {
+                el.value = '58';
+            } else if (widthMm <= 65) {
+                el.value = '58';
+            } else if (widthMm <= 95) {
+                el.value = '80';
+            } else if (widthMm >= 180) {
+                el.value = '200';
             } else {
-                el.value = widthMm;
+                el.value = '80';
             }
         }
     });
 
     const a4W = getA4PrintWidthMm();
-    const isA4 = (s.printerType === 'normal' || s.paperWidthMm === 210);
-    const effectiveThermalWidth = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 210);
+    const isA4 = (s.printerType === 'normal');
+    const effectiveThermalWidth = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 80);
     const summaryModes = document.querySelectorAll('.receipt-summary-mode');
     summaryModes.forEach(el => {
         el.innerText = isA4 ? 'Standard Printer (A4)' : 'Thermal Printer (Primary Default)';
     });
     const summaryWidths = document.querySelectorAll('.receipt-summary-width');
     summaryWidths.forEach(el => {
-        el.innerText = isA4 ? (a4W + ' mm') : (effectiveThermalWidth >= 200 ? '195 mm' : (effectiveThermalWidth + ' mm'));
+        el.innerText = isA4 ? (a4W + ' mm') : (s.printContentWidthMm ? s.printContentWidthMm + ' mm' : (effectiveThermalWidth >= 180 ? '120 mm' : '72 mm'));
     });
     const summaryPapers = document.querySelectorAll('.receipt-summary-paper');
     summaryPapers.forEach(el => {
@@ -5209,13 +5232,29 @@ function handleModalPaperSizeChange(val) {
         s.printerMode = 'pdf';
         s.printerType = 'thermal';
         // Strictly preserve the user's configured thermal paperWidthMm and printContentWidthMm
-    } else if (val === 'pdf200' || val === 'pdf500' || val === '210') {
+    } else if (val === '210') {
         s.paperWidthMm = 210;
-        s.printerMode = (val === '210') ? 'thermal' : 'pdf';
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    } else if (val === '200' || val === 'pdf200' || val === 'pdf500') {
+        s.paperWidthMm = 210;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+        s.printContentWidthMm = 120;
+    } else if (val === '80') {
+        s.paperWidthMm = 80;
+        s.printContentWidthMm = 72;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    } else if (val === '58') {
+        s.paperWidthMm = 58;
+        s.printContentWidthMm = 48;
+        s.printerMode = 'thermal';
         s.printerType = 'thermal';
     } else {
         const widthMm = Math.min(MAX_THERMAL_WIDTH_MM, parseInt(val, 10) || 80);
         s.paperWidthMm = widthMm;
+        s.printContentWidthMm = getRecommendedContentWidth(widthMm);
         s.printerMode = 'thermal';
         s.printerType = 'thermal';
     }

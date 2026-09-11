@@ -1099,23 +1099,36 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                  ];
                                                  $po_thermal_json = htmlspecialchars(json_encode($po_order_thermal_data), ENT_QUOTES, 'UTF-8');
                                                  ?>
-                                                  <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                                                      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                                          <!-- MODE 1: THERMAL PRINTER (PRIMARY / DEFAULT / PRODUCTION: 210mm Wide Roll) -->
-                                                        <button type="button" class="btn btn-primary" onclick="printPaidOrderThermal(<?php echo $po_thermal_json; ?>, 210)" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7;" title="Print on 210mm Wide Thermal Roll (Primary Default Standard)">
-                                                            <i class="fa fa-print"></i> Thermal Receipt (210mm Default)
-                                                        </button>
-                                                          <!-- Compact Thermal Fallback (80mm / 58mm) -->
-                                                          <button type="button" class="btn btn-default" onclick="printPaidOrderThermal(<?php echo $po_thermal_json; ?>, 80)" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Print on 80mm or 58mm Thermal Roll">
-                                                              <i class="fa fa-print"></i> 80mm / 58mm
-                                                          </button>
-                                                          <!-- MODE 2: PDF PRINTER / MODE 3: STANDARD A4 PRINTER -->
-                                                          <button type="button" class="btn btn-default" onclick="printReceipt('receipt-print-area-<?php echo $row['id']; ?>', 'pdf')" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Standard A4 or PDF Document">
-                                                              <i class="fa fa-file-pdf-o text-danger"></i> PDF / A4 Receipt
-                                                          </button>
-                                                      </div>
-                                                      <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700;">Close</button>
-                                                  </div>
+                                                   <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                                       <!-- Row 1: Thermal Paper Selector -->
+                                                       <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                                           <div style="display: inline-flex; align-items: center; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 3px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                                               <label for="poReceiptPaperSize-<?php echo $row['id']; ?>" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #334155; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;">
+                                                                   <i class="fa fa-sliders text-primary"></i> Output Format:
+                                                               </label>
+                                                               <select id="poReceiptPaperSize-<?php echo $row['id']; ?>" class="form-control input-sm receipt-modal-paper-select" onchange="handleModalPaperSizeChange(this.value)" style="height: 30px; font-size: 12px; font-weight: 700; color: #0369a1; border: 1px solid #0284c7; border-radius: 4px; padding: 2px 8px; width: auto; background-color: #f0f9ff; cursor: pointer;" title="Select output format (Thermal 200mm / PDF Preview / Thermal 80mm / Thermal 58mm / A4)">
+                                                                   <option value="200" selected>⚡ Thermal Printer: 200 mm Roll (Primary Default)</option>
+                                                                   <option value="80">🖨️ Thermal Printer: 80 mm POS Roll (Standard)</option>
+                                                                   <option value="58">🖨️ Thermal Printer: 58 mm POS Roll (Compact)</option>
+                                                                   <option value="210">📄 Standard Printer: A4 Paper Sheet</option>
+                                                                   <option value="pdf">📄 PDF Preview / Export</option>
+                                                               </select>
+                                                           </div>
+                                                       </div>
+
+                                                       <!-- Row 2: Standard Action Buttons -->
+                                                       <div class="pos-success-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                                           <button type="button" class="btn btn-success" onclick="printPaidOrderThermal(<?php echo $po_thermal_json; ?>)" style="font-weight: 800; height: 36px; padding: 6px 16px; font-size: 13px; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 5px rgba(5,150,105,0.25);" title="Native physical print to thermal roll (Honors Printer Setup)">
+                                                               <i class="fa fa-print"></i> Print Receipt (Thermal)
+                                                           </button>
+                                                           <button type="button" class="btn btn-info" onclick="previewPaidOrderThermalPDF(<?php echo $po_thermal_json; ?>)" style="font-weight: 800; height: 36px; padding: 6px 14px; font-size: 13px; background-color: #0e7490; border-color: #0891b2; border-radius: 6px; box-shadow: 0 2px 5px rgba(14,116,144,0.25);" title="Preview thermal layout in PDF preview window">
+                                                               <i class="fa fa-file-pdf-o"></i> PDF Preview
+                                                           </button>
+                                                           <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700; height: 36px; padding: 6px 14px; font-size: 13px; border-radius: 6px; border-color: #cbd5e1;">
+                                                               Close
+                                                           </button>
+                                                       </div>
+                                                   </div>
                                              </div>
                                          </div>
                                      </div>
@@ -1514,8 +1527,11 @@ function printPaidOrderThermal(orderData, widthMm) {
             return;
         }
     }
-    const html = generatePaidOrderThermalHTML(orderData, widthMm);
-    const printWindow = window.open('', '_blank', 'width=500,height=700,menubar=no,toolbar=no,location=no,status=no');
+    const s = getPOSPrintSettings();
+    const paperW = widthMm || s.paperWidthMm || 80;
+    const contentW = s.printContentWidthMm || ((paperW <= 58) ? 48 : ((paperW <= 80) ? 72 : 120));
+    const html = generatePaidOrderThermalHTML(orderData, paperW, contentW, false);
+    const printWindow = window.open('', '_blank', 'width=650,height=850,menubar=no,toolbar=no,location=no,status=no');
     if (!printWindow) {
         alert('Print popup was blocked by browser. Please allow popups for this site.');
         return;
@@ -1528,6 +1544,87 @@ function printPaidOrderThermal(orderData, widthMm) {
         printWindow.print();
     }, 450);
 }
+
+function previewPaidOrderThermalPDF(orderData, widthMm) {
+    if (typeof orderData === 'string') {
+        try {
+            orderData = JSON.parse(orderData);
+        } catch (e) {
+            console.error('Invalid order data for thermal receipt', e);
+            return;
+        }
+    }
+    const s = getPOSPrintSettings();
+    const paperW = widthMm || s.paperWidthMm || 80;
+    const contentW = s.printContentWidthMm || ((paperW <= 58) ? 48 : ((paperW <= 80) ? 72 : 120));
+    const html = generatePaidOrderThermalHTML(orderData, paperW, contentW, true);
+    const printWindow = window.open('', '_blank', 'width=750,height=900,menubar=no,toolbar=no,location=no,status=no');
+    if (!printWindow) {
+        alert('Print popup was blocked by browser. Please allow popups for this site.');
+        return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+}
+
+function handleModalPaperSizeChange(val) {
+    const s = getPOSPrintSettings();
+    if (val === 'pdf' || val === 'pdf_preview') {
+        s.printerMode = 'pdf';
+        s.printerType = 'thermal';
+    } else if (val === '210') {
+        s.paperWidthMm = 210;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    } else if (val === '200' || val === 'pdf200' || val === 'pdf500') {
+        s.paperWidthMm = 210;
+        s.printContentWidthMm = 120;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    } else if (val === '80') {
+        s.paperWidthMm = 80;
+        s.printContentWidthMm = 72;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    } else if (val === '58') {
+        s.paperWidthMm = 58;
+        s.printContentWidthMm = 48;
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    } else {
+        const widthMm = Math.min(210, parseInt(val, 10) || 80);
+        s.paperWidthMm = widthMm;
+        s.printContentWidthMm = (widthMm <= 58) ? 48 : ((widthMm <= 80) ? 72 : 120);
+        s.printerMode = 'thermal';
+        s.printerType = 'thermal';
+    }
+    localStorage.setItem('pos_printer_settings', JSON.stringify(s));
+    syncModalPaperSizeSelects();
+}
+
+function syncModalPaperSizeSelects() {
+    const s = getPOSPrintSettings();
+    const widthMm = parseInt(s.paperWidthMm, 10) || 80;
+    const selects = document.querySelectorAll('.receipt-modal-paper-select');
+    selects.forEach(el => {
+        if (s.printerMode === 'pdf') {
+            el.value = 'pdf';
+        } else if (s.printerType === 'normal') {
+            el.value = '210';
+        } else if (widthMm <= 65) {
+            el.value = '58';
+        } else if (widthMm <= 95) {
+            el.value = '80';
+        } else if (widthMm >= 180) {
+            el.value = '200';
+        } else {
+            el.value = '80';
+        }
+    });
+}
+document.addEventListener('DOMContentLoaded', syncModalPaperSizeSelects);
 
 // Print Utility for PO Voucher and Official Receipt (PDF / Standard Print)
 function printReceipt(divId, format) {
