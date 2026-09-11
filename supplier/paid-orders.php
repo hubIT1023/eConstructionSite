@@ -1218,7 +1218,7 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedContentWidthMm) {
+function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedContentWidthMm, isPdfPreview = false) {
     const s = getPOSPrintSettings();
     let paperWidthMm = requestedWidthMm || s.paperWidthMm || 80;
     if (requestedWidthMm) paperWidthMm = requestedWidthMm;
@@ -1287,11 +1287,15 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
         `;
     }
 
+    const docPageTitle = isPdfPreview 
+        ? `Thermal Receipt PDF Preview - ${escapeHtml(orderNo)}` 
+        : `Paid Order Thermal Receipt - ${escapeHtml(orderNo)}`;
+
     return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Paid Order Thermal Receipt - ${escapeHtml(orderNo)}</title>
+    <title>${docPageTitle}</title>
     <style>
         * {
             box-sizing: border-box;
@@ -1310,12 +1314,13 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             font-family: ${fontStack} !important;
             font-size: ${fontSizePt}pt !important;
             line-height: 1.3 !important;
-            width: ${paperWidthMm}mm !important;
+            width: 100% !important;
             height: auto !important;
         }
         .thermal-receipt {
             width: ${contentWidthMm}mm !important;
             max-width: ${contentWidthMm}mm !important;
+            min-width: ${contentWidthMm}mm !important;
             margin: 0 auto !important;
             padding: 2mm 3mm !important;
             background: #ffffff !important;
@@ -1393,7 +1398,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             }
             .thermal-preview-toolbar {
                 width: 100%;
-                max-width: ${paperWidthMm}mm;
+                max-width: ${Math.max(paperWidthMm, 80)}mm;
                 margin-bottom: 12px;
                 background: #0f172a;
                 color: #ffffff;
@@ -1406,20 +1411,30 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
                 font-size: 11px;
             }
             .thermal-receipt {
+                width: ${contentWidthMm}mm !important;
+                max-width: ${contentWidthMm}mm !important;
+                min-width: ${contentWidthMm}mm !important;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.35);
                 border: 1px solid #cbd5e1;
                 border-radius: 2px;
+                margin: 0 auto !important;
             }
         }
         @media print {
             .thermal-preview-toolbar, .no-print {
                 display: none !important;
             }
-            body {
+            html, body {
                 padding: 0 !important;
+                margin: 0 !important;
                 background: #ffffff !important;
+                width: 100% !important;
             }
             .thermal-receipt {
+                width: ${contentWidthMm}mm !important;
+                max-width: ${contentWidthMm}mm !important;
+                min-width: ${contentWidthMm}mm !important;
+                margin: 0 auto !important;
                 box-shadow: none !important;
                 border: none !important;
             }
@@ -1428,9 +1443,9 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
 </head>
 <body>
     <div class="no-print thermal-preview-toolbar">
-        <span style="font-weight: bold;">🖨️ Thermal Receipt (${paperWidthMm}mm / Content: ${contentWidthMm}mm)</span>
+        <span style="font-weight: bold;">🖨️ ${isPdfPreview ? 'Thermal Receipt (PDF Preview)' : 'Thermal Receipt'} (${paperWidthMm}mm / Content: ${contentWidthMm}mm)</span>
         <div style="display: flex; gap: 6px;">
-            <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">Print</button>
+            <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">🖨️ ${isPdfPreview ? 'Print / Save as PDF' : 'Print'}</button>
             <button type="button" onclick="window.close()" style="background: #64748b; color: #fff; border: none; padding: 4px 8px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">✕</button>
         </div>
     </div>
