@@ -5205,16 +5205,16 @@ function syncModalPaperSizeSelects() {
 
 function handleModalPaperSizeChange(val) {
     const s = getPOSPrintSettings();
-    if (val === 'pdf' || val === 'pdf_preview') {
+    if (val === 'pdf200' || val === 'pdf500' || val === 'pdf') {
+        s.paperWidthMm = 210;
         s.printerMode = 'pdf';
         s.printerType = 'thermal';
-        // Strictly preserve the user's configured thermal paperWidthMm and printContentWidthMm
-    } else if (val === 'pdf200' || val === 'pdf500' || val === '210') {
+    } else if (val === '210') {
         s.paperWidthMm = 210;
-        s.printerMode = (val === '210') ? 'thermal' : 'pdf';
+        s.printerMode = 'thermal';
         s.printerType = 'thermal';
     } else {
-        const widthMm = Math.min(MAX_THERMAL_WIDTH_MM, parseInt(val, 10) || 80);
+        const widthMm = Math.min(MAX_THERMAL_WIDTH_MM, parseInt(val, 10) || 210);
         s.paperWidthMm = widthMm;
         s.printerMode = 'thermal';
         s.printerType = 'thermal';
@@ -5636,46 +5636,125 @@ function initPOSPrinterDetection(forceRefresh = false) {
 
 function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docType = 'receipt', requestedFormat = null) {
     const s = getPOSPrintSettings();
+    let paperWidthMm = (docType === 'po') ? 210 : (s.paperWidthMm || 210);
+    // Strict cap at 210mm for thermal
+    if (paperWidthMm > MAX_THERMAL_WIDTH_MM && docType !== 'a4' && requestedFormat !== 'pdfA4' && requestedFormat !== 'a4' && requestedFormat !== '210') {
+        paperWidthMm = MAX_THERMAL_WIDTH_MM;
+    }
+    let contentWidthMm = (paperWidthMm >= 180) ? 195 : ((paperWidthMm === 80) ? 72 : ((paperWidthMm === 58) ? 50 : ((paperWidthMm <= 52) ? 44 : Math.max(40, paperWidthMm - 8))));
     let isA4 = false;
     let isPdfPreview = false;
 
-    // Detect explicit A4 requests (e.g. from Section 2 Standard A4 Printer Test)
-    const isA4Explicit = (requestedFormat === 'pdfA4' || requestedFormat === 'a4');
-    // Detect PDF preview requests
-    const isPdfRequested = (requestedFormat === 'pdf' || requestedFormat === 'pdf_preview');
+    let isA4PDF = (requestedFormat === 'pdfA4' || requestedFormat === 'a4' || requestedFormat === '210');
+    let is210mmThermalPDF = (requestedFormat === 'pdf210' || requestedFormat === 'pdf200' || requestedFormat === 'pdf500' || (requestedFormat === 'pdf' && docType === 'po'));
+    let is210mmThermal = (requestedFormat === 'thermal210' || requestedFormat === '210' || requestedFormat === 'thermal200' || requestedFormat === '200' || requestedFormat === 'thermal500' || requestedFormat === '500' || requestedFormat === 'thermal400' || requestedFormat === '400');
+    let is80mmThermal = (requestedFormat === 'thermal80' || requestedFormat === '80' || requestedFormat === 'thermal');
+    let is58mmThermal = (requestedFormat === 'thermal58' || requestedFormat === '58');
+    let is50mmThermal = (requestedFormat === 'thermal50' || requestedFormat === '50');
+    let isLegacyWideThermal = (requestedFormat === 'thermal250' || requestedFormat === '250');
 
-    let paperWidthMm = 80;
-    let contentWidthMm = 72;
-
-    if (isA4Explicit || (docType === 'a4' && !isPdfRequested)) {
-        // Standard Office A4 Printer path
+    if (is210mmThermalPDF) {
+        paperWidthMm = 210;
+        contentWidthMm = 195;
+        isA4 = false;
+        isPdfPreview = true;
+    } else if (isA4PDF || (requestedFormat === 'pdf' && docType !== 'po')) {
         paperWidthMm = 210;
         contentWidthMm = getA4PrintWidthMm();
         isA4 = true;
-        isPdfPreview = isA4Explicit;
-    } else {
-        // Receipt, Return Slip, PO, or Thermal PDF Preview: Strictly honor pos_printer_settings
+        isPdfPreview = true;
+    } else if (is210mmThermal || isLegacyWideThermal) {
+        // Remap legacy 500, 400, 250 and current 200/210 to 210mm thermal roll
+        paperWidthMm = 210;
+        contentWidthMm = 195;
         isA4 = false;
-        isPdfPreview = isPdfRequested || (s.printerMode === 'pdf');
-
-        if (requestedFormat === 'thermal50' || requestedFormat === '50') {
-            paperWidthMm = 50;
-            contentWidthMm = 44;
-        } else if (requestedFormat === 'thermal58' || requestedFormat === '58') {
-            paperWidthMm = 58;
-            contentWidthMm = 48;
-        } else if (requestedFormat === 'thermal80' || requestedFormat === '80' || requestedFormat === 'thermal') {
+    } else if (is80mmThermal) {
+        paperWidthMm = 80;
+        contentWidthMm = 72;
+        isA4 = false;
+    } else if (is58mmThermal) {
+        paperWidthMm = 58;
+        contentWidthMm = 50;
+        isA4 = false;
+    } else if (is50mmThermal) {
+        paperWidthMm = 50;
+        contentWidthMm = 44;
+        isA4 = false;
+    } else if (requestedFormat && !isNaN(parseInt(requestedFormat, 10))) {
+        let reqW = parseInt(requestedFormat, 10);
+        if (reqW === 210) {
+            paperWidthMm = 210;
+            contentWidthMm = 195;
+            isA4 = false;
+        } else if (reqW === 80) {
             paperWidthMm = 80;
             contentWidthMm = 72;
-        } else if (requestedFormat === 'thermal210' || requestedFormat === 'thermal200' || requestedFormat === '210' || requestedFormat === '200') {
+            isA4 = false;
+        } else if (reqW === 58) {
+            paperWidthMm = 58;
+            contentWidthMm = 50;
+            isA4 = false;
+        } else if (reqW <= 52) {
+            paperWidthMm = 50;
+            contentWidthMm = 44;
+            isA4 = false;
+        } else if (reqW >= 200) {
+            // Remap any request >= 200mm to 210mm maximum
             paperWidthMm = 210;
-            contentWidthMm = 120;
+            contentWidthMm = 195;
+            isA4 = false;
         } else {
-            // Read active settings from localStorage as single source of truth
-            paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 80);
-            if (paperWidthMm < 40) paperWidthMm = 40;
-            contentWidthMm = s.printContentWidthMm || getRecommendedContentWidth(paperWidthMm);
-            contentWidthMm = Math.min(paperWidthMm, Math.max(30, Math.round(contentWidthMm)));
+            paperWidthMm = reqW;
+            contentWidthMm = Math.max(40, reqW - 8);
+            isA4 = false;
+        }
+    } else {
+        // Check document-specific modal selectors
+        let selVal = null;
+        if (docType === 'po') {
+            const poModalSel = document.getElementById('posPOModalPaperSize');
+            if (poModalSel && poModalSel.value) selVal = poModalSel.value;
+        } else if (docType === 'receipt') {
+            const recModalSel = document.getElementById('posReceiptModalPaperSize');
+            if (recModalSel && recModalSel.value) selVal = recModalSel.value;
+        } else if (docType === 'return') {
+            const retModalSel = document.getElementById('posReturnModalPaperSize');
+            if (retModalSel && retModalSel.value) selVal = retModalSel.value;
+        }
+
+        if (selVal === 'pdf200' || selVal === 'pdf500') {
+            paperWidthMm = 210;
+            contentWidthMm = 195;
+            isA4 = false;
+            isPdfPreview = true;
+        } else {
+            let defaultWidth = (docType === 'po') ? 210 : (s.paperWidthMm || 210);
+            let chosenWidth = selVal ? parseInt(selVal, 10) : defaultWidth;
+            if (chosenWidth === 210) {
+                paperWidthMm = 210;
+                contentWidthMm = 195;
+                isA4 = false;
+            } else if (chosenWidth >= 200) {
+                paperWidthMm = 210;
+                contentWidthMm = 195;
+                isA4 = false;
+            } else if (chosenWidth === 80) {
+                paperWidthMm = 80;
+                contentWidthMm = 72;
+                isA4 = false;
+            } else if (chosenWidth === 58) {
+                paperWidthMm = 58;
+                contentWidthMm = 50;
+                isA4 = false;
+            } else if (chosenWidth <= 52) {
+                paperWidthMm = 50;
+                contentWidthMm = 44;
+                isA4 = false;
+            } else {
+                paperWidthMm = chosenWidth;
+                contentWidthMm = Math.max(40, chosenWidth - 8);
+                isA4 = false;
+            }
         }
     }
 
@@ -5939,13 +6018,13 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
                 background: #334155;
                 display: flex;
                 flex-direction: column;
-                align-items: center;
+                align-items: flex-start;
                 min-height: 100vh;
                 width: auto;
             }
             .pdf-preview-toolbar {
                 width: 100%;
-                max-width: ${Math.max(paperWidthMm, 80)}mm;
+                max-width: ${Math.max(210, contentWidthMm)}mm;
                 margin: 0 0 16px 0;
                 background: #0f172a;
                 color: #ffffff;
@@ -5960,7 +6039,6 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             .pos-print-container, .pos-receipt-container {
                 width: ${contentWidthMm}mm !important;
                 max-width: ${contentWidthMm}mm !important;
-                min-width: ${contentWidthMm}mm !important;
                 background: #ffffff !important;
                 padding: ${containerPadding} !important;
                 box-shadow: 0 8px 30px rgba(0,0,0,0.3);
@@ -5969,7 +6047,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
                 height: auto;
                 min-height: 0;
                 text-align: left !important;
-                margin: 0 auto !important;
+                ${containerMargin}
                 overflow: hidden !important;
             }
         }
@@ -5985,7 +6063,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             html, body {
                 margin: 0 !important;
                 padding: 0 !important;
-                width: 100% !important;
+                width: ${paperWidthMm}mm !important;
                 background: #ffffff !important;
                 font-family: ${fontStack} !important;
                 font-size: ${bodyFontSizePt} !important;
@@ -5998,8 +6076,7 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             .pos-print-container, .pos-receipt-container {
                 width: ${contentWidthMm}mm !important;
                 max-width: ${contentWidthMm}mm !important;
-                min-width: ${contentWidthMm}mm !important;
-                margin: 0 auto !important;
+                ${containerMargin}
                 padding: ${containerPadding} !important;
                 box-sizing: border-box !important;
                 box-shadow: none !important;
@@ -6054,7 +6131,7 @@ function executePOSPrintJob(htmlContent, autoTriggerPrint = true) {
     }
 }
 
-function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedContentWidthMm, isPdfPreview = false) {
+function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedContentWidthMm) {
     const s = getPOSPrintSettings();
     let paperWidthMm = requestedWidthMm || s.paperWidthMm || 80;
     if (requestedWidthMm) paperWidthMm = requestedWidthMm;
@@ -6127,15 +6204,11 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
         `;
     }
 
-    const docPageTitle = isPdfPreview 
-        ? `Thermal Receipt PDF Preview - ${escapeHtml(orderNo)}` 
-        : `Paid Order Thermal Receipt - ${escapeHtml(orderNo)}`;
-
     return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>${docPageTitle}</title>
+    <title>Paid Order Thermal Receipt - ${escapeHtml(orderNo)}</title>
     <style>
         * {
             box-sizing: border-box;
@@ -6154,13 +6227,12 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             font-family: ${fontStack} !important;
             font-size: ${fontSizePt}pt !important;
             line-height: 1.3 !important;
-            width: 100% !important;
+            width: ${paperWidthMm}mm !important;
             height: auto !important;
         }
         .thermal-receipt {
             width: ${contentWidthMm}mm !important;
             max-width: ${contentWidthMm}mm !important;
-            min-width: ${contentWidthMm}mm !important;
             margin: 0 auto !important;
             padding: 2mm 3mm !important;
             background: #ffffff !important;
@@ -6238,7 +6310,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             }
             .thermal-preview-toolbar {
                 width: 100%;
-                max-width: ${Math.max(paperWidthMm, 80)}mm;
+                max-width: ${paperWidthMm}mm;
                 margin-bottom: 12px;
                 background: #0f172a;
                 color: #ffffff;
@@ -6251,30 +6323,20 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
                 font-size: 11px;
             }
             .thermal-receipt {
-                width: ${contentWidthMm}mm !important;
-                max-width: ${contentWidthMm}mm !important;
-                min-width: ${contentWidthMm}mm !important;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.35);
                 border: 1px solid #cbd5e1;
                 border-radius: 2px;
-                margin: 0 auto !important;
             }
         }
         @media print {
             .thermal-preview-toolbar, .no-print {
                 display: none !important;
             }
-            html, body {
+            body {
                 padding: 0 !important;
-                margin: 0 !important;
                 background: #ffffff !important;
-                width: 100% !important;
             }
             .thermal-receipt {
-                width: ${contentWidthMm}mm !important;
-                max-width: ${contentWidthMm}mm !important;
-                min-width: ${contentWidthMm}mm !important;
-                margin: 0 auto !important;
                 box-shadow: none !important;
                 border: none !important;
             }
@@ -6283,9 +6345,9 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
 </head>
 <body>
     <div class="no-print thermal-preview-toolbar">
-        <span style="font-weight: bold;">🖨️ ${isPdfPreview ? 'Thermal Receipt (PDF Preview)' : 'Thermal Receipt'} (${paperWidthMm}mm / Content: ${contentWidthMm}mm)</span>
+        <span style="font-weight: bold;">🖨️ Thermal Receipt (${paperWidthMm}mm / Content: ${contentWidthMm}mm)</span>
         <div style="display: flex; gap: 6px;">
-            <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">🖨️ ${isPdfPreview ? 'Print / Save as PDF' : 'Print'}</button>
+            <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">Print</button>
             <button type="button" onclick="window.close()" style="background: #64748b; color: #fff; border: none; padding: 4px 8px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">✕</button>
         </div>
     </div>
@@ -6345,7 +6407,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
 </html>`;
 }
 
-function testPrintThermalPaidOrder(widthMm = 80, contentWidthMm = null, isPdfPreview = false) {
+function testPrintThermalPaidOrder(widthMm = 80, contentWidthMm = null) {
     const s = getPOSPrintSettings();
     let targetWidth = widthMm || s.paperWidthMm || 80;
     if (targetWidth > MAX_THERMAL_WIDTH_MM) targetWidth = MAX_THERMAL_WIDTH_MM;
@@ -6374,34 +6436,26 @@ function testPrintThermalPaidOrder(widthMm = 80, contentWidthMm = null, isPdfPre
         total: 6750.00
     };
 
-    const html = generatePaidOrderThermalHTML(sampleOrderData, targetWidth, targetContentWidth, isPdfPreview);
-    executePOSPrintJob(html, !isPdfPreview);
+    const html = generatePaidOrderThermalHTML(sampleOrderData, targetWidth, targetContentWidth);
+    executePOSPrintJob(html, true);
 }
 
 function testPrintPOS(format = 'thermal80') {
     if (format === 'thermal50') {
-        testPrintThermalPaidOrder(50, 44, false);
+        testPrintThermalPaidOrder(50, 44);
         return;
     } else if (format === 'thermal58') {
-        testPrintThermalPaidOrder(58, 48, false);
+        testPrintThermalPaidOrder(58, 48);
         return;
     } else if (format === 'thermal' || format === 'thermal80' || format === 'thermalPaidOrder') {
-        testPrintThermalPaidOrder(80, 72, false);
+        testPrintThermalPaidOrder(80, 72);
         return;
     } else if (format === 'thermal210' || format === 'thermal200' || format === '210' || format === '200') {
-        testPrintThermalPaidOrder(210, 120, false);
+        testPrintThermalPaidOrder(210, 120);
         return;
     } else if (format === 'custom') {
         const s = getPOSPrintSettings();
-        testPrintThermalPaidOrder(s.paperWidthMm || 80, s.printContentWidthMm || 72, false);
-        return;
-    } else if (format === 'pdf_preview' || format === 'pdf') {
-        // Strict requirement: PDF Preview strictly uses saved thermal printer settings
-        const s = getPOSPrintSettings();
-        const paperW = Math.min(MAX_THERMAL_WIDTH_MM, s.paperWidthMm || 80);
-        let contentW = s.printContentWidthMm || getRecommendedContentWidth(paperW);
-        contentW = Math.min(paperW, Math.max(30, Math.round(contentW)));
-        testPrintThermalPaidOrder(paperW, contentW, true);
+        testPrintThermalPaidOrder(s.paperWidthMm || 80, s.printContentWidthMm || 72);
         return;
     }
     const s = getPOSPrintSettings();
@@ -6522,14 +6576,14 @@ function printPOSReceipt(format = null) {
         alert('Receipt print area not found.');
         return;
     }
-    const isPdf = (format === 'pdf' || format === 'pdf_preview');
-    const title = isPdf ? 'Official Sales Receipt (PDF Preview)' : 'Official Sales Receipt (Thermal)';
+    const isPdf = (format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 'pdfA4');
+    const title = isPdf ? 'Official Sales Receipt (PDF)' : 'Official Sales Receipt (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'receipt', format);
-    executePOSPrintJob(html, !isPdf);
+    executePOSPrintJob(html, true);
 }
 
 function previewPOSReceiptPDF() {
-    printPOSReceipt('pdf');
+    printPOSReceipt('pdfA4');
 }
 
 function printReturnSlip(format = null) {
@@ -6538,14 +6592,14 @@ function printReturnSlip(format = null) {
         alert('Return slip print area not found.');
         return;
     }
-    const isPdf = (format === 'pdf' || format === 'pdf_preview');
-    const title = isPdf ? 'Official Return Slip (PDF Preview)' : 'Official Return Slip (Thermal)';
+    const isPdf = (format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 'pdfA4');
+    const title = isPdf ? 'Official Return Slip (PDF)' : 'Official Return Slip (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'return', format);
-    executePOSPrintJob(html, !isPdf);
+    executePOSPrintJob(html, true);
 }
 
 function previewPOSReturnPDF() {
-    printReturnSlip('pdf');
+    printReturnSlip('pdfA4');
 }
 
 function printPOSPurchaseOrder(format = null) {

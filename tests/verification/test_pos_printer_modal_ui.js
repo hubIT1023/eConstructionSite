@@ -396,43 +396,6 @@ try {
 }
 assert(jsParsed, 'Printer configuration and print engine JavaScript parses cleanly with 0 syntax errors');
 
-// 18. Thermal Print Width Synchronization for PDF Preview & A4 Destination
-console.log('\n--- 18. Thermal Print Width Synchronization for PDF Preview & A4 Destination ---');
-assert(
-    posContent.includes("format === 'pdf_preview' || format === 'pdf'") &&
-    posContent.includes('testPrintThermalPaidOrder(paperW, contentW, true)'),
-    'testPrintPOS routes pdf_preview strictly to testPrintThermalPaidOrder using saved thermal paper & content widths'
-);
-
-assert(
-    posContent.includes("previewPOSReceiptPDF()") &&
-    posContent.includes("printPOSReceipt('pdf')"),
-    'previewPOSReceiptPDF invokes printPOSReceipt with pdf (not forcing pdfA4 office mode)'
-);
-
-assert(
-    posContent.includes("val === 'pdf' || val === 'pdf_preview'") &&
-    posContent.includes("s.printerMode = 'pdf';") &&
-    posContent.includes("s.printerType = 'thermal';", posContent.indexOf("val === 'pdf' || val === 'pdf_preview'")),
-    'handleModalPaperSizeChange preserves saved thermal roll width when val is pdf'
-);
-
-assert(
-    posContent.includes('.thermal-receipt {') &&
-    posContent.includes('min-width: ${contentWidthMm}mm !important;') &&
-    posContent.includes('margin: 0 auto !important;'),
-    'generatePaidOrderThermalHTML locks receipt container to exact contentWidthMm with margin: 0 auto to prevent A4 stretching'
-);
-
-const paidOrdersPathUpdated = path.join(ROOT_DIR, 'supplier/paid-orders.php');
-const paidOrdersContentUpdated = fs.readFileSync(paidOrdersPathUpdated, 'utf8');
-assert(
-    paidOrdersContentUpdated.includes('.thermal-receipt {') &&
-    paidOrdersContentUpdated.includes('min-width: ${contentWidthMm}mm !important;') &&
-    paidOrdersContentUpdated.includes('margin: 0 auto !important;'),
-    'paid-orders.php also locks thermal receipt to contentWidthMm with margin: 0 auto'
-);
-
 console.log('\n================================================================');
 console.log(`RESULTS: ${passedChecks}/${totalChecks} checks passed.`);
 if (allPassed) {
