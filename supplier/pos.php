@@ -2463,315 +2463,359 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 <!-- ========================================== -->
 <!-- PRINTER CONFIGURATION / SETUP MODAL        -->
 <!-- ========================================== -->
+<style>
+#posPrinterModal .printer-dialog { max-width: 1040px; width: 96%; margin: 28px auto; }
+#posPrinterModal .printer-dialog-content { border-radius: 12px; overflow: hidden; box-shadow: 0 25px 70px rgba(0,0,0,0.4); border: none; background: #ffffff; display: flex; flex-direction: column; }
+#posPrinterModal .cfg-header { background: linear-gradient(135deg, #0f1b33 0%, #162b4a 100%); color: #ffffff; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; }
+#posPrinterModal .cfg-header h1 { font-size: 20px; font-weight: 700; margin: 0; color: #ffffff; letter-spacing: -0.2px; }
+#posPrinterModal .cfg-header .sub { font-size: 12px; color: #cbd5e1; margin-top: 3px; font-weight: 400; }
+#posPrinterModal .cfg-header .close-btn { background: none; border: 0; color: #ffffff; font-size: 28px; line-height: 1; cursor: pointer; opacity: 0.85; transition: opacity 0.15s; padding: 0; }
+#posPrinterModal .cfg-header .close-btn:hover { opacity: 1; color: #ffffff; }
+#posPrinterModal .cfg-body { padding: 18px 20px; overflow-y: auto; max-height: calc(92vh - 125px); background: #ffffff; color: #334155; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+#posPrinterModal .cfg-section { border: 1px solid #dbe4ef; border-radius: 8px; padding: 14px; margin-bottom: 14px; background: #ffffff; }
+#posPrinterModal .cfg-title { font-size: 13.5px; font-weight: 700; text-transform: uppercase; color: #1668b3; margin: 0 0 13px; display: flex; align-items: center; gap: 6px; letter-spacing: 0.3px; }
+#posPrinterModal .cfg-title.green { color: #16834a; }
+#posPrinterModal .cfg-title.purple { color: #7250c8; }
+#posPrinterModal .cfg-detect { display: grid; grid-template-columns: 1fr auto 175px; gap: 18px; align-items: center; background: #f4faff; border-color: #9ed5ff; }
+#posPrinterModal .cfg-label { font-size: 11px; font-weight: 700; color: #1769aa; text-transform: uppercase; letter-spacing: 0.5px; }
+#posPrinterModal .cfg-status { font-size: 15px; font-weight: 700; color: #16834a; }
+#posPrinterModal .cfg-desc { font-size: 11.5px; color: #64748b; line-height: 1.4; margin-top: 4px; }
+#posPrinterModal .cfg-stat { border-left: 1px solid #d6e1ed; padding-left: 16px; }
+#posPrinterModal .cfg-btn { border: 1px solid #cbd5e1; background: #ffffff; color: #334155; border-radius: 6px; padding: 9px 13px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+#posPrinterModal .cfg-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+#posPrinterModal .cfg-btn.primary { background: #087bc1; color: #ffffff; border-color: #087bc1; }
+#posPrinterModal .cfg-btn.primary:hover { background: #076ca9; border-color: #076ca9; }
+#posPrinterModal .cfg-btn.success { background: #13a36b; color: #ffffff; border-color: #13a36b; }
+#posPrinterModal .cfg-btn.success:hover { background: #108f5d; border-color: #108f5d; }
+#posPrinterModal .cfg-btn.orange { background: #f97316; color: #ffffff; border-color: #f97316; }
+#posPrinterModal .cfg-btn.orange:hover { background: #ea580c; border-color: #ea580c; }
+#posPrinterModal .cfg-active-card { background: #f3fff8; border-color: #a7e4c2; }
+#posPrinterModal .cfg-grid6 { display: grid; grid-template-columns: repeat(6, 1fr); }
+#posPrinterModal .cfg-item { padding: 3px 12px; border-right: 1px solid #d9e8df; }
+#posPrinterModal .cfg-item:last-child { border-right: 0; }
+#posPrinterModal .cfg-small { font-size: 10.5px; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+#posPrinterModal .cfg-value { font-size: 12.5px; color: #16834a; font-weight: 700; margin-top: 3px; }
+#posPrinterModal .cfg-main-grid { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 14px; }
+#posPrinterModal .cfg-group { margin-bottom: 13px; }
+#posPrinterModal label.cfg-input-lbl { display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px; color: #1e293b; }
+#posPrinterModal select.cfg-ctrl, #posPrinterModal input.cfg-ctrl { width: 100%; height: 39px; border: 1px solid #cbd5e1; border-radius: 6px; background: #ffffff; padding: 7px 10px; font-size: 12.5px; color: #334155; box-sizing: border-box; }
+#posPrinterModal select.cfg-ctrl:focus, #posPrinterModal input.cfg-ctrl:focus { border-color: #087bc1; outline: none; box-shadow: 0 0 0 2px rgba(8,123,193,0.18); }
+#posPrinterModal .cfg-typography { border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 17px; }
+#posPrinterModal .cfg-fontrow { display: grid; grid-template-columns: 1fr 45px; gap: 7px; }
+#posPrinterModal .cfg-sizerow { display: flex; align-items: center; gap: 6px; }
+#posPrinterModal .cfg-size-input { width: 75px; height: 39px; text-align: center; font-weight: 700; font-size: 13px; color: #0369a1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; }
+#posPrinterModal .cfg-stepper-btn { width: 39px; height: 39px; font-size: 16px; font-weight: 700; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 6px; cursor: pointer; color: #334155; display: flex; align-items: center; justify-content: center; }
+#posPrinterModal .cfg-stepper-btn:hover { background: #f1f5f9; }
+#posPrinterModal .cfg-quick { display: flex; gap: 6px; margin-top: 8px; }
+#posPrinterModal .cfg-q { width: 38px; height: 30px; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; color: #334155; transition: all 0.12s; }
+#posPrinterModal .cfg-q:hover { background: #f1f5f9; border-color: #94a3b8; }
+#posPrinterModal .cfg-q.sel { background: #087bc1; color: #ffffff; border-color: #087bc1; font-weight: 700; }
+#posPrinterModal .cfg-check { display: flex; gap: 8px; margin-top: 12px; font-size: 11.5px; color: #334155; cursor: pointer; align-items: flex-start; }
+#posPrinterModal .cfg-check input[type="checkbox"] { width: 16px; height: 16px; margin: 2px 0 0 0; cursor: pointer; }
+#posPrinterModal .cfg-orient { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#posPrinterModal .cfg-orient button { height: 39px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; transition: all 0.15s; }
+#posPrinterModal .cfg-orient button:hover { background: #f8fafc; }
+#posPrinterModal .cfg-orient button.sel { background: #087bc1; color: #ffffff; border-color: #087bc1; font-weight: 700; }
+#posPrinterModal .cfg-tests { display: flex; flex-wrap: wrap; gap: 8px; }
+#posPrinterModal .cfg-tests button { min-width: 98px; }
+#posPrinterModal .cfg-pdf { background: #fcfaff; border-color: #ded3f5; }
+#posPrinterModal .cfg-copy { display: flex; width: 175px; }
+#posPrinterModal .cfg-copy button { width: 39px; height: 39px; font-size: 16px; font-weight: 700; border: 1px solid #cbd5e1; background: #ffffff; cursor: pointer; }
+#posPrinterModal .cfg-copy button.minus { border-radius: 6px 0 0 6px; }
+#posPrinterModal .cfg-copy button.plus { border-radius: 0 6px 6px 0; }
+#posPrinterModal .cfg-copy input { width: 65px; height: 39px; text-align: center; border-radius: 0; border-left: 0; border-right: 0; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; font-weight: 700; font-size: 13px; color: #334155; }
+#posPrinterModal .cfg-safe { display: flex; gap: 10px; background: #f5faff; border: 1px solid #c7e3fa; border-radius: 8px; padding: 12px 14px; font-size: 11.5px; line-height: 1.45; color: #334155; margin-bottom: 0; }
+#posPrinterModal .cfg-footer { border-top: 1px solid #e2e8f0; background: #f8fafc; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+@media(max-width:850px){
+    #posPrinterModal .cfg-main-grid { grid-template-columns: 1fr; }
+    #posPrinterModal .cfg-grid6 { grid-template-columns: repeat(3, 1fr); gap: 8px 0; }
+    #posPrinterModal .cfg-detect { grid-template-columns: 1fr; }
+    #posPrinterModal .cfg-stat { border-left: 0; border-top: 1px solid #d6e1ed; padding: 9px 0 0; }
+}
+@media(max-width:600px){
+    #posPrinterModal .printer-dialog { margin: 0; width: 100%; max-width: 100%; }
+    #posPrinterModal .printer-dialog-content { border-radius: 0; height: 100%; max-height: 100%; }
+    #posPrinterModal .cfg-grid6 { grid-template-columns: repeat(2, 1fr); }
+    #posPrinterModal .cfg-item { border-right: 0; }
+}
+</style>
+
 <div class="modal fade" id="posPrinterModal" tabindex="-1" role="dialog" aria-labelledby="posPrinterModalLabel" aria-hidden="true">
-    <div class="modal-dialog" style="max-width: 600px; margin-top: 35px;">
-        <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 12px 35px rgba(0,0,0,0.35);">
-            <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; padding: 16px 22px;">
-                <button type="button" class="close" data-dismiss="modal" aria-hidden="true" style="color: #fff; opacity: 0.85; font-size: 24px;">&times;</button>
-                <h4 class="modal-title" id="posPrinterModalLabel" style="font-weight: 800; font-size: 18px; display: flex; align-items: center; gap: 8px; margin: 0;">
-                    <i class="fa fa-print text-primary"></i> Printer Configuration / Setup
-                </h4>
-                <div style="font-size: 12px; color: #94a3b8; margin-top: 3px; font-weight: 400;">
-                    Configure thermal, A4 and PDF output
+    <div class="modal-dialog printer-dialog">
+        <div class="modal-content printer-dialog-content">
+            <!-- HEADER -->
+            <div class="cfg-header">
+                <div>
+                    <h1 id="posPrinterModalLabel">🖨️ Printer Configuration / Setup</h1>
+                    <div class="sub">Configure thermal, A4 and PDF output</div>
                 </div>
+                <button type="button" class="close-btn" data-dismiss="modal" aria-hidden="true" title="Close">&times;</button>
             </div>
-            <div class="modal-body" style="padding: 20px 22px; font-size: 13px; color: #1e293b; max-height: 80vh; overflow-y: auto;">
-                
-                <!-- Live Detection Status Box -->
-                <div id="posPrinterStatusBox" style="background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="flex: 1; padding-right: 10px;">
-                        <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #0369a1; letter-spacing: 0.5px;">PRINTER DETECTION</div>
-                        <div id="posPrinterStatusText" style="font-size: 13px; font-weight: 700; color: #0c4a6e; margin-top: 2px;">
-                            <span style="color: #0284c7;"><i class="fa fa-info-circle"></i> Auto Detect Active &bull; Ready (Browser / OS Print Dialog)</span>
-                        </div>
+
+            <!-- BODY -->
+            <div class="cfg-body">
+                <!-- 1. PRINTER DETECTION -->
+                <div class="cfg-section cfg-detect" id="posPrinterStatusBox">
+                    <div>
+                        <div class="cfg-label">Printer Detection</div>
+                        <div class="cfg-status" id="posPrinterStatusText">● Auto Detect Active</div>
+                        <div class="cfg-desc">The system will use the available printer through the browser / operating system print service.</div>
                     </div>
-                    <button type="button" class="btn btn-default btn-xs" onclick="refreshPOSPrinters()" style="font-weight: 700; border-radius: 4px; padding: 6px 12px; background: #fff; border-color: #93c5fd;" title="Re-probe local printers, USB, and print daemons">
-                        <i class="fa fa-refresh text-primary"></i> Refresh Detection
-                    </button>
+                    <div>
+                        <button type="button" class="cfg-btn primary" onclick="refreshPOSPrinters()" title="Re-probe local printers, USB, and print daemons">
+                            ↻ Refresh Detection
+                        </button>
+                    </div>
+                    <div class="cfg-stat">
+                        <div class="cfg-label" style="color: #475569;">Status</div>
+                        <div class="cfg-status">● Ready</div>
+                        <div class="cfg-desc">Print service available</div>
+                    </div>
                 </div>
 
-                <!-- ========================================== -->
-                <!-- ACTIVE CONFIGURATION CARD (TOP)            -->
-                <!-- ========================================== -->
-                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #bbf7d0; padding-bottom: 4px;">
-                        <span style="font-weight: 800; color: #15803d; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-                            <i class="fa fa-sliders"></i> ACTIVE CONFIGURATION
-                        </span>
-                        <span class="label label-success" style="font-size: 9.5px; font-weight: 700; background-color: #16a34a; padding: 2px 7px;">ACTIVE</span>
-                    </div>
-                    <div id="posCompatibilityBadge" style="font-size: 12px; color: #14532d; line-height: 1.6;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px 12px; margin-bottom: 4px;">
-                            <div><strong>Printer:</strong> <span id="posActivePrinterVal" style="color: #0369a1; font-weight: 700;">AUTO DETECT</span></div>
-                            <div><strong>Primary Output:</strong> <span style="color: #0284c7; font-weight: 700;">THERMAL PRINTER</span></div>
-                            <div><strong>Paper Width:</strong> <span id="posActiveWidthVal" style="font-weight: 700; color: #0f766e;">210 mm (Max)</span></div>
-                            <div><strong>Font:</strong> <span id="posActiveFontNameVal" style="font-weight: 700; color: #1e293b;">Courier New</span></div>
-                            <div><strong>Font Size:</strong> <span id="posActiveFontVal" style="font-weight: 700; color: #0369a1;">12 pt</span></div>
-                            <div><strong>Secondary:</strong> <span id="posActiveA4Val" style="font-weight: 700; color: #475569;">A4 Portrait</span></div>
-                            <div><strong>PDF:</strong> <span style="font-weight: 700; color: #c2410c;">Preview / Export Only</span></div>
-                            <div><strong>Copies:</strong> <span id="posActiveCopiesVal" style="font-weight: 700; color: #334155;">1 Copy</span></div>
+                <!-- 2. ACTIVE CONFIGURATION SUMMARY (TOP) -->
+                <div class="cfg-section cfg-active-card" id="posCompatibilityBadge">
+                    <h3 class="cfg-title green" style="margin-bottom: 10px;">🔖 Active Configuration</h3>
+                    <div class="cfg-grid6">
+                        <div class="cfg-item">
+                            <div class="cfg-small">🖨 Primary Output</div>
+                            <div class="cfg-value">Thermal Printer</div>
                         </div>
-                        <div id="posLayoutDesc" style="font-size: 11px; color: #166534; border-top: 1px dashed #86efac; padding-top: 4px; margin-top: 4px;">Primary: Thermal • 210 mm (Max) • 12 pt min | Secondary: A4 Portrait | PDF: Preview Only</div>
+                        <div class="cfg-item">
+                            <div class="cfg-small">📏 Paper Width</div>
+                            <div class="cfg-value" id="posActiveWidthVal">80 mm</div>
+                            <span id="aw" style="display:none;">80 mm</span>
+                        </div>
+                        <div class="cfg-item">
+                            <div class="cfg-small">A Font</div>
+                            <div class="cfg-value" id="posActiveFontNameVal">Courier New</div>
+                            <span id="af" style="display:none;">Courier New</span>
+                        </div>
+                        <div class="cfg-item">
+                            <div class="cfg-small">Tᵀ Font Size</div>
+                            <div class="cfg-value" id="posActiveFontVal">12 pt</div>
+                            <span id="as" style="display:none;">12 pt</span>
+                        </div>
+                        <div class="cfg-item">
+                            <div class="cfg-small">📄 Secondary</div>
+                            <div class="cfg-value" id="posActiveA4Val">A4 Portrait</div>
+                        </div>
+                        <div class="cfg-item">
+                            <div class="cfg-small">📑 PDF</div>
+                            <div class="cfg-value" id="posActivePdfVal">Preview Only</div>
+                        </div>
                     </div>
+                    <!-- Legacy summary & copies container -->
+                    <div id="posLayoutDesc" style="font-size: 11px; color: #166534; border-top: 1px dashed #a7e4c2; padding-top: 5px; margin-top: 8px;">
+                        Primary: Thermal • 80 mm • Courier New 12 pt min | Secondary: A4 (Portrait) | PDF: Preview Only
+                    </div>
+                    <span id="posActivePrinterVal" style="display:none;">AUTO DETECT</span>
+                    <span id="posActiveCopiesVal" style="display:none;">1 Copy</span>
                 </div>
 
                 <form id="posPrinterForm">
-                    <!-- ========================================== -->
-                    <!-- SECTION 1: PRIMARY — THERMAL PRINTER       -->
-                    <!-- ========================================== -->
-                    <div id="posModeCardThermal" style="border: 1.5px solid #0284c7; background: #f0f9ff; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1.5px solid #bae6fd; padding-bottom: 6px;">
-                            <span style="font-weight: 800; color: #0369a1; font-size: 12.5px; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa fa-star text-warning"></i> PRIMARY — THERMAL PRINTER
-                            </span>
-                            <span class="label label-primary" style="font-size: 9.5px; font-weight: 700; background-color: #0284c7; padding: 2px 7px;">PRIMARY / DEFAULT</span>
-                        </div>
+                    <!-- MAIN TWO-COLUMN GRID (1.4fr : 0.9fr) -->
+                    <div class="cfg-main-grid">
+                        <!-- LEFT COLUMN: PRIMARY THERMAL & TESTS -->
+                        <div>
+                            <!-- PRIMARY — THERMAL PRINTER CARD -->
+                            <div class="cfg-section" id="posModeCardThermal">
+                                <h3 class="cfg-title">🖨 Primary — Thermal Printer</h3>
+                                
+                                <div class="cfg-group">
+                                    <label class="cfg-input-lbl">Printer ⓘ</label>
+                                    <select id="posPrinterSelect" class="cfg-ctrl" onchange="handlePrinterSelectChange()">
+                                        <option value="system_default">✓ AUTO DETECT (via Browser / OS Print Dialog)</option>
+                                    </select>
+                                    <div class="cfg-desc">The system will automatically use the available printer.</div>
+                                </div>
 
-                        <!-- Thermal Printer Target Selection -->
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label style="font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 12px;">
-                                <i class="fa fa-hdd-o text-primary"></i> Printer:
-                            </label>
-                            <select id="posPrinterSelect" class="form-control input-sm" style="font-size: 12.5px; height: 36px; border-radius: 4px;" onchange="handlePrinterSelectChange()">
-                                <option value="system_default">AUTO DETECT (System Default / Browser Print Dialog)</option>
-                            </select>
-                            <div style="font-size: 11px; color: #0284c7; margin-top: 3px;">
-                                <i class="fa fa-check-circle"></i> Printer will be detected automatically
-                            </div>
-                        </div>
-
-                        <!-- Thermal Paper Width Preset (Hard Maximum: 210 mm) -->
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                <label style="font-weight: 700; color: #0f172a; margin: 0; font-size: 12px;">
-                                    <i class="fa fa-file-text-o text-success"></i> Paper Width:
-                                </label>
-                                <span style="font-size: 11px; font-weight: 700; color: #0369a1;">Maximum: 210 mm</span>
-                            </div>
-                            <select id="posPaperWidth" class="form-control input-sm" style="font-size: 12.5px; height: 36px; border-radius: 4px; font-weight: 700; color: #0f766e; background-color: #f0fdf4; border-color: #86efac;" onchange="handlePaperWidthChange()">
-                                <option value="210" selected>210 mm — Default / Maximum</option>
-                                <option value="80">80 mm — Standard 3-inch POS Thermal</option>
-                                <option value="58">58 mm — Standard 2-inch POS Thermal</option>
-                                <option value="custom">Custom (Max 210 mm)...</option>
-                            </select>
-                        </div>
-
-                        <!-- Custom Width Input (Shown only when 'custom' is selected) -->
-                        <div id="posCustomWidthGroup" class="form-group" style="display: none; margin-bottom: 10px; background: #fffbeb; padding: 10px 14px; border-radius: 6px; border: 1px solid #fde68a;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                <label style="font-weight: 700; color: #92400e; margin: 0; font-size: 11.5px;">
-                                    <i class="fa fa-pencil text-warning"></i> Custom Paper Width (mm):
-                                </label>
-                                <span style="font-size: 10.5px; font-weight: 700; color: #b45309;">Maximum: 210 mm</span>
-                            </div>
-                            <div class="input-group">
-                                <input type="number" id="posCustomWidthInput" class="form-control input-sm" value="210" min="40" max="210" style="height: 34px; font-weight: 700;" oninput="if(this.value>210)this.value=210; handlePaperWidthChange();">
-                                <span class="input-group-addon">mm</span>
-                            </div>
-                            <div style="font-size: 10.5px; color: #b45309; margin-top: 3px;">Maximum: 210 mm. Thermal roll width cannot exceed 210 mm.</div>
-                        </div>
-
-                        <!-- Thermal Typography Section (Editable Font Name & Selectable/Editable Font Size) -->
-                        <div style="background: #ffffff; border: 1.5px solid #bae6fd; border-radius: 6px; padding: 12px 14px; margin-top: 10px;">
-                            <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #0369a1; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa fa-font text-info"></i> THERMAL TYPOGRAPHY &amp; READABILITY
-                            </div>
-                            
-                            <div class="row" style="margin-bottom: 8px;">
-                                <!-- Font Name (Select / Editable) -->
-                                <div class="col-xs-12 col-sm-6" style="margin-bottom: 6px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                                        <label style="font-weight: 700; font-size: 12px; color: #1e293b; margin: 0;">
-                                            Font Name:
-                                        </label>
-                                        <span style="font-size: 10.5px; color: #64748b;">Select or type custom</span>
+                                <div class="cfg-group">
+                                    <label class="cfg-input-lbl">Thermal Paper Width ⓘ</label>
+                                    <select id="posPaperWidth" class="cfg-ctrl" onchange="handlePaperWidthChange()">
+                                        <option value="210">210 mm — Maximum Thermal Width</option>
+                                        <option value="80" selected>80 mm — Standard 3-inch POS Thermal</option>
+                                        <option value="58">58 mm — Standard 2-inch POS Thermal</option>
+                                        <option value="custom">Custom Width</option>
+                                    </select>
+                                    <div id="posCustomWidthGroup" style="display: none; margin-top: 8px; padding: 10px; border: 1px solid #f2ca75; background: #fffaf0; border-radius: 6px;">
+                                        <label class="cfg-input-lbl" style="color: #92400e;">Custom Width — Maximum 210 mm</label>
+                                        <input type="number" id="posCustomWidthInput" class="cfg-ctrl" min="40" max="210" value="80" oninput="if(this.value>210)this.value=210; handlePaperWidthChange();" onchange="handlePaperWidthChange();">
+                                        <div class="cfg-desc" style="color: #b45309;">Enter a value between 40 mm and 210 mm.</div>
                                     </div>
-                                    <div class="input-group input-group-sm" style="width: 100%;">
-                                        <input type="text" id="posThermalFontName" list="posThermalFontList" class="form-control" value="Courier New" style="height: 34px; font-weight: 700; font-size: 12.5px; color: #0f172a;" oninput="updateCompatibilityBadge()" onchange="updateCompatibilityBadge()" placeholder="e.g. Courier New">
+                                </div>
+
+                                <!-- THERMAL TYPOGRAPHY -->
+                                <div class="cfg-typography">
+                                    <h3 class="cfg-title">Aᵀ Thermal Typography</h3>
+                                    
+                                    <div class="cfg-group">
+                                        <label class="cfg-input-lbl">Font Name ⓘ</label>
+                                        <div class="cfg-fontrow">
+                                            <select id="posThermalFontName" class="cfg-ctrl" onchange="handleThermalFontChange()">
+                                                <option value="Courier New" selected>Courier New</option>
+                                                <option value="Arial">Arial</option>
+                                                <option value="Tahoma">Tahoma</option>
+                                                <option value="Verdana">Verdana</option>
+                                                <option value="Consolas">Consolas</option>
+                                                <option value="Liberation Mono">Liberation Mono</option>
+                                                <option value="DejaVu Sans Mono">DejaVu Sans Mono</option>
+                                                <option value="Lucida Console">Lucida Console</option>
+                                            </select>
+                                            <button type="button" class="cfg-btn" title="Font selection">A⌄</button>
+                                        </div>
                                         <datalist id="posThermalFontList">
-                                            <option value="Courier New">Courier New (Monospace &bull; Standard POS)</option>
-                                            <option value="Consolas">Consolas (Clear Monospace)</option>
-                                            <option value="Lucida Console">Lucida Console</option>
-                                            <option value="Arial">Arial (Clean Sans-Serif)</option>
-                                            <option value="Tahoma">Tahoma (Compact Sans-Serif)</option>
-                                            <option value="Verdana">Verdana (Wide Sans-Serif)</option>
-                                            <option value="Liberation Mono">Liberation Mono</option>
-                                            <option value="DejaVu Sans Mono">DejaVu Sans Mono</option>
+                                            <option value="Courier New">
+                                            <option value="Consolas">
+                                            <option value="Lucida Console">
+                                            <option value="Arial">
+                                            <option value="Tahoma">
+                                            <option value="Verdana">
+                                            <option value="Liberation Mono">
+                                            <option value="DejaVu Sans Mono">
                                         </datalist>
                                     </div>
-                                    <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">Use a clear, readable font suitable for thermal printing.</div>
-                                </div>
 
-                                <!-- Font Size (Range 12 pt to 20 pt Selection & Slider) -->
-                                <div class="col-xs-12 col-sm-6" style="margin-bottom: 6px; display: block !important;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                                        <label style="font-weight: 700; font-size: 12px; color: #1e293b; margin: 0;">
-                                            Font Size (12 &ndash; 20 pt):
-                                        </label>
-                                        <span id="posThermalFontSizeBadge" style="font-size: 11px; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 1px 7px; border-radius: 3px; border: 1px solid #bae6fd;">12 pt</span>
-                                    </div>
-                                    <div style="display: flex; gap: 6px; align-items: center;">
-                                        <select id="posThermalDefaultFontSize" class="form-control input-sm" style="height: 34px; font-size: 12.5px; font-weight: 700; color: #0369a1; flex: 1;" onchange="handleFontSizePresetChange(this.value)">
-                                            <optgroup label="Standard Range (12 pt — 20 pt)">
-                                                <option value="12" selected>12 pt (Standard / Compact)</option>
-                                                <option value="13">13 pt</option>
-                                                <option value="14">14 pt (Medium)</option>
-                                                <option value="15">15 pt</option>
-                                                <option value="16">16 pt (Large)</option>
-                                                <option value="17">17 pt</option>
-                                                <option value="18">18 pt (Extra Large)</option>
-                                                <option value="19">19 pt</option>
-                                                <option value="20">20 pt (High-Visibility / Max)</option>
-                                            </optgroup>
-                                            <option value="custom">Custom pt...</option>
-                                        </select>
-                                        <div id="posThermalCustomSizeGroup" style="display: block; width: 90px; flex-shrink: 0;">
-                                            <div class="input-group input-group-sm">
-                                                <input type="number" id="posThermalCustomFontSize" class="form-control" value="12" min="12" max="36" style="height: 34px; font-weight: 700; text-align: center; color: #0369a1;" oninput="if(this.value<12)this.value=12; syncFontSizeFromCustom(this.value); updateCompatibilityBadge();" onchange="if(this.value<12)this.value=12; syncFontSizeFromCustom(this.value); updateCompatibilityBadge();" title="Exact font size in points (pt)">
-                                                <span class="input-group-addon" style="font-size: 10.5px; padding: 4px 6px; font-weight: 700;">pt</span>
-                                            </div>
+                                    <div class="cfg-group">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                            <label class="cfg-input-lbl" style="margin-bottom: 0;">Font Size <b>(Minimum: 12 pt)</b> ⓘ</label>
+                                            <span id="posThermalFontSizeBadge" style="font-size: 11px; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">12 pt</span>
                                         </div>
+                                        <div class="cfg-sizerow">
+                                            <button type="button" class="cfg-stepper-btn minus" onclick="adjustThermalFontSize(-1)">−</button>
+                                            <input type="number" id="posThermalCustomFontSize" class="cfg-size-input" min="12" max="48" value="12" oninput="if(this.value<12)this.value=12; syncFontSizeFromCustom(this.value);" onchange="if(this.value<12)this.value=12; syncFontSizeFromCustom(this.value);">
+                                            <button type="button" class="cfg-stepper-btn plus" onclick="adjustThermalFontSize(1)">+</button>
+                                            <b style="font-size: 13px; color: #334155;">pt</b>
+                                        </div>
+                                        <div class="cfg-quick">
+                                            <button type="button" class="cfg-q sel" data-pt="12" onclick="setThermalFontSize(12)">12</button>
+                                            <button type="button" class="cfg-q" data-pt="14" onclick="setThermalFontSize(14)">14</button>
+                                            <button type="button" class="cfg-q" data-pt="16" onclick="setThermalFontSize(16)">16</button>
+                                            <button type="button" class="cfg-q" data-pt="18" onclick="setThermalFontSize(18)">18</button>
+                                            <button type="button" class="cfg-q" data-pt="20" onclick="setThermalFontSize(20)">20</button>
+                                        </div>
+
+                                        <!-- Backward compatibility preserved controls (hidden/inline) -->
+                                        <input type="hidden" id="posThermalMinFontSize" value="12">
+                                        <select id="posThermalDefaultFontSize" style="display: none;">
+                                            <option value="12" selected>12</option>
+                                            <option value="13">13</option>
+                                            <option value="14">14</option>
+                                            <option value="15">15</option>
+                                            <option value="16">16</option>
+                                            <option value="17">17</option>
+                                            <option value="18">18</option>
+                                            <option value="19">19</option>
+                                            <option value="20">20</option>
+                                            <option value="custom">custom</option>
+                                        </select>
+                                        <input type="range" id="posThermalFontSizeRange" min="12" max="20" value="12" style="display: none;" oninput="handleFontSizeRangeInput(this.value)">
+                                        <div id="posThermalCustomSizeGroup" style="display: none;"></div>
+                                        <select id="posThermalFontStrategy" style="display: none;">
+                                            <option value="native" selected>Native</option>
+                                            <option value="monospace">Monospace</option>
+                                            <option value="custom_ttf">Custom TTF</option>
+                                        </select>
                                     </div>
-                                    <!-- Interactive Range Slider (12 pt to 20 pt) -->
-                                    <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-                                        <span style="font-size: 10px; font-weight: 700; color: #64748b;">12 pt</span>
-                                        <input type="range" id="posThermalFontSizeRange" min="12" max="20" step="1" value="12" style="flex: 1; height: 18px; cursor: pointer; accent-color: #0284c7; width: 100%;" oninput="handleFontSizeRangeInput(this.value)" title="Slide to adjust font size between 12 pt and 20 pt">
-                                        <span style="font-size: 10px; font-weight: 700; color: #64748b;">20 pt</span>
-                                    </div>
-                                    <input type="hidden" id="posThermalMinFontSize" value="12">
-                                    <div style="font-size: 10.5px; color: #64748b; margin-top: 3px;">Range selection: 12 pt to 20 pt enterprise thermal standard.</div>
+
+                                    <label class="cfg-check">
+                                        <input type="checkbox" id="posThermalBoldImportant" checked onchange="updateCompatibilityBadge()">
+                                        <span>
+                                            <b>Bold Important Text</b><br>
+                                            <span style="color: #64748b; font-size: 11px;">Make headers, totals and key information bold for better readability.</span>
+                                        </span>
+                                    </label>
                                 </div>
                             </div>
 
-                            <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                                <label style="font-weight: 700; font-size: 11.5px; color: #334155; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 0;">
-                                    <input type="checkbox" id="posThermalBoldImportant" checked style="margin: 0;" onchange="updateCompatibilityBadge()">
-                                    <strong>Bold important text</strong> (Item names, totals, receipt no.)
-                                </label>
+                            <!-- QUICK THERMAL TESTS CARD -->
+                            <div class="cfg-section">
+                                <h3 class="cfg-title">🧪 Quick Thermal Tests</h3>
+                                <div class="cfg-desc" style="margin-bottom: 9px;">Test profiles do not permanently change the saved width.</div>
+                                <div class="cfg-tests">
+                                    <button type="button" class="cfg-btn primary" onclick="testPrintPOS('thermal210')">🖨 Test 210 mm</button>
+                                    <button type="button" class="cfg-btn success" onclick="testPrintPOS('thermal80')">🖨 Test 80 mm</button>
+                                    <button type="button" class="cfg-btn success" onclick="testPrintPOS('thermal58')">🖨 Test 58 mm</button>
+                                    <button type="button" class="cfg-btn orange" onclick="testPrintPOS('thermal50')">🖨 Test 50 mm</button>
+                                    <button type="button" class="cfg-btn" onclick="testPrintPOS('custom')">● Custom Test</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT COLUMN: SECONDARY A4, PDF, COPIES -->
+                        <div>
+                            <!-- SECONDARY — STANDARD A4 CARD -->
+                            <div class="cfg-section" id="posModeCardNormal">
+                                <h3 class="cfg-title">📄 Secondary — Standard A4</h3>
                                 
-                                <!-- Advanced Font Strategy dropdown preserved as subtle option -->
-                                <div style="font-size: 11px; color: #64748b; display: inline-flex; align-items: center; gap: 4px;">
-                                    <span>Strategy:</span>
-                                    <select id="posThermalFontStrategy" class="form-control input-xs" style="height: 24px; font-size: 10.5px; padding: 1px 4px; display: inline-block; width: auto;" onchange="updateCompatibilityBadge()">
-                                        <option value="native" selected>Native / High-Contrast</option>
-                                        <option value="monospace">System Monospace</option>
-                                        <option value="custom_ttf">Installed / Custom TTF</option>
+                                <div class="cfg-group">
+                                    <label class="cfg-input-lbl">Printer ⓘ</label>
+                                    <select id="posA4PrinterSelect" class="cfg-ctrl">
+                                        <option value="system_a4">AUTO DETECT (via Browser / OS Print Dialog)</option>
                                     </select>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- ========================================== -->
-                    <!-- SECTION: QUICK THERMAL TESTS / PRINTER TEST -->
-                    <!-- ========================================== -->
-                    <div style="border: 1.5px solid #0284c7; background: #f0f9ff; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #bae6fd; padding-bottom: 4px;">
-                            <span style="font-weight: 800; color: #0369a1; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa fa-print"></i> QUICK THERMAL PAPER TEST PROFILES
-                            </span>
-                            <span style="font-size: 10px; font-weight: 700; color: #0369a1;">ISOLATED TEST &bull; CONFIG SAFE</span>
-                        </div>
-                        <div style="font-size: 11px; color: #0c4a6e; margin-bottom: 10px; line-height: 1.35;">
-                            Test printing instantly using specific roll widths. Tests run isolated and <strong>will not change</strong> your saved paper width.
-                        </div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 8px;">
-                            <button type="button" class="btn btn-primary btn-sm" onclick="testPrintPOS('thermal210')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1; padding: 7px 8px; font-size: 12px;" title="Test print maximum 210mm thermal layout">
-                                <i class="fa fa-print"></i> Test 210 mm
-                            </button>
-                            <button type="button" class="btn btn-info btn-sm" onclick="testPrintPOS('thermal80')" style="font-weight: 700; background-color: #0ea5e9; border-color: #0284c7; padding: 7px 8px; font-size: 12px;" title="Test print standard 80mm (3-inch) POS receipt">
-                                <i class="fa fa-print"></i> Test 80 mm
-                            </button>
-                            <button type="button" class="btn btn-default btn-sm" onclick="testPrintPOS('thermal58')" style="font-weight: 700; background-color: #ffffff; border-color: #94a3b8; color: #1e293b; padding: 7px 8px; font-size: 12px;" title="Test print compact 58mm (2-inch) thermal receipt">
-                                <i class="fa fa-print"></i> Test 58 mm
-                            </button>
-                            <button type="button" class="btn btn-warning btn-sm" onclick="testPrintPOS('thermal50')" style="font-weight: 700; background-color: #f59e0b; border-color: #d97706; color: #ffffff; padding: 7px 8px; font-size: 12px;" title="Test print 50mm narrow profile without altering saved configuration">
-                                <i class="fa fa-wrench"></i> Test 50 mm
-                            </button>
-                        </div>
-                    </div>
+                                <div class="cfg-group">
+                                    <label class="cfg-input-lbl">Paper Size</label>
+                                    <div style="width: 100%; height: 39px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; padding: 9px 10px; font-size: 12.5px; font-weight: 700; color: #334155; box-sizing: border-box;">
+                                        A4 (210 &times; 297 mm)
+                                    </div>
+                                </div>
 
-                    <!-- ========================================== -->
-                    <!-- SECTION 2: SECONDARY PRINTER — STANDARD A4 -->
-                    <!-- ========================================== -->
-                    <div id="posModeCardNormal" style="border: 1.5px solid #cbd5e1; background: #f8fafc; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px;">
-                            <span style="font-weight: 800; color: #334155; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa fa-print text-muted"></i> SECONDARY — STANDARD A4 PRINTER
-                            </span>
-                            <span class="label label-default" style="font-size: 9.5px; font-weight: 700; padding: 2px 7px;">SECONDARY / A4</span>
-                        </div>
+                                <div class="cfg-group">
+                                    <label class="cfg-input-lbl">Orientation</label>
+                                    <div class="cfg-orient">
+                                        <button type="button" id="posOrientPortrait" class="sel" onclick="setA4Orientation('portrait')">📄 Portrait</button>
+                                        <button type="button" id="posOrientLandscape" onclick="setA4Orientation('landscape')">▭ Landscape</button>
+                                    </div>
+                                    <input type="hidden" id="posA4Orientation" value="portrait">
+                                </div>
 
-                        <div class="form-group" style="margin-bottom: 8px;">
-                            <label style="font-weight: 700; color: #0f172a; margin-bottom: 3px; font-size: 11.5px;">
-                                <i class="fa fa-hdd-o text-muted"></i> A4 Printer:
-                            </label>
-                            <select id="posA4PrinterSelect" class="form-control input-sm" style="font-size: 12px; height: 34px; border-radius: 4px;">
-                                <option value="system_a4">AUTO DETECT (Office Printer / Laser / Inkjet via OS Dialog)</option>
-                            </select>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-xs-6">
-                                <label style="font-weight: 700; font-size: 11px; color: #334155; margin-bottom: 2px;">Paper:</label>
-                                <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 10px; font-size: 11.5px; font-weight: 700; color: #1e293b;">
-                                    A4 (210 &times; 297 mm)
+                                <button type="button" class="cfg-btn primary" style="width: 100%; height: 39px; margin-top: 4px;" onclick="testPrintA4PDF()">
+                                    🖨 Test A4 Print
+                                </button>
+                                <div class="cfg-desc" style="margin-top: 6px;">
+                                    Thermal roll width and thermal font settings do not alter A4 print layout.
                                 </div>
                             </div>
-                            <div class="col-xs-6">
-                                <label style="font-weight: 700; font-size: 11px; color: #334155; margin-bottom: 2px;">Orientation:</label>
-                                <select id="posA4Orientation" class="form-control input-sm" style="height: 32px; font-size: 11.5px; font-weight: 600;" onchange="updateCompatibilityBadge()">
-                                    <option value="portrait" selected>Portrait</option>
-                                    <option value="landscape">Landscape</option>
-                                </select>
+
+                            <!-- PDF PREVIEW / EXPORT CARD -->
+                            <div class="cfg-section cfg-pdf" id="posModeCardPdf">
+                                <h3 class="cfg-title purple">📑 PDF Preview / Export</h3>
+                                <div class="cfg-desc" style="margin-bottom: 10px;">
+                                    PDF is used for preview/export only. <b>It is not a physical printer.</b>
+                                </div>
+                                <button type="button" class="cfg-btn" style="color: #7250c8; border-color: #bca8ed; width: 100%; height: 39px;" onclick="testPrintPOS('pdf_preview')">
+                                    👁 Preview PDF
+                                </button>
+                            </div>
+
+                            <!-- PRINT COPIES CARD -->
+                            <div class="cfg-section">
+                                <h3 class="cfg-title">🖨 Print Copies</h3>
+                                <div class="cfg-group">
+                                    <label class="cfg-input-lbl">Number of Copies ⓘ</label>
+                                    <div class="cfg-copy">
+                                        <button type="button" class="minus" onclick="adjustPrintCopies(-1)">−</button>
+                                        <input type="number" id="posPrintCopies" min="1" max="5" value="1" onchange="adjustPrintCopies(0)">
+                                        <button type="button" class="plus" onclick="adjustPrintCopies(1)">+</button>
+                                    </div>
+                                    <div class="cfg-desc">Maximum 5 copies</div>
+                                </div>
                             </div>
                         </div>
-                        <div style="font-size: 10.5px; color: #64748b; margin-top: 6px; line-height: 1.35;">
-                            <i class="fa fa-info-circle text-info"></i> Thermal roll width and thermal font settings do not alter A4 print layout.
-                        </div>
+                    </div>
 
-                        <div style="margin-top: 8px; text-align: right;">
-                            <button type="button" class="btn btn-default btn-sm" onclick="testPrintA4PDF()" style="font-weight: 700; background: #ffffff; border-color: #cbd5e1; color: #334155;" title="Test print on Standard A4 Sheet">
-                                <i class="fa fa-file-text-o text-muted"></i> Test A4 Print
-                            </button>
+                    <!-- SAFE PRINT EXECUTION NOTICE -->
+                    <div class="cfg-section cfg-safe">
+                        <span style="font-size: 20px; line-height: 1;">🛡️</span>
+                        <div>
+                            <b style="color: #1769aa;">Safe Print Execution</b><br>
+                            Printing is strictly read-only. Screen view remains 100% responsive. Adjusted printable width applies exclusively inside the print payload.
                         </div>
                     </div>
 
-                    <!-- ========================================== -->
-                    <!-- SECTION 3: PDF PREVIEW / EXPORT            -->
-                    <!-- ========================================== -->
-                    <div id="posModeCardPdf" style="border: 1.5px solid #fed7aa; background: #fffaf5; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="font-weight: 800; color: #c2410c; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa fa-file-pdf-o text-danger"></i> PDF PREVIEW / EXPORT
-                            </span>
-                            <span class="label label-warning" style="font-size: 9px; font-weight: 700; background-color: #ea580c; padding: 2px 6px;">PREVIEW ONLY</span>
-                        </div>
-                        <div style="font-size: 11px; color: #9a3412; line-height: 1.35; margin-bottom: 8px;">
-                            PDF is for preview/export only. It is not a physical printer.
-                        </div>
-                        <button type="button" class="btn btn-default btn-xs" onclick="testPrintPOS('pdf_preview')" style="font-weight: 700; border-color: #fdba74; color: #c2410c; background: #ffffff; padding: 5px 12px;">
-                            <i class="fa fa-eye"></i> Preview PDF
-                        </button>
-                    </div>
-
-                    <!-- ========================================== -->
-                    <!-- SECTION 4: PRINT COPIES                    -->
-                    <!-- ========================================== -->
-                    <div class="form-group" style="margin-bottom: 14px;">
-                        <label style="font-weight: 700; color: #1e293b; margin-bottom: 3px; font-size: 11.5px;">
-                            <i class="fa fa-copy text-info"></i> PRINT COPIES:
-                        </label>
-                        <select id="posPrintCopies" class="form-control input-sm" style="height: 34px; border-radius: 4px; font-weight: 700; max-width: 140px;" onchange="updateCompatibilityBadge()">
-                            <option value="1" selected>1</option>
-                            <option value="2">2</option>
-                            <option value="3">3</option>
-                            <option value="4">4</option>
-                            <option value="5">5</option>
-                        </select>
-                    </div>
-
-                    <!-- Legacy Compatibility Inputs (Preserved for backward-compatibility with existing JS) -->
+                    <!-- BACKWARD COMPATIBILITY HIDDEN INPUTS -->
                     <input type="hidden" id="posPrinterType" value="thermal">
                     <input type="hidden" id="posA4PrintWidthInput" value="80">
                     <input type="hidden" id="posA4PrintWidthRange" value="80">
@@ -2779,19 +2823,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <input type="radio" name="posPrinterModeRadio" id="posModeRadioThermal" value="thermal" checked style="display: none;">
                     <input type="radio" name="posPrinterModeRadio" id="posModeRadioNormal" value="normal" style="display: none;">
                     <input type="radio" name="posPrinterModeRadio" id="posModeRadioPdf" value="pdf" style="display: none;">
-
-                    <!-- Security Notice -->
-                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; font-size: 11.5px; color: #475569; line-height: 1.45;">
-                        <strong><i class="fa fa-shield text-primary"></i> Printing Settings:</strong>
-                        Thermal printing uses the configured paper width and font settings. For best readability, use a thermal font size of 12 pt or larger. Maximum thermal width: 210 mm.
-                    </div>
                 </form>
-
             </div>
-            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
-                <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 700; padding: 6px 16px;">Cancel</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="savePOSPrinterSettings()" style="font-weight: 700; background-color: #0284c7; border-color: #0284c7; padding: 6px 20px;">
-                    <i class="fa fa-save"></i> Save Configuration
+
+            <!-- FOOTER -->
+            <div class="cfg-footer">
+                <button type="button" class="cfg-btn" data-dismiss="modal" style="padding: 8px 18px;">Close</button>
+                <button type="button" class="cfg-btn primary" onclick="savePOSPrinterSettings()" style="padding: 8px 22px; font-weight: 700;">
+                    💾 Save Configuration
                 </button>
             </div>
         </div>
@@ -4895,6 +4934,44 @@ function adjustA4PrintWidth(delta) {
     setA4PrintWidthMm(current + delta);
 }
 
+function adjustThermalFontSize(delta) {
+    const input = document.getElementById('posThermalCustomFontSize');
+    let current = parseInt(input?.value, 10) || 12;
+    let newVal = delta ? Math.max(12, Math.min(48, current + delta)) : Math.max(12, Math.min(48, current));
+    if (input) input.value = newVal;
+    syncFontSizeFromCustom(newVal);
+}
+
+function setThermalFontSize(pt) {
+    const v = Math.max(12, Math.min(48, parseInt(pt, 10) || 12));
+    const input = document.getElementById('posThermalCustomFontSize');
+    if (input) input.value = v;
+    syncFontSizeFromCustom(v);
+}
+
+function setA4Orientation(orient) {
+    const pBtn = document.getElementById('posOrientPortrait');
+    const lBtn = document.getElementById('posOrientLandscape');
+    const hidden = document.getElementById('posA4Orientation');
+    const val = (orient === 'landscape') ? 'landscape' : 'portrait';
+    if (pBtn) pBtn.classList.toggle('sel', val === 'portrait');
+    if (lBtn) lBtn.classList.toggle('sel', val === 'landscape');
+    if (hidden) hidden.value = val;
+    updateCompatibilityBadge();
+}
+
+function adjustPrintCopies(delta) {
+    const input = document.getElementById('posPrintCopies');
+    let current = parseInt(input?.value, 10) || 1;
+    let newVal = Math.max(1, Math.min(5, current + (delta || 0)));
+    if (input) input.value = newVal;
+    updateCompatibilityBadge();
+}
+
+function handleThermalFontChange() {
+    updateCompatibilityBadge();
+}
+
 function handleFontSizeRangeInput(val) {
     const pt = Math.min(20, Math.max(12, parseInt(val, 10) || 12));
     const defFontSelect = document.getElementById('posThermalDefaultFontSize');
@@ -4906,22 +4983,28 @@ function handleFontSizeRangeInput(val) {
     if (customInput) {
         customInput.value = pt;
     }
-    updateCompatibilityBadge();
+    syncFontSizeFromCustom(pt);
 }
 
 function syncFontSizeFromCustom(val) {
-    const pt = parseInt(val, 10);
+    const pt = Math.max(12, Math.min(48, parseInt(val, 10) || 12));
     const rangeSlider = document.getElementById('posThermalFontSizeRange');
     const defFontSelect = document.getElementById('posThermalDefaultFontSize');
-    if (!isNaN(pt)) {
-        if (rangeSlider && pt >= 12 && pt <= 20) {
-            rangeSlider.value = pt;
-        }
-        if (defFontSelect) {
-            const matchingOpt = Array.from(defFontSelect.options).find(opt => opt.value == pt);
-            defFontSelect.value = matchingOpt ? pt : 'custom';
-        }
+    const badge = document.getElementById('posThermalFontSizeBadge');
+    if (rangeSlider && pt >= 12 && pt <= 20) {
+        rangeSlider.value = pt;
     }
+    if (defFontSelect) {
+        const matchingOpt = Array.from(defFontSelect.options).find(opt => opt.value == pt);
+        defFontSelect.value = matchingOpt ? pt : 'custom';
+    }
+    if (badge) {
+        badge.innerText = pt + ' pt';
+    }
+    document.querySelectorAll('#posPrinterModal .cfg-q, #posPrinterModal .q').forEach(q => {
+        const qPt = parseInt(q.getAttribute('data-pt') || q.textContent, 10);
+        q.classList.toggle('sel', qPt === pt);
+    });
     updateCompatibilityBadge();
 }
 
@@ -4936,6 +5019,8 @@ function handleFontSizePresetChange(val) {
         if (!isNaN(pt)) {
             if (rangeSlider && pt >= 12 && pt <= 20) rangeSlider.value = pt;
             if (customInput) customInput.value = pt;
+            syncFontSizeFromCustom(pt);
+            return;
         }
     }
     updateCompatibilityBadge();
@@ -5146,10 +5231,15 @@ function openPOSPrinterModal() {
     }
 
     // A4 Orientation
+    const a4Orient = s.a4Orientation || 'portrait';
     const a4OrientSelect = document.getElementById('posA4Orientation');
     if (a4OrientSelect) {
-        a4OrientSelect.value = s.a4Orientation || 'portrait';
+        a4OrientSelect.value = a4Orient;
     }
+    const pBtn = document.getElementById('posOrientPortrait');
+    const lBtn = document.getElementById('posOrientLandscape');
+    if (pBtn) pBtn.classList.toggle('sel', a4Orient === 'portrait');
+    if (lBtn) lBtn.classList.toggle('sel', a4Orient === 'landscape');
 
     const a4W = getA4PrintWidthMm();
     const a4Input = document.getElementById('posA4PrintWidthInput');
@@ -5172,12 +5262,14 @@ function refreshPOSPrinters() {
 }
 
 function handlePaperWidthChange() {
-    const val = document.getElementById('posPaperWidth').value;
+    const s = document.getElementById('posPaperWidth');
+    if (!s) return;
+    const val = s.value;
     const customGroup = document.getElementById('posCustomWidthGroup');
     if (val === 'custom') {
-        customGroup.style.display = 'block';
+        if (customGroup) customGroup.style.display = 'block';
     } else {
-        customGroup.style.display = 'none';
+        if (customGroup) customGroup.style.display = 'none';
     }
     updateCompatibilityBadge();
 }
@@ -5250,11 +5342,20 @@ function updateCompatibilityBadge() {
     const activeWidthEl = document.getElementById('posActiveWidthVal');
     if (activeWidthEl) activeWidthEl.innerText = widthMm + ' mm' + (widthMm === 210 ? ' (Max)' : '');
 
+    const awEl = document.getElementById('aw');
+    if (awEl) awEl.innerText = widthMm + ' mm';
+
     const activeFontNameEl = document.getElementById('posActiveFontNameVal');
     if (activeFontNameEl) activeFontNameEl.innerText = fontName;
 
+    const afEl = document.getElementById('af');
+    if (afEl) afEl.innerText = fontName;
+
     const activeFontEl = document.getElementById('posActiveFontVal');
     if (activeFontEl) activeFontEl.innerText = fontPt + ' pt';
+
+    const asEl = document.getElementById('as');
+    if (asEl) asEl.innerText = fontPt + ' pt';
 
     const fontBadge = document.getElementById('posThermalFontSizeBadge');
     if (fontBadge) fontBadge.innerText = fontPt + ' pt';
@@ -5264,8 +5365,16 @@ function updateCompatibilityBadge() {
         fontRange.value = fontPt;
     }
 
+    document.querySelectorAll('#posPrinterModal .cfg-q, #posPrinterModal .q').forEach(q => {
+        const qPt = parseInt(q.getAttribute('data-pt') || q.textContent, 10);
+        q.classList.toggle('sel', qPt === fontPt);
+    });
+
     const activeA4El = document.getElementById('posActiveA4Val');
     if (activeA4El) activeA4El.innerText = 'A4 ' + orientLabel;
+
+    const activePdfEl = document.getElementById('posActivePdfVal');
+    if (activePdfEl) activePdfEl.innerText = 'Preview Only';
 
     const activeCopiesEl = document.getElementById('posActiveCopiesVal');
     if (activeCopiesEl) activeCopiesEl.innerText = copies + (copies === 1 ? ' Copy' : ' Copies');

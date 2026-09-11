@@ -84,7 +84,7 @@ assert(
     'Active Configuration Card is positioned at the top of the modal body, before Primary Thermal section'
 );
 
-// 4. Primary Thermal Printer (Max 210mm, Presets, Datalist Font, >=12pt Size)
+// 4. Primary Thermal Printer (Max 210mm, Presets, Typography)
 console.log('\n--- 4. Primary Thermal Printer Section (210mm Max & Typography) ---');
 assert(
     modalBlock.includes('id="posPrinterSelect"') &&
@@ -93,11 +93,11 @@ assert(
 );
 
 assert(
-    modalBlock.includes('<option value="210" selected>210 mm — Default / Maximum</option>') &&
-    modalBlock.includes('<option value="80">80 mm') &&
-    modalBlock.includes('<option value="58">58 mm') &&
-    modalBlock.includes('<option value="custom">Custom (Max 210 mm)...</option>'),
-    'posPaperWidth includes 210mm default/max, 80mm, 58mm, and custom (max 210mm) options'
+    modalBlock.includes('<option value="210">210 mm — Maximum Thermal Width</option>') &&
+    modalBlock.includes('<option value="80" selected>80 mm — Standard 3-inch POS Thermal</option>') &&
+    modalBlock.includes('<option value="58">58 mm — Standard 2-inch POS Thermal</option>') &&
+    modalBlock.includes('<option value="custom">Custom Width</option>'),
+    'posPaperWidth includes 210mm max, 80mm standard 3-inch, 58mm standard 2-inch, and custom options matching prototype'
 );
 
 assert(
@@ -120,61 +120,40 @@ assert(
 console.log('\n--- 5. Thermal Font Name & Size Options ---');
 assert(
     modalBlock.includes('id="posThermalFontName"') &&
-    modalBlock.includes('list="posThermalFontList"') &&
     modalBlock.includes('id="posThermalFontList"'),
-    'Thermal Font Name includes editable text input with datalist (#posThermalFontList)'
+    'Thermal Font Name includes font select with datalist fallback (#posThermalFontList)'
 );
 
 assert(
-    modalBlock.includes('<option value="Courier New">') &&
-    modalBlock.includes('<option value="Consolas">') &&
-    modalBlock.includes('<option value="Lucida Console">') &&
-    modalBlock.includes('<option value="Arial">') &&
-    modalBlock.includes('<option value="Tahoma">') &&
-    modalBlock.includes('<option value="Verdana">'),
-    'Font datalist includes standard monospace and system fonts (Courier New, Consolas, Lucida Console, Arial, etc.)'
+    modalBlock.includes('<option value="Courier New"') &&
+    modalBlock.includes('<option value="Consolas"') &&
+    modalBlock.includes('<option value="Lucida Console"') &&
+    modalBlock.includes('<option value="Arial"') &&
+    modalBlock.includes('<option value="Tahoma"') &&
+    modalBlock.includes('<option value="Verdana"'),
+    'Font options include standard monospace and clean typography (Courier New, Consolas, Lucida Console, Arial, etc.)'
 );
 
 assert(
-    modalBlock.includes('id="posThermalDefaultFontSize"') &&
-    modalBlock.includes('Standard Range (12 pt — 20 pt)') &&
-    modalBlock.includes('value="12"') &&
-    modalBlock.includes('value="13"') &&
-    modalBlock.includes('value="14"') &&
-    modalBlock.includes('value="15"') &&
-    modalBlock.includes('value="16"') &&
-    modalBlock.includes('value="17"') &&
-    modalBlock.includes('value="18"') &&
-    modalBlock.includes('value="19"') &&
-    modalBlock.includes('value="20"') &&
-    modalBlock.includes('value="custom">Custom pt...</option>'),
-    'Thermal font size selector includes full range options from 12 pt to 20 pt (12, 13, 14, 15, 16, 17, 18, 19, 20 pt) and custom'
-);
-
-assert(
-    modalBlock.includes('id="posThermalFontSizeRange"') &&
-    modalBlock.includes('min="12"') &&
-    modalBlock.includes('max="20"') &&
-    modalBlock.includes('handleFontSizeRangeInput'),
-    'Interactive font size range slider (12 pt to 20 pt) is present and hooked to handleFontSizeRangeInput'
+    modalBlock.includes('adjustThermalFontSize(-1)') &&
+    modalBlock.includes('adjustThermalFontSize(1)') &&
+    modalBlock.includes('setThermalFontSize(12)') &&
+    modalBlock.includes('setThermalFontSize(14)') &&
+    modalBlock.includes('setThermalFontSize(16)') &&
+    modalBlock.includes('setThermalFontSize(18)') &&
+    modalBlock.includes('setThermalFontSize(20)'),
+    'Thermal font size includes stepper (− / +) and quick-select buttons (12, 14, 16, 18, 20 pt) matching prototype'
 );
 
 assert(
     modalBlock.includes('id="posThermalFontSizeBadge"'),
-    'Live font size badge is present alongside the font size range control'
+    'Live font size badge is present alongside the font size control'
 );
 
 assert(
     modalBlock.includes('id="posThermalCustomFontSize"') &&
     modalBlock.includes('min="12"'),
     'Custom font size input strictly enforces min="12"'
-);
-
-assert(
-    modalBlock.includes('id="posThermalCustomSizeGroup"') &&
-    !modalBlock.includes('id="posThermalCustomSizeGroup" style="display: none;') &&
-    !modalBlock.includes('id="posThermalCustomSizeGroup" style="display:none;'),
-    'Custom font size input group (posThermalCustomSizeGroup) is always displayed and never hidden (no display:none)'
 );
 
 assert(
@@ -214,9 +193,9 @@ assert(
     modalBlock.includes('id="posA4PrinterSelect"') &&
     modalBlock.includes('A4 (210 &times; 297 mm)') &&
     modalBlock.includes('id="posA4Orientation"') &&
-    modalBlock.includes('value="portrait"') &&
-    modalBlock.includes('value="landscape"'),
-    'Secondary A4 Section includes posA4PrinterSelect, standard A4 dimensions, and orientation options'
+    modalBlock.includes('id="posOrientPortrait"') &&
+    modalBlock.includes('id="posOrientLandscape"'),
+    'Secondary A4 Section includes posA4PrinterSelect, standard A4 dimensions, and orientation buttons (Portrait / Landscape)'
 );
 
 assert(
@@ -234,27 +213,29 @@ assert(
 console.log('\n--- 8. Section 3: Preview Only PDF ---');
 assert(
     modalBlock.includes('PDF PREVIEW / EXPORT') &&
-    modalBlock.includes('PDF is for preview/export only') &&
+    (modalBlock.includes('PDF is used for preview/export only') || modalBlock.includes('PDF is for preview/export only')) &&
     modalBlock.includes('It is not a physical printer') &&
     modalBlock.includes('Preview PDF'),
     'PDF is clearly designated as Preview Only and never a physical printer'
 );
 
-// 9. Section 4: Print Copies (1-5) & Footer Actions
+// 9. Section 4: Print Copies & Footer Actions
 console.log('\n--- 9. Section 4: Print Copies & Footer Actions ---');
 assert(
     modalBlock.includes('id="posPrintCopies"') &&
-    modalBlock.includes('<option value="1" selected>1</option>') &&
-    modalBlock.includes('<option value="5">5</option>'),
-    'Print copies dropdown allows selecting 1 to 5 copies'
+    modalBlock.includes('adjustPrintCopies(-1)') &&
+    modalBlock.includes('adjustPrintCopies(1)') &&
+    modalBlock.includes('min="1"') &&
+    modalBlock.includes('max="5"'),
+    'Print copies includes stepper allowing 1 to 5 copies'
 );
 
 assert(
     modalBlock.includes('data-dismiss="modal"') &&
-    modalBlock.includes('Cancel') &&
+    (modalBlock.includes('Close') || modalBlock.includes('Cancel')) &&
     modalBlock.includes('onclick="savePOSPrinterSettings()"') &&
     modalBlock.includes('Save Configuration'),
-    'Modal footer includes Cancel and Save Configuration buttons'
+    'Modal footer includes Close/Cancel and Save Configuration buttons'
 );
 
 // 10. Backward Compatibility Hidden Elements
@@ -337,6 +318,20 @@ assert(
     'PO Success modal has no 500mm button options'
 );
 
+// 14. JavaScript Syntax Validation for Printer Engine
+console.log('\n--- 14. JavaScript Syntax Validation ---');
+const pJsStart = posContent.indexOf('const MAX_THERMAL_WIDTH_MM = 210;');
+const pJsEnd = posContent.indexOf('// POS RETURN WORKFLOW JAVASCRIPT ENGINE', pJsStart);
+const printerJsBlock = posContent.substring(pJsStart, pJsEnd);
+let jsParsed = false;
+try {
+    new Function(printerJsBlock);
+    jsParsed = true;
+} catch (e) {
+    console.error('JS Syntax Error in printer script block:', e.message);
+}
+assert(jsParsed, 'Printer configuration and print engine JavaScript parses cleanly with 0 syntax errors');
+
 console.log('\n================================================================');
 console.log(`RESULTS: ${passedChecks}/${totalChecks} checks passed.`);
 if (allPassed) {
@@ -346,3 +341,4 @@ if (allPassed) {
     process.exit(1);
 }
 console.log('================================================================');
+
