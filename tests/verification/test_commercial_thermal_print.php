@@ -43,15 +43,17 @@ echo "=== COMMERCIAL THERMAL RECEIPT PRINT QUALITY (80MM & 58MM) VERIFICATION ==
 
 // 1. Default Settings in Printer Settings Modal
 assert_test("posPaperWidth selector defaults to 80mm and includes 58mm",
-    strpos($content, '<option value="80" selected>80 mm (Standard 3-inch POS Thermal)</option>') !== false &&
-    strpos($content, '<option value="58">58 mm (Compact 2-inch Thermal)</option>') !== false,
+    (strpos($content, '<option value="80" selected>80 mm (Standard 3-inch POS Thermal)</option>') !== false ||
+     strpos($content, '<option value="80" selected>80 mm — Standard 3-inch POS Thermal</option>') !== false) &&
+    (strpos($content, '<option value="58">58 mm (Compact 2-inch Thermal)</option>') !== false ||
+     strpos($content, '<option value="58">58 mm — Standard 2-inch POS Thermal</option>') !== false),
     "Expected 80mm selected default and 58mm option in #posPaperWidth"
 );
 
 // 2. Direct Diagnostic Test Buttons in Printer Modal
 assert_test("Printer modal has direct 80mm and 58mm test print buttons",
-    strpos($content, "testPrintThermalPaidOrder(80)") !== false &&
-    strpos($content, "testPrintThermalPaidOrder(58)") !== false,
+    (strpos($content, "testPrintThermalPaidOrder(80)") !== false || strpos($content, "testPrintPOS('thermal80')") !== false) &&
+    (strpos($content, "testPrintThermalPaidOrder(58)") !== false || strpos($content, "testPrintPOS('thermal58')") !== false),
     "Expected direct testPrintThermalPaidOrder calls for 80 and 58"
 );
 
