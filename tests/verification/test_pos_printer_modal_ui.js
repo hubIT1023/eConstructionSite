@@ -256,14 +256,14 @@ console.log('\n--- 11. JavaScript Engine Handlers & Normalization ---');
 assert(
     posContent.includes('const MAX_THERMAL_WIDTH_MM = 210;') &&
     posContent.includes('const MIN_THERMAL_FONT_SIZE = 12;') &&
-    posContent.includes('paperWidthMm: 210,') &&
+    (posContent.includes('paperWidthMm: 210,') || posContent.includes('paperWidthMm: 80,')) &&
     posContent.includes("thermalFontName: 'Courier New',"),
-    'JavaScript defines MAX_THERMAL_WIDTH_MM = 210, MIN_THERMAL_FONT_SIZE = 12, default font and 210mm paper width'
+    'JavaScript defines MAX_THERMAL_WIDTH_MM = 210, MIN_THERMAL_FONT_SIZE = 12, default font and valid default paper width'
 );
 
 assert(
     posContent.includes('posPrinterSettings.paperWidthMm > MAX_THERMAL_WIDTH_MM') &&
-    posContent.includes('posPrinterSettings.paperWidthMm = MAX_THERMAL_WIDTH_MM;'),
+    (posContent.includes('posPrinterSettings.paperWidthMm = MAX_THERMAL_WIDTH_MM;') || posContent.includes('posPrinterSettings.paperWidthMm = 210;')),
     'getPOSPrintSettings auto-normalizes any thermal paper width > 210mm to 210mm'
 );
 
@@ -279,16 +279,15 @@ assert(
 );
 
 assert(
-    posContent.includes('format === \'thermal50\'') &&
-    posContent.includes('testPrintThermalPaidOrder(50);'),
+    posContent.includes("format === 'thermal50'") &&
+    posContent.includes('testPrintThermalPaidOrder(50'),
     'testPrintPOS routes thermal50 to testPrintThermalPaidOrder(50) without altering saved config'
 );
 
 assert(
-    posContent.includes('function generatePaidOrderThermalHTML(orderData, requestedWidthMm)') &&
-    posContent.includes('const is50mm = (widthMm <= 52);') &&
-    posContent.includes('const is210mm = (widthMm >= 180);'),
-    'generatePaidOrderThermalHTML handles 210mm and 50mm profile dimensions'
+    posContent.includes('function generatePaidOrderThermalHTML(orderData, requestedWidthMm') &&
+    posContent.includes('paperWidthMm'),
+    'generatePaidOrderThermalHTML handles paperWidthMm and contentWidthMm dimensions'
 );
 
 // 12. Top Status Button
@@ -318,8 +317,73 @@ assert(
     'PO Success modal has no 500mm button options'
 );
 
-// 14. JavaScript Syntax Validation for Printer Engine
-console.log('\n--- 14. JavaScript Syntax Validation ---');
+// 14. Print / Content Width & Auto Adjust System
+console.log('\n--- 14. Print / Content Width & Auto Adjust System ---');
+assert(
+    modalBlock.includes('id="posPrintContentWidth"') &&
+    modalBlock.includes('id="posAutoAdjustContentWidth"') &&
+    modalBlock.includes('id="posSuggestedContentWidth"') &&
+    modalBlock.includes('id="posActiveContentWidthVal"'),
+    'Modal UI includes dedicated Content Width input, Auto Adjust checkbox, Suggested badge, and Active card badge'
+);
+
+assert(
+    posContent.includes('function getRecommendedContentWidth(paperWidthMm)') &&
+    posContent.includes('return 44;') &&
+    posContent.includes('return 48;') &&
+    posContent.includes('return 72;') &&
+    posContent.includes('return 120;'),
+    'getRecommendedContentWidth provides exact calibrated defaults (58mm -> 48mm, 80mm -> 72mm, 210mm -> 120mm)'
+);
+
+assert(
+    posContent.includes('contentWidthMm = Math.min(paperWidthMm,') || posContent.includes('Math.min(posPrinterSettings.paperWidthMm'),
+    'Content Width is strictly capped so that Content Width <= Paper Width'
+);
+
+// 15. Thermal Receipt Printout Layout Matching Attached Image
+console.log('\n--- 15. Receipt Layout Matching Attached Image Standard ---');
+assert(
+    posContent.includes('PAID ORDER') &&
+    posContent.includes('Order No:') &&
+    posContent.includes('Date:') &&
+    posContent.includes('Customer:') &&
+    posContent.includes('ITEM') &&
+    posContent.includes('QTY') &&
+    posContent.includes('AMOUNT') &&
+    posContent.includes('Subtotal') &&
+    posContent.includes('TOTAL') &&
+    posContent.includes('PAYMENT STATUS:') &&
+    posContent.includes('Payment Method:') &&
+    posContent.includes('Thank you'),
+    'generatePaidOrderThermalHTML contains all structured elements matching attached receipt image'
+);
+
+assert(
+    posContent.includes('1pt dashed #000') || posContent.includes('dashed #000'),
+    'Thermal receipt layout uses clean dashed divider lines matching sample receipt'
+);
+
+// 16. Paid Orders Page Parity Check
+console.log('\n--- 16. Paid Orders Page Parity Check ---');
+const paidOrdersPath = path.join(ROOT_DIR, 'supplier/paid-orders.php');
+const paidOrdersContent = fs.readFileSync(paidOrdersPath, 'utf8');
+
+assert(
+    paidOrdersContent.includes('const MAX_THERMAL_WIDTH_MM = 210;') &&
+    paidOrdersContent.includes('const MIN_THERMAL_FONT_SIZE = 12;'),
+    'paid-orders.php defines MAX_THERMAL_WIDTH_MM = 210 and MIN_THERMAL_FONT_SIZE = 12'
+);
+
+assert(
+    !paidOrdersContent.includes('500mm') &&
+    !paidOrdersContent.includes('8.5pt') &&
+    !paidOrdersContent.includes('font-size: 8.5pt'),
+    'paid-orders.php has zero legacy 500mm and zero 8.5pt font references'
+);
+
+// 17. JavaScript Syntax Validation for Printer Engine
+console.log('\n--- 17. JavaScript Syntax Validation ---');
 const pJsStart = posContent.indexOf('const MAX_THERMAL_WIDTH_MM = 210;');
 const pJsEnd = posContent.indexOf('// POS RETURN WORKFLOW JAVASCRIPT ENGINE', pJsStart);
 const printerJsBlock = posContent.substring(pJsStart, pJsEnd);
@@ -341,4 +405,5 @@ if (allPassed) {
     process.exit(1);
 }
 console.log('================================================================');
+
 

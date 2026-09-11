@@ -2587,13 +2587,13 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             <span id="aw" style="display:none;">80 mm</span>
                         </div>
                         <div class="cfg-item">
-                            <div class="cfg-small">A Font</div>
-                            <div class="cfg-value" id="posActiveFontNameVal">Courier New</div>
-                            <span id="af" style="display:none;">Courier New</span>
+                            <div class="cfg-small">📐 Content Width</div>
+                            <div class="cfg-value" id="posActiveContentWidthVal" style="color: #0369a1;">72 mm</div>
                         </div>
                         <div class="cfg-item">
-                            <div class="cfg-small">Tᵀ Font Size</div>
-                            <div class="cfg-value" id="posActiveFontVal">12 pt</div>
+                            <div class="cfg-small">Aᵀ Font & Size</div>
+                            <div class="cfg-value" id="posActiveFontCombinedVal"><span id="posActiveFontNameVal">Courier New</span> <span id="posActiveFontVal">12 pt</span></div>
+                            <span id="af" style="display:none;">Courier New</span>
                             <span id="as" style="display:none;">12 pt</span>
                         </div>
                         <div class="cfg-item">
@@ -2607,7 +2607,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     </div>
                     <!-- Legacy summary & copies container -->
                     <div id="posLayoutDesc" style="font-size: 11px; color: #166534; border-top: 1px dashed #a7e4c2; padding-top: 5px; margin-top: 8px;">
-                        Primary: Thermal • 80 mm • Courier New 12 pt min | Secondary: A4 (Portrait) | PDF: Preview Only
+                        Primary: Thermal • Paper: 80 mm • Content: 72 mm • Courier New 12 pt | Secondary: A4 (Portrait) | PDF: Preview Only
                     </div>
                     <span id="posActivePrinterVal" style="display:none;">AUTO DETECT</span>
                     <span id="posActiveCopiesVal" style="display:none;">1 Copy</span>
@@ -2643,6 +2643,26 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                         <input type="number" id="posCustomWidthInput" class="cfg-ctrl" min="40" max="210" value="80" oninput="if(this.value>210)this.value=210; handlePaperWidthChange();" onchange="handlePaperWidthChange();">
                                         <div class="cfg-desc" style="color: #b45309;">Enter a value between 40 mm and 210 mm.</div>
                                     </div>
+                                </div>
+
+                                <!-- PRINT / CONTENT WIDTH SECTION -->
+                                <div class="cfg-group" style="margin-top: 10px; padding: 11px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <label class="cfg-input-lbl" style="margin-bottom: 0;">Print / Content Width ⓘ</label>
+                                        <span id="posSuggestedContentWidth" style="font-size: 11px; font-weight: 700; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">Suggested: 72 mm</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <input type="number" id="posPrintContentWidth" class="cfg-ctrl" style="width: 85px; text-align: center; font-weight: 700; font-size: 13px;" min="30" max="210" value="72" oninput="handlePrintContentWidthInput(this.value)" onchange="handlePrintContentWidthInput(this.value)">
+                                        <b style="font-size: 13px; color: #334155;">mm</b>
+                                        <span class="cfg-desc" style="margin: 0; font-size: 11px; color: #64748b;">(Actual receipt content width. Must be &le; Paper Width)</span>
+                                    </div>
+                                    <label class="cfg-check" style="margin-top: 8px;">
+                                        <input type="checkbox" id="posAutoAdjustContentWidth" checked onchange="handleAutoAdjustToggle(this.checked)">
+                                        <span>
+                                            <b>Automatically adjust Print / Content Width when paper size changes</b>
+                                            <span style="display: block; color: #64748b; font-size: 11px;">Recommended: 58 mm &rarr; 48 mm, 80 mm &rarr; 72 mm, 210 mm &rarr; 120 mm.</span>
+                                        </span>
+                                    </label>
                                 </div>
 
                                 <!-- THERMAL TYPOGRAPHY -->
@@ -4834,12 +4854,24 @@ let posDetectedPrinters = [];
 const MAX_THERMAL_WIDTH_MM = 210;
 const MIN_THERMAL_FONT_SIZE = 12;
 
+function getRecommendedContentWidth(paperWidthMm) {
+    const w = parseInt(paperWidthMm, 10);
+    if (isNaN(w) || w <= 0) return 72;
+    if (w <= 52) return 44;
+    if (w <= 65) return 48; // 58 mm paper -> 48 mm content width
+    if (w <= 90) return 72; // 80 mm paper -> 72 mm content width
+    if (w >= 180) return 120; // 210 mm paper -> 120 mm content width
+    return Math.min(w, Math.max(30, Math.round(w * 0.9))); // Custom -> ~90%
+}
+
 let posPrinterSettings = {
     printerId: 'system_default',
     printerName: 'AUTO DETECT (System Default Printer)',
     printerMode: 'thermal', // 'thermal' (Primary/Default), 'normal' (Standard A4)
     printerType: 'thermal',
-    paperWidthMm: 210, // Maximum & default standard thermal width (<= 210mm)
+    paperWidthMm: 80, // Default standard thermal paper width (<= 210mm)
+    printContentWidthMm: 72, // Actual content width (<= paperWidthMm)
+    autoAdjustContentWidth: true, // Auto-adjust content width when paper width changes
     thermalFontName: 'Courier New', // Configurable thermal font name
     thermalMinFontSize: 12, // Enterprise standard minimum (>= 12 pt)
     thermalDefaultFontSize: 12, // Default thermal font size (>= 12 pt)
@@ -4862,7 +4894,17 @@ function getPOSPrintSettings() {
     }
     // Strict normalization: thermal paper width must NOT exceed MAX_THERMAL_WIDTH_MM (210 mm)
     if (!posPrinterSettings.paperWidthMm || posPrinterSettings.paperWidthMm > MAX_THERMAL_WIDTH_MM || posPrinterSettings.paperWidthMm === 500 || posPrinterSettings.paperWidthMm === 400 || posPrinterSettings.paperWidthMm === 250) {
-        posPrinterSettings.paperWidthMm = MAX_THERMAL_WIDTH_MM;
+        posPrinterSettings.paperWidthMm = 210;
+    }
+    // Auto adjust flag (default true)
+    if (typeof posPrinterSettings.autoAdjustContentWidth === 'undefined') {
+        posPrinterSettings.autoAdjustContentWidth = true;
+    }
+    // Strict normalization: print content width must be > 0 and <= paperWidthMm
+    if (!posPrinterSettings.printContentWidthMm || isNaN(parseFloat(posPrinterSettings.printContentWidthMm))) {
+        posPrinterSettings.printContentWidthMm = getRecommendedContentWidth(posPrinterSettings.paperWidthMm);
+    } else {
+        posPrinterSettings.printContentWidthMm = Math.min(posPrinterSettings.paperWidthMm, Math.max(30, Math.round(parseFloat(posPrinterSettings.printContentWidthMm))));
     }
     if (!posPrinterSettings.printerMode) {
         posPrinterSettings.printerMode = (posPrinterSettings.printerType === 'normal' || posPrinterSettings.paperWidthMm === 210) ? 'normal' : 'thermal';
@@ -5033,13 +5075,31 @@ function savePOSPrinterSettings() {
     posPrinterSettings.printerName = selectedOption ? selectedOption.text : 'AUTO DETECT (System Default Printer)';
     posPrinterSettings.printerType = 'thermal';
     
-    const widthVal = document.getElementById('posPaperWidth')?.value || '210';
+    // Paper Width
+    const widthVal = document.getElementById('posPaperWidth')?.value || '80';
+    let chosenPaperW = 80;
     if (widthVal === 'custom') {
-        let customW = parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 210;
-        posPrinterSettings.paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, customW));
+        let customW = parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 80;
+        chosenPaperW = Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, customW));
     } else {
-        let chosenW = parseInt(widthVal, 10) || 210;
-        posPrinterSettings.paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, chosenW);
+        let chosenW = parseInt(widthVal, 10) || 80;
+        chosenPaperW = Math.min(MAX_THERMAL_WIDTH_MM, chosenW);
+    }
+    posPrinterSettings.paperWidthMm = chosenPaperW;
+
+    // Print / Content Width & Auto Adjust
+    const autoAdjustChecked = document.getElementById('posAutoAdjustContentWidth')?.checked ?? true;
+    posPrinterSettings.autoAdjustContentWidth = autoAdjustChecked;
+    const contentWidthInput = document.getElementById('posPrintContentWidth');
+    let contentVal = parseFloat(contentWidthInput?.value);
+    if (isNaN(contentVal) || autoAdjustChecked) {
+        posPrinterSettings.printContentWidthMm = getRecommendedContentWidth(posPrinterSettings.paperWidthMm);
+    } else {
+        // Enforce Content Width <= Paper Width
+        posPrinterSettings.printContentWidthMm = Math.min(posPrinterSettings.paperWidthMm, Math.max(30, Math.round(contentVal)));
+    }
+    if (contentWidthInput) {
+        contentWidthInput.value = posPrinterSettings.printContentWidthMm;
     }
 
     // Thermal Font Name
@@ -5191,6 +5251,21 @@ function openPOSPrinterModal() {
         }
     }
 
+    // Print / Content Width & Auto-adjust controls
+    const autoAdjustCb = document.getElementById('posAutoAdjustContentWidth');
+    if (autoAdjustCb) {
+        autoAdjustCb.checked = (s.autoAdjustContentWidth !== false);
+    }
+    const contentWidthInput = document.getElementById('posPrintContentWidth');
+    if (contentWidthInput) {
+        contentWidthInput.max = s.paperWidthMm;
+        contentWidthInput.value = s.printContentWidthMm || getRecommendedContentWidth(s.paperWidthMm);
+    }
+    const suggestedBadge = document.getElementById('posSuggestedContentWidth');
+    if (suggestedBadge) {
+        suggestedBadge.innerText = 'Suggested: ' + getRecommendedContentWidth(s.paperWidthMm) + ' mm';
+    }
+
     // Thermal Font Name
     const fontNameInput = document.getElementById('posThermalFontName');
     if (fontNameInput) {
@@ -5270,10 +5345,67 @@ function handlePaperWidthChange() {
     if (!s) return;
     const val = s.value;
     const customGroup = document.getElementById('posCustomWidthGroup');
+    let paperWidthMm = 80;
     if (val === 'custom') {
         if (customGroup) customGroup.style.display = 'block';
+        paperWidthMm = parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 80;
     } else {
         if (customGroup) customGroup.style.display = 'none';
+        paperWidthMm = parseInt(val, 10) || 80;
+    }
+    paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, paperWidthMm));
+
+    const recContentW = getRecommendedContentWidth(paperWidthMm);
+    const suggestedBadge = document.getElementById('posSuggestedContentWidth');
+    if (suggestedBadge) {
+        suggestedBadge.innerText = 'Suggested: ' + recContentW + ' mm';
+    }
+
+    const contentInput = document.getElementById('posPrintContentWidth');
+    const autoAdjustCb = document.getElementById('posAutoAdjustContentWidth');
+    if (contentInput) {
+        contentInput.max = paperWidthMm;
+        if (autoAdjustCb && autoAdjustCb.checked) {
+            contentInput.value = recContentW;
+        } else {
+            let curVal = parseFloat(contentInput.value) || recContentW;
+            if (curVal > paperWidthMm) {
+                contentInput.value = paperWidthMm;
+            }
+        }
+    }
+    updateCompatibilityBadge();
+}
+
+function handlePrintContentWidthInput(val) {
+    const widthVal = document.getElementById('posPaperWidth')?.value || '80';
+    let paperWidthMm = (widthVal === 'custom') 
+        ? (parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 80)
+        : (parseInt(widthVal, 10) || 80);
+    paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, paperWidthMm));
+
+    let contentW = parseFloat(val);
+    const contentInput = document.getElementById('posPrintContentWidth');
+    if (isNaN(contentW)) contentW = getRecommendedContentWidth(paperWidthMm);
+
+    // Rule: Print Width <= Paper Width
+    if (contentW > paperWidthMm) {
+        contentW = paperWidthMm;
+        if (contentInput) contentInput.value = contentW;
+    }
+    updateCompatibilityBadge();
+}
+
+function handleAutoAdjustToggle(checked) {
+    if (checked) {
+        const widthVal = document.getElementById('posPaperWidth')?.value || '80';
+        let paperWidthMm = (widthVal === 'custom') 
+            ? (parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 80)
+            : (parseInt(widthVal, 10) || 80);
+        paperWidthMm = Math.min(MAX_THERMAL_WIDTH_MM, Math.max(40, paperWidthMm));
+        const rec = getRecommendedContentWidth(paperWidthMm);
+        const contentInput = document.getElementById('posPrintContentWidth');
+        if (contentInput) contentInput.value = rec;
     }
     updateCompatibilityBadge();
 }
@@ -5312,9 +5444,14 @@ function handlePrinterSelectChange() {
 function updateCompatibilityBadge() {
     const s = getPOSPrintSettings();
     const widthVal = document.getElementById('posPaperWidth')?.value || s.paperWidthMm;
-    let widthMm = (widthVal === 'custom') ? (parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 210) : parseInt(widthVal, 10);
-    if (isNaN(widthMm) || widthMm <= 0) widthMm = 210;
+    let widthMm = (widthVal === 'custom') ? (parseInt(document.getElementById('posCustomWidthInput')?.value, 10) || 80) : parseInt(widthVal, 10);
+    if (isNaN(widthMm) || widthMm <= 0) widthMm = 80;
     if (widthMm > MAX_THERMAL_WIDTH_MM) widthMm = MAX_THERMAL_WIDTH_MM;
+
+    const contentInput = document.getElementById('posPrintContentWidth');
+    let contentWidthMm = contentInput ? parseFloat(contentInput.value) : (s.printContentWidthMm || getRecommendedContentWidth(widthMm));
+    if (isNaN(contentWidthMm) || contentWidthMm <= 0) contentWidthMm = getRecommendedContentWidth(widthMm);
+    contentWidthMm = Math.min(widthMm, Math.max(30, Math.round(contentWidthMm)));
 
     const fontNameInput = document.getElementById('posThermalFontName');
     const fontName = (fontNameInput && fontNameInput.value.trim()) ? fontNameInput.value.trim() : (s.thermalFontName || 'Courier New');
@@ -5348,6 +5485,9 @@ function updateCompatibilityBadge() {
 
     const awEl = document.getElementById('aw');
     if (awEl) awEl.innerText = widthMm + ' mm';
+
+    const activeContentWidthEl = document.getElementById('posActiveContentWidthVal');
+    if (activeContentWidthEl) activeContentWidthEl.innerText = contentWidthMm + ' mm';
 
     const activeFontNameEl = document.getElementById('posActiveFontNameVal');
     if (activeFontNameEl) activeFontNameEl.innerText = fontName;
@@ -5385,7 +5525,7 @@ function updateCompatibilityBadge() {
 
     const descSpan = document.getElementById('posLayoutDesc');
     if (descSpan) {
-        descSpan.innerText = `Primary: Thermal • ${widthMm} mm (Max 210 mm) • ${fontName} ${fontPt} pt min | Secondary: A4 (${orientLabel}) | PDF: Preview Only`;
+        descSpan.innerText = `Primary: Thermal • Paper: ${widthMm} mm • Content: ${contentWidthMm} mm • ${fontName} ${fontPt} pt min | Secondary: A4 (${orientLabel}) | PDF: Preview Only`;
     }
 }
 
@@ -5991,49 +6131,48 @@ function executePOSPrintJob(htmlContent, autoTriggerPrint = true) {
     }
 }
 
-function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
+function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedContentWidthMm) {
     const s = getPOSPrintSettings();
-    let widthMm = requestedWidthMm || s.paperWidthMm || 210;
-    if (requestedWidthMm) {
-        widthMm = requestedWidthMm;
+    let paperWidthMm = requestedWidthMm || s.paperWidthMm || 80;
+    if (requestedWidthMm) paperWidthMm = requestedWidthMm;
+    if (paperWidthMm > MAX_THERMAL_WIDTH_MM) paperWidthMm = MAX_THERMAL_WIDTH_MM;
+    if (paperWidthMm < 40) paperWidthMm = 40;
+
+    let contentWidthMm = requestedContentWidthMm || s.printContentWidthMm;
+    if (!contentWidthMm || isNaN(parseFloat(contentWidthMm))) {
+        contentWidthMm = getRecommendedContentWidth(paperWidthMm);
     }
-    if (widthMm > MAX_THERMAL_WIDTH_MM) {
-        widthMm = MAX_THERMAL_WIDTH_MM;
-    }
-    const is210mm = (widthMm >= 180);
-    const is50mm = (widthMm <= 52);
-    const is58mm = (!is50mm && widthMm <= 65);
-    const actualWidthMm = is210mm ? 210 : (is50mm ? 50 : (is58mm ? 58 : 80));
-    const contentWidthMm = is210mm ? 195 : (is50mm ? 44 : (is58mm ? 50 : 72));
-    
+    // Strict rule: Content Width <= Paper Width
+    contentWidthMm = Math.min(paperWidthMm, Math.max(30, Math.round(parseFloat(contentWidthMm))));
+
     // Thermal Font Selection
     const fontName = s.thermalFontName || 'Courier New';
     const fontStack = `'${fontName.replace(/'/g, "\\'")}', 'Courier New', Courier, monospace, 'Lucida Console', Arial, sans-serif`;
 
     // Hard minimum 12 pt for thermal font size
     const baseFontSizePt = Math.max(MIN_THERMAL_FONT_SIZE, parseFloat(s.thermalDefaultFontSize) || MIN_THERMAL_FONT_SIZE);
-    const fontSizePt = is210mm ? Math.max(12.0, baseFontSizePt) : (is50mm ? 12.0 : (is58mm ? 12.0 : Math.max(12.0, baseFontSizePt)));
-    const titleFontSizePt = is210mm ? Math.max(16.0, baseFontSizePt + 3) : (is50mm ? 13.0 : (is58mm ? 13.5 : Math.max(14.0, baseFontSizePt + 2)));
-    const totalFontSizePt = is210mm ? Math.max(15.5, baseFontSizePt + 2.5) : (is50mm ? 12.5 : (is58mm ? 13.0 : Math.max(13.5, baseFontSizePt + 1.5)));
-    const padding = is210mm ? '6mm 8mm' : (is50mm ? '1mm 1.5mm' : (is58mm ? '1.5mm 2mm' : '2.5mm 3mm'));
+    const fontSizePt = baseFontSizePt;
+    const titleFontSizePt = Math.max(13.0, baseFontSizePt + 1.0);
+    const totalFontSizePt = Math.max(13.0, baseFontSizePt + 1.0);
 
     const supplierName = orderData.supplier_name || 'SAM & INRI CONSTRUCTION SUPPLY';
-    const orderNo = orderData.payment_id || 'PO-000000';
+    const orderNo = orderData.payment_id || 'PO-000123';
     const dateStr = orderData.payment_date || '';
-    const customerName = orderData.customer_name || 'Walk-in Customer';
+    const customerName = orderData.customer_name || 'Juan Dela Cruz';
     const paymentMethod = orderData.payment_method || 'Cash';
     const paymentStatus = (orderData.payment_status || 'PAID').toUpperCase();
 
     const items = orderData.items || [];
     let itemsRows = '';
     items.forEach(function(item) {
-        const itemName = item.name || 'Item';
+        const rawName = item.name || 'Item';
+        const formattedName = escapeHtml(rawName).replace(/\n/g, '<br>');
         const itemQty = parseInt(item.qty, 10) || 1;
         const itemAmount = parseFloat(item.amount || (parseFloat(item.price || 0) * itemQty)).toFixed(2);
         
         itemsRows += `
             <tr>
-                <td style="text-align: left; padding: 2.5px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">${escapeHtml(itemName)}</td>
+                <td style="text-align: left; padding: 2.5px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word; line-height: 1.25;">${formattedName}</td>
                 <td style="text-align: center; padding: 2.5px 4px; vertical-align: top; white-space: nowrap;">${itemQty}</td>
                 <td style="text-align: right; padding: 2.5px 0; vertical-align: top; white-space: nowrap;">${itemAmount}</td>
             </tr>
@@ -6077,7 +6216,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             print-color-adjust: exact !important;
         }
         @page {
-            size: ${actualWidthMm}mm auto;
+            size: ${paperWidthMm}mm auto;
             margin: 0;
         }
         html, body {
@@ -6088,21 +6227,21 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             font-family: ${fontStack} !important;
             font-size: ${fontSizePt}pt !important;
             line-height: 1.3 !important;
-            width: ${actualWidthMm}mm !important;
+            width: ${paperWidthMm}mm !important;
             height: auto !important;
         }
         .thermal-receipt {
             width: ${contentWidthMm}mm !important;
             max-width: ${contentWidthMm}mm !important;
-            padding: ${padding} !important;
-            margin: 0 !important;
+            margin: 0 auto !important;
+            padding: 2mm 3mm !important;
             background: #ffffff !important;
             color: #000000 !important;
             box-sizing: border-box !important;
         }
         .thermal-header {
             text-align: center;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
         }
         .thermal-title {
             font-size: ${titleFontSizePt}pt;
@@ -6171,7 +6310,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             }
             .thermal-preview-toolbar {
                 width: 100%;
-                max-width: ${actualWidthMm}mm;
+                max-width: ${paperWidthMm}mm;
                 margin-bottom: 12px;
                 background: #0f172a;
                 color: #ffffff;
@@ -6206,7 +6345,7 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
 </head>
 <body>
     <div class="no-print thermal-preview-toolbar">
-        <span style="font-weight: bold;">🖨️ Thermal Receipt (${actualWidthMm}mm)</span>
+        <span style="font-weight: bold;">🖨️ Thermal Receipt (${paperWidthMm}mm / Content: ${contentWidthMm}mm)</span>
         <div style="display: flex; gap: 6px;">
             <button type="button" onclick="window.print()" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">Print</button>
             <button type="button" onclick="window.close()" style="background: #64748b; color: #fff; border: none; padding: 4px 8px; font-weight: bold; border-radius: 3px; cursor: pointer; font-size: 11px;">✕</button>
@@ -6248,8 +6387,8 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
             ${deliveryRow}
             ${discountRow}
             <tr style="font-weight: bold;">
-                <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000;">TOTAL</td>
-                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${total}</td>
+                <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">TOTAL</td>
+                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${total}</td>
             </tr>
         </table>
 
@@ -6268,24 +6407,28 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm) {
 </html>`;
 }
 
-function testPrintThermalPaidOrder(widthMm = 210) {
+function testPrintThermalPaidOrder(widthMm = 80, contentWidthMm = null) {
     const s = getPOSPrintSettings();
-    let targetWidth = widthMm || s.paperWidthMm || 210;
+    let targetWidth = widthMm || s.paperWidthMm || 80;
     if (targetWidth > MAX_THERMAL_WIDTH_MM) targetWidth = MAX_THERMAL_WIDTH_MM;
     if (targetWidth === 200) targetWidth = 210;
+
+    let targetContentWidth = contentWidthMm || (widthMm ? getRecommendedContentWidth(targetWidth) : s.printContentWidthMm);
+    if (!targetContentWidth) targetContentWidth = getRecommendedContentWidth(targetWidth);
+    targetContentWidth = Math.min(targetWidth, targetContentWidth);
     
     const sampleOrderData = {
         supplier_name: 'SAM & INRI CONSTRUCTION SUPPLY',
         supplier_phone: '09612735733',
-        payment_id: 'PO-TEST-' + targetWidth + 'MM',
-        payment_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        customer_name: 'Walk-in Customer (Test)',
+        payment_id: 'PO-000123',
+        payment_date: '11 Sept 2026',
+        customer_name: 'Juan Dela Cruz',
         payment_method: 'Cash',
         payment_status: 'PAID',
         items: [
-            { name: 'Portland Cement 40kg Type 1P', qty: 10, price: 250.00, amount: 2500.00 },
-            { name: 'PVC Electrical Conduit Pipe 20mm x 3.0m', qty: 20, price: 80.00, amount: 1600.00 },
-            { name: 'Electrical Cable THHN 2.0mm² (150m)', qty: 2, price: 1250.00, amount: 2500.00 }
+            { name: 'Portland Cement\n40kg Type 1P', qty: 10, price: 250.00, amount: 2500.00 },
+            { name: 'PVC Electrical\nConduit Pipe 20mm x\n3.0m', qty: 20, price: 80.00, amount: 1600.00 },
+            { name: 'Electrical Cable\nTHHN 2.0mm² (150m)', qty: 2, price: 1250.00, amount: 2500.00 }
         ],
         subtotal: 6600.00,
         delivery: 150.00,
@@ -6293,22 +6436,26 @@ function testPrintThermalPaidOrder(widthMm = 210) {
         total: 6750.00
     };
 
-    const html = generatePaidOrderThermalHTML(sampleOrderData, targetWidth);
+    const html = generatePaidOrderThermalHTML(sampleOrderData, targetWidth, targetContentWidth);
     executePOSPrintJob(html, true);
 }
 
-function testPrintPOS(format = 'thermal210') {
+function testPrintPOS(format = 'thermal80') {
     if (format === 'thermal50') {
-        testPrintThermalPaidOrder(50);
+        testPrintThermalPaidOrder(50, 44);
         return;
     } else if (format === 'thermal58') {
-        testPrintThermalPaidOrder(58);
+        testPrintThermalPaidOrder(58, 48);
         return;
     } else if (format === 'thermal' || format === 'thermal80' || format === 'thermalPaidOrder') {
-        testPrintThermalPaidOrder(80);
+        testPrintThermalPaidOrder(80, 72);
         return;
     } else if (format === 'thermal210' || format === 'thermal200' || format === '210' || format === '200') {
-        testPrintThermalPaidOrder(210);
+        testPrintThermalPaidOrder(210, 120);
+        return;
+    } else if (format === 'custom') {
+        const s = getPOSPrintSettings();
+        testPrintThermalPaidOrder(s.paperWidthMm || 80, s.printContentWidthMm || 72);
         return;
     }
     const s = getPOSPrintSettings();
