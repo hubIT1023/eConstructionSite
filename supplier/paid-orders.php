@@ -150,6 +150,84 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
     padding-bottom: 30px;
 }
 
+/* Thermal Receipt Preview Standard */
+.thermal-receipt {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    background: #ffffff;
+    color: #000000;
+    padding: 18px 22px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    font-family: 'Courier New', Consolas, Monaco, monospace;
+    font-size: 12pt;
+    line-height: 1.3;
+    box-sizing: border-box;
+}
+.thermal-header {
+    text-align: center;
+    margin-bottom: 6px;
+}
+.thermal-title {
+    font-size: 14pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    line-height: 1.25;
+    color: #000000;
+}
+.thermal-subtitle {
+    font-size: 12pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-top: 2px;
+    color: #000000;
+}
+.thermal-meta {
+    margin: 6px 0;
+    font-size: 12pt;
+    line-height: 1.35;
+    color: #000000;
+}
+.thermal-divider {
+    border-top: 1pt dashed #000000;
+    margin: 5px 0;
+}
+.thermal-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    margin: 4px 0 !important;
+    font-size: 12pt !important;
+}
+.thermal-table th {
+    padding: 3px 0 !important;
+    border-top: 1pt dashed #000000 !important;
+    border-bottom: 1pt dashed #000000 !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    color: #000000 !important;
+}
+.thermal-table td {
+    color: #000000 !important;
+}
+.thermal-totals {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 4px 0 !important;
+    font-size: 12pt !important;
+}
+.thermal-totals td {
+    color: #000000 !important;
+}
+.thermal-footer {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 12pt;
+    color: #000000;
+}
+
 /* Page Header */
 .paid-header-banner {
     background: #ffffff;
@@ -942,143 +1020,33 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                      
                                     <!-- Modal for View Official Receipt -->
                                     <div id="receipt-modal-<?php echo $row['id']; ?>" class="modal fade" role="dialog" tabindex="-1">
-                                         <div class="modal-dialog modal-md">
+                                         <div class="modal-dialog modal-md" style="max-width: 500px;">
                                              <div class="modal-content" style="border-radius: 8px; overflow: hidden; border: none; box-shadow: 0 10px 35px rgba(0,0,0,0.25);">
                                                  <div class="modal-header" style="text-align: left; background: #0284c7; color: #fff; padding: 15px 20px;">
                                                      <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 1;">&times;</button>
                                                      <h4 class="modal-title" style="font-weight: bold; margin: 0;"><i class="fa fa-file-text-o"></i> Official Sales Receipt</h4>
                                                  </div>
-                                                 <div class="modal-body" id="receipt-print-area-<?php echo $row['id']; ?>" style="text-align: left; padding: 20px; background: #fff;">
-                                                     <div class="receipt-box-printable">
-                                                         <!-- Header -->
-                                                         <div style="text-align: center; margin-bottom: 20px;">
-                                                             <h2 style="margin: 0; color: #337ab7; font-weight: bold; letter-spacing: 1px;">E-CONSTRUCTION SUPPLY</h2>
-                                                             <p style="margin: 5px 0 0 0; font-size: 14px; color: #777;">Online Construction Supply</p>
-                                                             <hr style="margin: 15px 0; border: 0; border-top: 2px dashed #ddd;">
-                                                             <h3 style="margin: 0; font-size: 17px; font-weight: bold; color: #555; text-transform: uppercase;">Official Sales Receipt</h3>
-                                                         </div>
-
-                                                         <!-- Details Box -->
-                                                         <table style="width: 100%; margin-bottom: 20px;">
-                                                             <tr>
-                                                                 <td style="width: 50%; vertical-align: top; text-align: left;">
-                                                                     <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Supplier / Store:</h5>
-                                                                     <p style="margin: 0; font-size: 13px; font-weight: bold;">
-                                                                         <?php
-                                                                         $statement_s = $pdo->prepare("SELECT * FROM tbl_supplier WHERE supplier_id=?");
-                                                                         $statement_s->execute(array($row['supplier_id']));
-                                                                         $sup_data = $statement_s->fetch(PDO::FETCH_ASSOC);
-                                                                         echo htmlspecialchars($sup_data['supplier_name']);
-                                                                         ?>
-                                                                     </p>
-                                                                     <p style="margin: 3px 0 0 0; font-size: 12px; color: #555; line-height: 1.4;">
-                                                                         <?php echo nl2br(htmlspecialchars($sup_data['supplier_address'])); ?><br>
-                                                                         Phone: <?php echo htmlspecialchars($sup_data['supplier_phone']); ?>
-                                                                     </p>
-                                                                 </td>
-                                                                 <td style="width: 50%; vertical-align: top; text-align: right;">
-                                                                     <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Receipt Info:</h5>
-                                                                     <p style="margin: 0; font-size: 12px;"><strong>Receipt #:</strong> <?php echo htmlspecialchars($row['payment_id']); ?></p>
-                                                                     <p style="margin: 3px 0 0 0; font-size: 12px;"><strong>Date:</strong> <?php echo htmlspecialchars($row['payment_date']); ?></p>
-                                                                     <p style="margin: 3px 0 0 0; font-size: 12px;"><strong>Payment:</strong> <?php echo htmlspecialchars($row['payment_method']); ?></p>
-                                                                     <p style="margin: 3px 0 0 0; font-size: 12px;"><strong>Status:</strong> <span class="label label-success" style="font-size: 10px; padding: 2px 6px;">PAID</span></p>
-                                                                 </td>
-                                                             </tr>
-                                                         </table>
-
-                                                         <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
-
-                                                         <!-- Bill To Box -->
-                                                         <div style="margin-bottom: 20px; text-align: left;">
-                                                             <h5 style="margin: 0 0 5px 0; font-weight: bold; color: #777; text-transform: uppercase; font-size: 10px;">Billed To (Customer):</h5>
-                                                             <p style="margin: 0; font-size: 13px; font-weight: bold;"><?php echo htmlspecialchars($row['customer_name']); ?></p>
-                                                             <p style="margin: 3px 0 0 0; font-size: 12px; color: #555;">Email: <?php echo htmlspecialchars($row['customer_email']); ?></p>
-                                                             <?php
-                                                             $statement_c = $pdo->prepare("SELECT * FROM tbl_customer WHERE cust_id=?");
-                                                             $statement_c->execute(array($row['customer_id']));
-                                                             $cust_data = $statement_c->fetch(PDO::FETCH_ASSOC);
-                                                             if ($cust_data) {
-                                                                 $cust_country_id = $cust_data['cust_country'];
-                                                                 $statement_cnt = $pdo->prepare("SELECT * FROM tbl_country WHERE country_id=?");
-                                                                 $statement_cnt->execute(array($cust_country_id));
-                                                                 $cnt_data = $statement_cnt->fetch(PDO::FETCH_ASSOC);
-                                                                 $cust_city_town = $cnt_data ? $cnt_data['country_name'] : '';
-                                                                 ?>
-                                                                 <p style="margin: 3px 0 0 0; font-size: 12px; color: #555;">Address: <?php echo htmlspecialchars($cust_data['cust_address']); ?>, <?php echo htmlspecialchars($cust_city_town); ?>, <?php echo htmlspecialchars($cust_data['cust_zip']); ?></p>
-                                                                 <?php
-                                                             }
-                                                             ?>
-                                                         </div>
-
-                                                         <!-- Items Table -->
-                                                         <table class="table table-condensed" style="margin-bottom: 20px; font-size: 13px; width: 100%;">
-                                                             <thead>
-                                                                 <tr style="background: #f9f9f9;">
-                                                                     <th style="border-bottom: 2px solid #ddd; font-weight: bold; text-align: left;">Product Description</th>
-                                                                     <th style="border-bottom: 2px solid #ddd; text-align: center; font-weight: bold;">Qty</th>
-                                                                     <th style="border-bottom: 2px solid #ddd; text-align: right; font-weight: bold;">Unit Price</th>
-                                                                     <th style="border-bottom: 2px solid #ddd; text-align: right; font-weight: bold;">Amount</th>
-                                                                 </tr>
-                                                             </thead>
-                                                             <tbody>
-                                                                 <?php
-                                                                 $statement_o = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
-                                                                 $statement_o->execute(array($row['payment_id']));
-                                                                 $order_items = $statement_o->fetchAll(PDO::FETCH_ASSOC);
-                                                                 $subtotal_items = 0;
-                                                                 foreach ($order_items as $item):
-                                                                     $item_subtotal = floatval($item['unit_price']) * intval($item['quantity']);
-                                                                     $subtotal_items += $item_subtotal;
-                                                                 ?>
-                                                                 <tr>
-                                                                     <td style="border-top: 1px solid #eee; padding: 8px 5px; text-align: left;">
-                                                                         <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
-                                                                         <?php if(!empty($item['size']) || !empty($item['color'])): ?>
-                                                                             <br><span style="font-size: 11px; color: #777;">(Size: <?php echo htmlspecialchars($item['size']); ?>, Color: <?php echo htmlspecialchars($item['color']); ?>)</span>
-                                                                         <?php endif; ?>
-                                                                     </td>
-                                                                     <td style="border-top: 1px solid #eee; text-align: center; padding: 8px 5px;"><?php echo htmlspecialchars($item['quantity']); ?></td>
-                                                                     <td style="border-top: 1px solid #eee; text-align: right; padding: 8px 5px;">&#8369;<?php echo number_format(floatval($item['unit_price']), 2); ?></td>
-                                                                     <td style="border-top: 1px solid #eee; text-align: right; padding: 8px 5px;">&#8369;<?php echo number_format($item_subtotal, 2); ?></td>
-                                                                 </tr>
-                                                                 <?php endforeach; ?>
-                                                                 
-                                                                 <?php
-                                                                 $delivery_cost = floatval($row['paid_amount']) - $subtotal_items;
-                                                                 if ($delivery_cost < 0) {
-                                                                     $delivery_cost = 0;
-                                                                 }
-                                                                 ?>
-                                                                 <!-- Totals -->
-                                                                 <tr>
-                                                                     <td colspan="2" style="border-top: 2px solid #ddd;"></td>
-                                                                     <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">Subtotal:</td>
-                                                                     <td style="border-top: 2px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px;">&#8369;<?php echo number_format($subtotal_items, 2); ?></td>
-                                                                 </tr>
-                                                                 <tr>
-                                                                     <td colspan="2" style="border: none;"></td>
-                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">Delivery:</td>
-                                                                     <td style="border: none; text-align: right; font-weight: bold; padding: 4px 5px; color: #777;">&#8369;<?php echo number_format($delivery_cost, 2); ?></td>
-                                                                 </tr>
-                                                                 <tr style="font-size: 15px; background: #f5f5f5;">
-                                                                     <td colspan="2" style="border-top: 1px solid #ddd;"></td>
-                                                                     <td style="border-top: 1px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px; color: #337ab7;">Total Paid:</td>
-                                                                     <td style="border-top: 1px solid #ddd; text-align: right; font-weight: bold; padding: 8px 5px; color: #337ab7;">&#8369;<?php echo number_format(floatval($row['paid_amount']), 2); ?></td>
-                                                                 </tr>
-                                                             </tbody>
-                                                         </table>
-
-                                                         <!-- Footer Message -->
-                                                         <div style="text-align: center; margin-top: 25px; font-size: 12px; color: #999;">
-                                                             <p style="margin: 0; font-weight: bold;">Thank you for your order!</p>
-                                                             <p style="margin: 5px 0 0 0; font-size: 11px; color: #aaa;">We appreciate your trust in us for your construction needs.</p>
-                                                             <p style="margin: 5px 0 0 0;">This is a system-generated official sales receipt.</p>
-                                                         </div>
-                                                     </div>
-                                                 </div>
                                                  <?php
+                                                 $statement_s = $pdo->prepare("SELECT * FROM tbl_supplier WHERE supplier_id=?");
+                                                 $statement_s->execute(array($row['supplier_id']));
+                                                 $sup_data = $statement_s->fetch(PDO::FETCH_ASSOC);
+
+                                                 $statement_o = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
+                                                 $statement_o->execute(array($row['payment_id']));
+                                                 $order_items = $statement_o->fetchAll(PDO::FETCH_ASSOC);
+                                                 $subtotal_items = 0;
+                                                 foreach ($order_items as $item):
+                                                     $item_subtotal = floatval($item['unit_price']) * intval($item['quantity']);
+                                                     $subtotal_items += $item_subtotal;
+                                                 endforeach;
+
+                                                 $delivery_cost = floatval($row['paid_amount']) - $subtotal_items;
+                                                 if ($delivery_cost < 0) {
+                                                     $delivery_cost = 0;
+                                                 }
+
                                                  $po_order_thermal_data = [
-                                                     'supplier_name' => !empty($sup_data['supplier_name']) ? $sup_data['supplier_name'] : 'SAM & INRI CONSTRUCTION SUPPLY',
+                                                     'supplier_name' => !empty($sup_data['supplier_name']) ? $sup_data['supplier_name'] : 'Sam & Inri construction Supply',
                                                      'supplier_phone' => !empty($sup_data['supplier_phone']) ? $sup_data['supplier_phone'] : '09612735733',
                                                      'payment_id' => $row['payment_id'],
                                                      'payment_date' => date('d M Y', strtotime($row['payment_date'])),
@@ -1099,6 +1067,75 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                  ];
                                                  $po_thermal_json = htmlspecialchars(json_encode($po_order_thermal_data), ENT_QUOTES, 'UTF-8');
                                                  ?>
+                                                 <div class="modal-body" id="receipt-print-area-<?php echo $row['id']; ?>" style="text-align: left; padding: 20px; background: #f8fafc; display: flex; justify-content: center;">
+                                                     <div class="thermal-receipt">
+                                                         <div class="thermal-header">
+                                                             <div class="thermal-title"><?php echo htmlspecialchars(!empty($sup_data['supplier_name']) ? $sup_data['supplier_name'] : 'Sam & Inri construction Supply'); ?></div>
+                                                             <div class="thermal-subtitle">PAID ORDER</div>
+                                                         </div>
+
+                                                         <div class="thermal-meta">
+                                                             <div>Order No: <?php echo htmlspecialchars($row['payment_id']); ?></div>
+                                                             <div>Date: <?php echo htmlspecialchars(date('d M Y', strtotime($row['payment_date']))); ?></div>
+                                                             <div>Customer: <?php echo htmlspecialchars($row['customer_name']); ?></div>
+                                                         </div>
+
+                                                         <table class="thermal-table">
+                                                             <thead>
+                                                                 <tr>
+                                                                     <th style="text-align: left; width: 54%;">ITEM</th>
+                                                                     <th style="text-align: center; width: 18%;">QTY</th>
+                                                                     <th style="text-align: right; width: 28%;">AMOUNT</th>
+                                                                 </tr>
+                                                             </thead>
+                                                             <tbody>
+                                                                 <?php foreach ($order_items as $item): 
+                                                                     $item_qty = intval($item['quantity']);
+                                                                     $item_unit_price = floatval($item['unit_price']);
+                                                                     $item_amount = $item_unit_price * $item_qty;
+                                                                 ?>
+                                                                 <tr>
+                                                                     <td style="text-align: left; padding: 2.5px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word; line-height: 1.25;"><?php echo htmlspecialchars($item['product_name']); ?></td>
+                                                                     <td style="text-align: center; padding: 2.5px 4px; vertical-align: top; white-space: nowrap;"><?php echo $item_qty; ?></td>
+                                                                     <td style="text-align: right; padding: 2.5px 0; vertical-align: top; white-space: nowrap;"><?php echo number_format($item_amount, 2); ?></td>
+                                                                 </tr>
+                                                                 <?php endforeach; ?>
+                                                             </tbody>
+                                                         </table>
+
+                                                         <div class="thermal-divider"></div>
+
+                                                         <table class="thermal-totals">
+                                                             <tbody>
+                                                                 <tr>
+                                                                     <td colspan="2" style="text-align: left; padding: 1.5px 0;">Subtotal</td>
+                                                                     <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;"><?php echo number_format($subtotal_items, 2); ?></td>
+                                                                 </tr>
+                                                                 <?php if ($delivery_cost > 0): ?>
+                                                                 <tr>
+                                                                     <td colspan="2" style="text-align: left; padding: 1.5px 0;">Delivery Fee</td>
+                                                                     <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;"><?php echo number_format($delivery_cost, 2); ?></td>
+                                                                 </tr>
+                                                                 <?php endif; ?>
+                                                                 <tr style="font-weight: bold;">
+                                                                     <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">TOTAL</td>
+                                                                     <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000; font-size: 13pt; white-space: nowrap;"><?php echo number_format(floatval($row['paid_amount']), 2); ?></td>
+                                                                 </tr>
+                                                             </tbody>
+                                                         </table>
+
+                                                         <div class="thermal-divider"></div>
+
+                                                         <div class="thermal-meta" style="margin-top: 4px;">
+                                                             <div><strong>PAYMENT STATUS:</strong> <?php echo htmlspecialchars($row['payment_status']); ?></div>
+                                                             <div><strong>Payment Method:</strong> <?php echo htmlspecialchars($row['payment_method']); ?></div>
+                                                         </div>
+
+                                                         <div class="thermal-footer">
+                                                             <div>Thank you</div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
                                                    <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                                                        <!-- Row 1: Thermal Paper Selector -->
                                                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">

@@ -2558,6 +2558,84 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     #posPrinterModal .cfg-grid6 { grid-template-columns: repeat(2, 1fr); }
     #posPrinterModal .cfg-item { border-right: 0; }
 }
+
+/* Thermal Receipt Preview Standard */
+.thermal-receipt {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    background: #ffffff;
+    color: #000000;
+    padding: 18px 22px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    font-family: 'Courier New', Consolas, Monaco, monospace;
+    font-size: 12pt;
+    line-height: 1.3;
+    box-sizing: border-box;
+}
+.thermal-header {
+    text-align: center;
+    margin-bottom: 6px;
+}
+.thermal-title {
+    font-size: 14pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    line-height: 1.25;
+    color: #000000;
+}
+.thermal-subtitle {
+    font-size: 12pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-top: 2px;
+    color: #000000;
+}
+.thermal-meta {
+    margin: 6px 0;
+    font-size: 12pt;
+    line-height: 1.35;
+    color: #000000;
+}
+.thermal-divider {
+    border-top: 1pt dashed #000000;
+    margin: 5px 0;
+}
+.thermal-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    margin: 4px 0 !important;
+    font-size: 12pt !important;
+}
+.thermal-table th {
+    padding: 3px 0 !important;
+    border-top: 1pt dashed #000000 !important;
+    border-bottom: 1pt dashed #000000 !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    color: #000000 !important;
+}
+.thermal-table td {
+    color: #000000 !important;
+}
+.thermal-totals {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 4px 0 !important;
+    font-size: 12pt !important;
+}
+.thermal-totals td {
+    color: #000000 !important;
+}
+.thermal-footer {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 12pt;
+    color: #000000;
+}
 </style>
 
 <div class="modal fade" id="posPrinterModal" tabindex="-1" role="dialog" aria-labelledby="posPrinterModalLabel" aria-hidden="true">
@@ -2879,7 +2957,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
 <?php if ($pos_success_receipt): ?>
 <div class="modal fade in" id="posSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.6);">
-    <div class="modal-dialog" role="document" style="max-width: 680px;">
+    <div class="modal-dialog" role="document" style="max-width: 520px;">
         <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 35px rgba(0,0,0,0.3);">
             <div class="modal-header" style="background: #0284c7; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
                 <h4 class="modal-title" style="font-weight: 800; font-size: 16px; margin: 0; color: #fff; display: flex; align-items: center; gap: 8px;">
@@ -2887,154 +2965,96 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 </h4>
                 <button type="button" class="close" data-dismiss="modal" onclick="closeReceiptModal()" style="color: #fff; opacity: 0.95; font-size: 24px; text-shadow: none; border: none; background: transparent;">&times;</button>
             </div>
-            
-            <div style="padding: 16px 20px 0 20px;">
-                <!-- Simple Information & Print Settings Banner (Screen Only) -->
-                <div class="no-print" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; font-family: Arial, sans-serif; font-size: 10.5pt; color: #1e293b;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
-                        <div style="flex: 1; min-width: 200px;">
-                            <div style="font-size: 9.5pt; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">Document Details</div>
-                            <div style="line-height: 1.45;">
-                                <div><strong>Document:</strong> Sales Receipt</div>
-                                <div><strong>Order No:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_id']); ?></div>
-                                <div><strong>Customer:</strong> <?php echo htmlspecialchars($pos_success_receipt['customer_name']); ?></div>
-                            </div>
-                        </div>
-                        <div style="flex: 1; min-width: 200px;">
-                            <div style="font-size: 9.5pt; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">Print Settings</div>
-                            <div style="line-height: 1.45;">
-                                <div><strong>Output Mode:</strong> <span class="receipt-summary-mode" style="color: #0284c7; font-weight: 700;">Thermal Printer (Primary Default)</span></div>
-                                <div><strong>Paper Size:</strong> <span class="receipt-summary-paper">200 mm Roll</span></div>
-                                <div><strong>Print Width:</strong> <span class="receipt-summary-width">190 mm</span></div>
-                                <div><strong>Typography:</strong> <span class="receipt-summary-font">Enterprise Thermal Monospace</span></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <div class="modal-body" id="posPrintReceiptArea" style="padding: 0 20px 16px 20px; font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 10pt; line-height: 1.3;">
-                
-                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 16px;">
-                    <!-- 1. Receipt Header (Single Row Company Name, Left Aligned) -->
-                    <div style="text-align: left; margin-bottom: 8px; border-bottom: 1pt solid #000; padding-bottom: 6px; width: 100%;">
-                        <div class="pos-company-header" style="font-size: 12pt; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: visible; color: #000; line-height: 1.2;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
-                        <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_success_receipt['supplier_phone']) ? htmlspecialchars($pos_success_receipt['supplier_phone']) : '09612735733'; ?></div>
-                        <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; margin-top: 3px; color: #000;">OFFICIAL SALES RECEIPT</div>
+            <div class="modal-body" id="posPrintReceiptArea" style="padding: 16px 20px; background: #f8fafc; display: flex; justify-content: center;">
+                <div class="thermal-receipt">
+                    <div class="thermal-header">
+                        <div class="thermal-title"><?php echo htmlspecialchars(!empty($pos_success_receipt['supplier_name']) ? $pos_success_receipt['supplier_name'] : 'Sam & Inri construction Supply'); ?></div>
+                        <div class="thermal-subtitle">PAID ORDER</div>
                     </div>
 
-                    <!-- 2. Transaction Information Grid -->
-                    <table style="width: 100%; font-size: 10pt; line-height: 1.3; margin-bottom: 8px; border-collapse: collapse; border-bottom: 1pt solid #000; padding-bottom: 6px;">
-                        <tr>
-                            <td style="width: 52%; vertical-align: top; padding: 2px 4px 4px 0; text-align: left;">
-                                <div><strong>RECEIPT NO:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_id']); ?></div>
-                                <div><strong>CUSTOMER:</strong> <?php echo htmlspecialchars($pos_success_receipt['customer_name']); ?></div>
-                                <div><strong>PAYMENT:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_method']); ?></div>
-                            </td>
-                            <td style="width: 48%; vertical-align: top; padding: 2px 0 4px 4px; text-align: right;">
-                                <div><strong>DATE:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_date']); ?></div>
-                                <div><strong>STATUS:</strong> <span style="font-weight: bold; text-transform: uppercase;">PAID</span></div>
-                                <?php if (!empty($pos_success_receipt['txnid'])): ?>
-                                    <div><strong>TXN ID:</strong> <?php echo htmlspecialchars($pos_success_receipt['txnid']); ?></div>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    </table>
+                    <div class="thermal-meta">
+                        <div>Order No: <?php echo htmlspecialchars($pos_success_receipt['payment_id']); ?></div>
+                        <div>Date: <?php echo htmlspecialchars($pos_success_receipt['payment_date']); ?></div>
+                        <div>Customer: <?php echo htmlspecialchars($pos_success_receipt['customer_name']); ?></div>
+                    </div>
 
-                    <!-- 3. Items Table -->
-                    <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10pt; line-height: 1.25; margin-bottom: 8px;">
+                    <table class="thermal-table">
                         <thead>
-                            <tr style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
-                                <th class="col-item-desc" style="padding: 3pt 2pt; text-align: left; font-weight: bold; width: 48%;">Item Description</th>
-                                <th class="col-qty" style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 14%;">Qty</th>
-                                <th class="col-unit-price" style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 19%;">Price</th>
-                                <th class="col-amount" style="padding: 3pt 2pt; text-align: right; font-weight: bold; width: 19%;">Amount</th>
+                            <tr>
+                                <th class="col-item-desc" style="text-align: left; width: 54%;">ITEM</th>
+                                <th class="col-qty" style="text-align: center; width: 18%;">QTY</th>
+                                <th class="col-amount" style="text-align: right; width: 28%;">AMOUNT</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($pos_success_receipt['items'] as $item): 
+                            <?php 
+                            $pos_subtotal = 0;
+                            foreach ($pos_success_receipt['items'] as $item): 
                                 $item_qty = intval($item['qty']);
                                 $item_unit_price = floatval($item['price']);
                                 $item_gross = $item_unit_price * $item_qty;
                                 $item_disc = isset($item['discount_amount']) ? floatval($item['discount_amount']) : 0.00;
                                 $item_net = isset($item['line_net']) ? floatval($item['line_net']) : max(0, $item_gross - $item_disc);
-                                $is_special = isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER';
+                                $pos_subtotal += $item_gross;
                             ?>
-                            <tr style="border-bottom: 1pt dashed #000;">
-                                <td class="col-item-desc" style="padding: 3pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
-                                    <?php if ($is_special): ?>
-                                        <span style="font-weight: bold; font-size: 8.5pt; text-transform: uppercase; border: 0.5pt solid #000; padding: 0 2px;">SPECIAL ORDER</span><br>
-                                    <?php endif; ?>
-                                    <strong><?php echo htmlspecialchars($item['name']); ?></strong>
-                                    <?php if (!empty($item['product_details'])): ?>
-                                        <div style="font-size: 9pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['product_details']); ?></div>
-                                    <?php elseif (!empty($item['variant_details'])): ?>
-                                        <div style="font-size: 9pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['variant_details']); ?></div>
-                                    <?php endif; ?>
-                                    <div class="item-unit-subprice" style="display: none; font-size: 8pt; color: #000; margin-top: 1px;">
-                                        @ &#8369;<?php echo number_format($item_unit_price, 2); ?><?php if($item_qty > 1) echo ' &times; ' . $item_qty; ?>
-                                    </div>
+                            <tr>
+                                <td class="col-item-desc" style="text-align: left; padding: 2.5px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word; line-height: 1.25;">
+                                    <?php echo htmlspecialchars($item['name']); ?>
+                                    <div class="item-unit-subprice" style="display: none;"></div>
+                                    <span class="col-unit-price" style="display: none;"></span>
                                 </td>
-                                <td class="col-qty" style="padding: 3pt 2pt; text-align: right; vertical-align: top;"><?php echo $item_qty; ?></td>
-                                <td class="col-unit-price" style="padding: 3pt 2pt; text-align: right; vertical-align: top;">&#8369;<?php echo number_format($item_unit_price, 2); ?></td>
-                                <td class="col-amount" style="padding: 3pt 2pt; text-align: right; vertical-align: top;">&#8369;<?php echo number_format($item_net, 2); ?></td>
+                                <td class="col-qty" style="text-align: center; padding: 2.5px 4px; vertical-align: top; white-space: nowrap;"><?php echo $item_qty; ?></td>
+                                <td class="col-amount" style="text-align: right; padding: 2.5px 0; vertical-align: top; white-space: nowrap;"><?php echo number_format($item_net, 2); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
-                        <tfoot>
-                            <tr>
-                                <td class="col-foot-spacer" style="border-top: 1pt dashed #000; padding: 3pt 0;"></td>
-                                <td class="col-unit-price col-foot-spacer2" style="border-top: 1pt dashed #000; padding: 3pt 0;"></td>
-                                <td class="col-foot-label" style="border-top: 1pt dashed #000; padding: 3pt 2pt; text-align: right;">Subtotal:</td>
-                                <td class="col-amount" style="border-top: 1pt dashed #000; padding: 3pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['gross_subtotal'] ?? $pos_success_receipt['subtotal'], 2); ?></td>
-                            </tr>
-                            <?php if (isset($pos_success_receipt['total_discount_savings']) && $pos_success_receipt['total_discount_savings'] > 0): ?>
-                            <tr>
-                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
-                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
-                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Discount:</td>
-                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">-&#8369;<?php echo number_format($pos_success_receipt['total_discount_savings'], 2); ?></td>
-                            </tr>
-                            <?php endif; ?>
-                            <?php if (isset($pos_success_receipt['delivery_cost']) && $pos_success_receipt['delivery_cost'] > 0): ?>
-                            <tr>
-                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
-                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
-                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Delivery:</td>
-                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['delivery_cost'], 2); ?></td>
-                            </tr>
-                            <?php endif; ?>
-                            <tr class="pos-total-row" style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
-                                <td class="col-foot-spacer" style="padding: 4pt 0;"></td>
-                                <td class="col-unit-price col-foot-spacer2" style="padding: 4pt 0;"></td>
-                                <td class="col-foot-label" style="padding: 4pt 2pt; text-align: right; font-size: 12pt; font-weight: bold;">TOTAL:</td>
-                                <td class="col-amount" style="padding: 4pt 2pt; text-align: right; font-size: 12pt; font-weight: bold; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
-                            </tr>
-                            <?php if (isset($pos_success_receipt['amount_tendered']) && $pos_success_receipt['amount_tendered'] > 0): ?>
-                            <tr>
-                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
-                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
-                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Tendered:</td>
-                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['amount_tendered'], 2); ?></td>
-                            </tr>
-                            <tr>
-                                <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
-                                <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
-                                <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Change:</td>
-                                <td class="col-amount" style="padding: 2pt 2pt; text-align: right; white-space: nowrap;">&#8369;<?php echo number_format($pos_success_receipt['change_amount'], 2); ?></td>
-                            </tr>
-                            <?php endif; ?>
-                        </tfoot>
                     </table>
 
-                    <!-- 4. Footer -->
-                    <div style="text-align: left; margin-top: 6px; border-top: 1pt dashed #000; padding-top: 5px; font-size: 10pt; line-height: 1.3; width: 100%;">
-                        <div style="font-weight: bold; text-transform: uppercase;">THANK YOU FOR YOUR BUSINESS!</div>
-                        <div style="margin-top: 1px;">Items in good condition may be returned within 7 days with this receipt.</div>
-                        <div style="font-size: 9pt; color: #000; margin-top: 2px;">Official Sales Receipt &bull; eConstruction Supply</div>
+                    <div class="thermal-divider"></div>
+
+                    <table class="thermal-totals">
+                        <tbody>
+                            <tr>
+                                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Subtotal</td>
+                                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;"><?php echo number_format($pos_subtotal, 2); ?></td>
+                            </tr>
+                            <?php 
+                            $pos_delivery = floatval($pos_success_receipt['delivery_cost'] ?? 0);
+                            if ($pos_delivery > 0): 
+                            ?>
+                            <tr>
+                                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Delivery Fee</td>
+                                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;"><?php echo number_format($pos_delivery, 2); ?></td>
+                            </tr>
+                            <?php endif; ?>
+                            <?php 
+                            $pos_disc_total = floatval($pos_success_receipt['total_discount_savings'] ?? 0);
+                            if ($pos_disc_total > 0): 
+                            ?>
+                            <tr>
+                                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Discount</td>
+                                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;">-<?php echo number_format($pos_disc_total, 2); ?></td>
+                            </tr>
+                            <?php endif; ?>
+                            <tr style="font-weight: bold;">
+                                <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">TOTAL</td>
+                                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000; font-size: 13pt; white-space: nowrap;"><?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="thermal-divider"></div>
+
+                    <div class="thermal-meta" style="margin-top: 4px;">
+                        <div><strong>PAYMENT STATUS:</strong> PAID</div>
+                        <div><strong>Payment Method:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_method']); ?></div>
+                    </div>
+
+                    <div class="thermal-footer">
+                        <div>Thank you</div>
                     </div>
                 </div>
-
             </div>
 
             <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -3077,9 +3097,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
 <!-- Purchase Order Confirmation Modal -->
 <?php if ($pos_po_success_data): ?>
-<div class="modal fade in" id="posPOSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.65); z-index: 10080;">
-    <div class="modal-dialog" role="document" style="max-width: 620px;">
-        <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.35);">
+<div class="modal fade in" id="posPOSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.6); z-index: 10080;">
+    <div class="modal-dialog" role="document" style="max-width: 520px;">
+        <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 10px 35px rgba(0,0,0,0.3);">
             <div class="modal-header" style="background: #0284c7; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
                 <h4 class="modal-title" style="font-weight: 800; font-size: 16px; margin: 0; color: #fff; display: flex; align-items: center; gap: 8px;">
                     <i class="fa fa-file-text-o"></i> Purchase Order Voucher Confirmed
@@ -3087,119 +3107,95 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 <button type="button" class="close" data-dismiss="modal" onclick="closePOSPurchaseOrderModal()" style="color: #fff; opacity: 0.95; font-size: 24px; text-shadow: none; border: none; background: transparent;">&times;</button>
             </div>
             
-            <div class="modal-body pos-receipt-400" id="posPrintPOArea" style="padding: 16px; font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 12pt; line-height: 1.25; background: #fff; height: auto; min-height: 0;">
-                
-                <!-- 1. Store Header & Title -->
-                <div style="text-align: left; margin-bottom: 8px; border-bottom: 1.5pt solid #000; padding-bottom: 6px; width: 100%;">
-                    <div class="pos-company-header" style="font-size: 14pt; font-weight: bold; text-transform: uppercase; white-space: nowrap; overflow: visible; color: #000; line-height: 1.2;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
-                    <div style="font-size: 11pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_po_success_data['supplier_phone']) ? htmlspecialchars($pos_po_success_data['supplier_phone']) : '09612735733'; ?></div>
-                    <div style="font-size: 13pt; font-weight: bold; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; color: #000;">PURCHASE ORDER VOUCHER</div>
-                    <div style="font-size: 10.5pt; font-weight: bold; text-transform: uppercase; color: #000;">(UNPAID)</div>
+            <div class="modal-body" id="posPrintPOArea" style="padding: 16px 20px; background: #f8fafc; display: flex; justify-content: center;">
+                <div class="thermal-receipt">
+                    <div class="thermal-header">
+                        <div class="thermal-title"><?php echo htmlspecialchars(!empty($pos_po_success_data['supplier_name']) ? $pos_po_success_data['supplier_name'] : 'Sam & Inri construction Supply'); ?></div>
+                        <div class="thermal-subtitle">PURCHASE ORDER VOUCHER</div>
+                    </div>
+
+                    <div class="thermal-meta">
+                        <div>Order No: <?php echo htmlspecialchars($pos_po_success_data['po_id']); ?></div>
+                        <div>Date: <?php echo htmlspecialchars($pos_po_success_data['payment_date']); ?></div>
+                        <div>Customer: <?php echo htmlspecialchars($pos_po_success_data['customer_name']); ?></div>
+                    </div>
+
+                    <table class="thermal-table">
+                        <thead>
+                            <tr>
+                                <th class="col-item-desc" style="text-align: left; width: 54%;">ITEM</th>
+                                <th class="col-qty" style="text-align: center; width: 18%;">QTY</th>
+                                <th class="col-amount" style="text-align: right; width: 28%;">AMOUNT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $po_subtotal = 0;
+                            foreach ($pos_po_success_data['items'] as $item): 
+                                $item_qty = intval($item['qty']);
+                                $item_unit_price = floatval($item['price']);
+                                $item_gross = $item_unit_price * $item_qty;
+                                $item_disc = isset($item['discount_amount']) ? floatval($item['discount_amount']) : 0.00;
+                                $item_net = isset($item['line_net']) ? floatval($item['line_net']) : max(0, $item_gross - $item_disc);
+                                $po_subtotal += $item_gross;
+                            ?>
+                            <tr>
+                                <td class="col-item-desc" style="text-align: left; padding: 2.5px 0; vertical-align: top; word-break: break-word; overflow-wrap: break-word; line-height: 1.25;">
+                                    <?php echo htmlspecialchars($item['name']); ?>
+                                    <div class="item-unit-subprice" style="display: none;"></div>
+                                    <span class="col-unit-price" style="display: none;"></span>
+                                </td>
+                                <td class="col-qty" style="text-align: center; padding: 2.5px 4px; vertical-align: top; white-space: nowrap;"><?php echo $item_qty; ?></td>
+                                <td class="col-amount" style="text-align: right; padding: 2.5px 0; vertical-align: top; white-space: nowrap;"><?php echo number_format($item_net, 2); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+
+                    <div class="thermal-divider"></div>
+
+                    <table class="thermal-totals">
+                        <tbody>
+                            <tr>
+                                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Subtotal</td>
+                                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;"><?php echo number_format($po_subtotal, 2); ?></td>
+                            </tr>
+                            <?php 
+                            $po_delivery = floatval($pos_po_success_data['delivery_cost'] ?? 0);
+                            if ($po_delivery > 0): 
+                            ?>
+                            <tr>
+                                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Delivery Fee</td>
+                                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;"><?php echo number_format($po_delivery, 2); ?></td>
+                            </tr>
+                            <?php endif; ?>
+                            <?php 
+                            $po_disc_total = floatval($pos_po_success_data['total_discount_savings'] ?? 0);
+                            if ($po_disc_total > 0): 
+                            ?>
+                            <tr>
+                                <td colspan="2" style="text-align: left; padding: 1.5px 0;">Discount</td>
+                                <td style="text-align: right; padding: 1.5px 0; white-space: nowrap;">-<?php echo number_format($po_disc_total, 2); ?></td>
+                            </tr>
+                            <?php endif; ?>
+                            <tr style="font-weight: bold;">
+                                <td colspan="2" style="text-align: left; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">TOTAL</td>
+                                <td style="text-align: right; padding: 3px 0; border-top: 1pt dashed #000; border-bottom: 1pt dashed #000; font-size: 13pt; white-space: nowrap;"><?php echo number_format($pos_po_success_data['grand_total'], 2); ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="thermal-divider"></div>
+
+                    <div class="thermal-meta" style="margin-top: 4px;">
+                        <div><strong>PAYMENT STATUS:</strong> AWAITING PAYMENT</div>
+                        <div><strong>Payment Method:</strong> Purchase Order Voucher</div>
+                    </div>
+
+                    <div class="thermal-footer">
+                        <div>Thank you</div>
+                    </div>
                 </div>
-
-                <!-- 2. PO Metadata (Compact Info Grid) -->
-                <table style="width: 100%; font-size: 12pt; line-height: 1.3; margin-bottom: 8px; border-collapse: collapse; border-bottom: 1.5pt solid #000; padding-bottom: 6px;">
-                    <tr>
-                        <td style="width: 52%; vertical-align: top; padding: 2px 4px 4px 0;">
-                            <div><strong>PO NO:</strong> <span style="font-weight: bold;"><?php echo htmlspecialchars($pos_po_success_data['po_id']); ?></span></div>
-                            <div><strong>CUSTOMER:</strong> <?php echo htmlspecialchars($pos_po_success_data['customer_name']); ?></div>
-                        </td>
-                        <td style="width: 48%; vertical-align: top; padding: 2px 0 4px 4px; text-align: right;">
-                            <div><strong>DATE:</strong> <?php echo htmlspecialchars($pos_po_success_data['payment_date']); ?></div>
-                            <div><strong>STATUS:</strong> <span style="font-weight: bold; text-transform: uppercase;">AWAITING PAYMENT</span></div>
-                        </td>
-                    </tr>
-                </table>
-
-                <!-- 3. Items Table (4 Essential Columns: ITEM DESCRIPTION | QTY | UNIT PRICE | AMOUNT) -->
-                <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11.5pt; line-height: 1.25; margin-bottom: 8px;">
-                    <thead>
-                        <tr style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
-                            <th class="col-item-desc" style="padding: 4pt 2pt; text-align: left; font-weight: bold; width: 52%;">ITEM DESCRIPTION</th>
-                            <th class="col-qty" style="padding: 4pt 2pt; text-align: center; font-weight: bold; width: 12%;">QTY</th>
-                            <th class="col-unit-price" style="padding: 4pt 2pt; text-align: right; font-weight: bold; width: 18%;">UNIT PRICE</th>
-                            <th class="col-amount" style="padding: 4pt 2pt; text-align: right; font-weight: bold; width: 18%;">AMOUNT</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($pos_po_success_data['items'] as $item): 
-                            $item_qty = intval($item['qty']);
-                            $item_unit_price = floatval($item['price']);
-                            $item_gross = $item_unit_price * $item_qty;
-                            $item_disc = isset($item['discount_amount']) ? floatval($item['discount_amount']) : 0.00;
-                            $item_net = isset($item['line_net']) ? floatval($item['line_net']) : max(0, $item_gross - $item_disc);
-                            $is_special = isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER';
-                        ?>
-                        <tr style="border-bottom: 1pt dashed #000;">
-                            <td class="col-item-desc" style="padding: 4pt 2pt; text-align: left; vertical-align: top; word-break: break-word;">
-                                <?php if ($is_special): ?>
-                                    <span style="font-weight: bold; font-size: 9.5pt; text-transform: uppercase; border: 0.5pt solid #000; padding: 0 2px;">SPECIAL ORDER</span><br>
-                                <?php endif; ?>
-                                <strong><?php echo htmlspecialchars($item['name']); ?></strong>
-                                <?php if (!empty($item['product_details'])): ?>
-                                    <div style="font-size: 10pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['product_details']); ?></div>
-                                <?php elseif (!empty($item['variant_details'])): ?>
-                                    <div style="font-size: 10pt; color: #000; margin-top: 1px;"><?php echo htmlspecialchars($item['variant_details']); ?></div>
-                                <?php endif; ?>
-                                <div class="item-unit-subprice" style="display: none; font-size: 8pt; color: #000; margin-top: 1px;">
-                                    @ &#8369;<?php echo number_format($item_unit_price, 2); ?><?php if($item_qty > 1) echo ' &times; ' . $item_qty; ?>
-                                </div>
-                            </td>
-                            <td class="col-qty" style="padding: 4pt 2pt; text-align: center; vertical-align: top;"><?php echo $item_qty; ?></td>
-                            <td class="col-unit-price" style="padding: 4pt 2pt; text-align: right; vertical-align: top;">&#8369;<?php echo number_format($item_unit_price, 2); ?></td>
-                            <td class="col-amount" style="padding: 4pt 2pt; text-align: right; vertical-align: top; font-weight: bold;">&#8369;<?php echo number_format($item_net, 2); ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                    <tfoot>
-                        <?php $has_savings = isset($pos_po_success_data['total_discount_savings']) && $pos_po_success_data['total_discount_savings'] > 0; ?>
-                        <?php if ($has_savings): ?>
-                        <tr>
-                            <td class="col-foot-spacer" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
-                            <td class="col-unit-price col-foot-spacer2" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
-                            <td class="col-foot-label" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right;">Subtotal:</td>
-                            <td class="col-amount" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['gross_subtotal'], 2); ?></td>
-                        </tr>
-                        <tr>
-                            <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
-                            <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
-                            <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Discount:</td>
-                            <td class="col-amount" style="padding: 2pt 2pt; text-align: right; font-weight: bold;">-&#8369;<?php echo number_format($pos_po_success_data['total_discount_savings'], 2); ?></td>
-                        </tr>
-                        <?php else: ?>
-                        <tr>
-                            <td class="col-foot-spacer" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
-                            <td class="col-unit-price col-foot-spacer2" style="border-top: 1pt dashed #000; padding: 4pt 0;"></td>
-                            <td class="col-foot-label" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right;">Subtotal:</td>
-                            <td class="col-amount" style="border-top: 1pt dashed #000; padding: 4pt 2pt; text-align: right; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['net_subtotal'], 2); ?></td>
-                        </tr>
-                        <?php endif; ?>
-
-                        <?php if (isset($pos_po_success_data['delivery_cost']) && $pos_po_success_data['delivery_cost'] > 0): ?>
-                        <tr>
-                            <td class="col-foot-spacer" style="padding: 2pt 0;"></td>
-                            <td class="col-unit-price col-foot-spacer2" style="padding: 2pt 0;"></td>
-                            <td class="col-foot-label" style="padding: 2pt 2pt; text-align: right;">Delivery:</td>
-                            <td class="col-amount" style="padding: 2pt 2pt; text-align: right; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['delivery_cost'], 2); ?></td>
-                        </tr>
-                        <?php endif; ?>
-
-                        <tr class="pos-total-row" style="border-top: 1pt dashed #000; border-bottom: 1pt dashed #000;">
-                            <td class="col-foot-spacer" style="padding: 4pt 0;"></td>
-                            <td class="col-unit-price col-foot-spacer2" style="padding: 4pt 0;"></td>
-                            <td class="col-foot-label" style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">TOTAL DUE:</td>
-                            <td class="col-amount" style="padding: 4pt 2pt; text-align: right; font-size: 13pt; font-weight: bold;">&#8369;<?php echo number_format($pos_po_success_data['grand_total'], 2); ?></td>
-                        </tr>
-                    </tfoot>
-                </table>
-
-                <!-- 4. Footer Notice & Thank You -->
-                <div style="text-align: center; margin-top: 8px; border-top: 1pt dashed #000; padding-top: 6px; font-size: 11pt; line-height: 1.25; width: 100%;">
-                    <div style="font-weight: bold; text-transform: uppercase; font-size: 11pt; margin-bottom: 2px;">*** PROCEED TO CASHIER FOR PAYMENT ***</div>
-                    <div style="font-size: 10pt;">Thank you for your business!</div>
-                    <div style="font-size: 9pt; color: #000; margin-top: 2px;">System-Generated Purchase Order Voucher &bull; eConstruction Supply</div>
-                </div>
-
             </div>
 
             <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -5847,7 +5843,82 @@ function generatePOSPrintHTML(contentHtml, docTitle = 'POS Print Document', docT
             margin-top: 15mm;
         }
 
-        .pos-print-container, .pos-receipt-container {
+                .thermal-receipt {
+            width: 100% !important;
+            max-width: 100% !important;
+            font-family: ${fontStack} !important;
+            font-size: ${bodyFontSizePt} !important;
+            line-height: 1.25 !important;
+            color: #000000 !important;
+            box-sizing: border-box !important;
+        }
+        .thermal-header {
+            text-align: center !important;
+            margin-bottom: 6px !important;
+        }
+        .thermal-title {
+            font-size: ${headerFontSizePt}pt !important;
+            font-weight: bold !important;
+            text-transform: uppercase !important;
+            line-height: 1.2 !important;
+            color: #000000 !important;
+        }
+        .thermal-subtitle {
+            font-size: ${bodyFontSizePt} !important;
+            font-weight: bold !important;
+            margin-top: 2px !important;
+            color: #000000 !important;
+        }
+        .thermal-meta {
+            font-size: ${bodyFontSizePt} !important;
+            line-height: 1.25 !important;
+            margin-bottom: 6px !important;
+            color: #000000 !important;
+        }
+        .thermal-meta div {
+            margin: 1px 0 !important;
+            color: #000000 !important;
+        }
+        .thermal-table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin-bottom: 4px !important;
+            font-size: ${bodyFontSizePt} !important;
+        }
+        .thermal-table thead th {
+            border-top: 1pt dashed #000000 !important;
+            border-bottom: 1pt dashed #000000 !important;
+            padding: 3px 0 !important;
+            font-weight: bold !important;
+            color: #000000 !important;
+        }
+        .thermal-table tbody td {
+            padding: 2.5px 0 !important;
+            vertical-align: top !important;
+            color: #000000 !important;
+        }
+        .thermal-divider {
+            border-top: 1pt dashed #000000 !important;
+            margin: 4px 0 !important;
+            height: 0 !important;
+        }
+        .thermal-totals {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: ${bodyFontSizePt} !important;
+        }
+        .thermal-totals td {
+            padding: 1.5px 0 !important;
+            color: #000000 !important;
+        }
+        .thermal-footer {
+            text-align: center !important;
+            margin-top: 8px !important;
+            font-size: ${bodyFontSizePt} !important;
+            color: #000000 !important;
+        }
+
+.pos-print-container, .pos-receipt-container {
             width: ${contentWidthMm}mm !important;
             max-width: ${contentWidthMm}mm !important;
             box-sizing: border-box !important;
