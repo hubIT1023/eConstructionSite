@@ -147,19 +147,19 @@ if(isset($_POST['form1'])) {
             $n_price_val = $default_n_price;
         }
 
-        // 4. Evaluate Price Rules (using original Q and original NQ)
-        // Priority 1: IF Q < 6 AND NQ > 5 -> C = N
-        // Priority 2: ELSE IF C < N AND Q < 5 AND NQ > 5 -> C = N
-        // Priority 3: ELSE IF C > N AND Q > 5 -> C remains unchanged (C = C)
-        // Default: ELSE -> C remains unchanged (or initial N if C <= 0)
-        if ($orig_q < 6 && $orig_nq > 5) {
-            $final_current_price_val = $n_price_val;
-        } elseif ($existing_c_price < $n_price_val && $orig_q < 5 && $orig_nq > 5) {
-            $final_current_price_val = $n_price_val;
+        // 4. Evaluate Price Rules strictly in sequential order before replenishment additions take effect:
+        // Priority Rule 4: If C is empty / <= 0 -> C = N
+        // Priority Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
+        // Priority Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
+        // Priority Rule 3: Else (all other cases) -> C = C (Default Selling Price)
+        if ($existing_c_price <= 0) {
+            $final_current_price_val = $n_price_val; // Rule 4: if C = empty, C = N
+        } elseif ($orig_q < 6 && $orig_nq > 5) {
+            $final_current_price_val = $n_price_val; // Rule 1: Low Stock Replenishment
         } elseif ($existing_c_price > $n_price_val && $orig_q > 5) {
-            $final_current_price_val = $existing_c_price;
+            $final_current_price_val = $existing_c_price; // Rule 2: Price Protection
         } else {
-            $final_current_price_val = ($existing_c_price > 0) ? $existing_c_price : $n_price_val;
+            $final_current_price_val = $existing_c_price; // Rule 3: Default Selling Price
         }
 
         // 5. Evaluate Inventory Quantity Update Rule
@@ -336,26 +336,23 @@ if(isset($_POST['form1'])) {
 $p_name = $product['p_name'];
 $p_old_price = $product['p_old_price'];
 $p_current_price = $product['p_current_price'];
-$p_capital_price = isset($product['p_capital_price']) ? $product['p_capital_price'] : '';
-$p_markup = (isset($product['p_markup']) && $product['p_markup'] !== null && $product['p_markup'] !== '') ? $product['p_markup'] : '';
+$p_capital_price = (isset($product['p_capital_price']) && $product['p_capital_price'] !== null && $product['p_capital_price'] !== '') ? $product['p_capital_price'] : '0.00';
+$p_markup = (isset($product['p_markup']) && $product['p_markup'] !== null && $product['p_markup'] !== '') ? $product['p_markup'] : '20.00';
 
-$clean_cp = floatval(preg_replace('/[^0-9.]/', '', strval($p_current_price)));
-$clean_ca = ($p_capital_price !== '') ? floatval(preg_replace('/[^0-9.]/', '', strval($p_capital_price))) : 0;
-$clean_mu = ($p_markup !== '') ? floatval(preg_replace('/[^0-9.]/', '', strval($p_markup))) : 0;
-
-if ($clean_ca <= 0 && $clean_cp > 0) {
-    $clean_ca = round($clean_cp * 0.8, 2);
-    $clean_mu = round($clean_cp - $clean_ca, 2);
-    $p_capital_price = number_format($clean_ca, 2, '.', '');
-    $p_markup = number_format($clean_mu, 2, '.', '');
-} elseif ($clean_mu <= 0 && $clean_ca > 0 && $clean_cp >= $clean_ca) {
-    $clean_mu = round($clean_cp - $clean_ca, 2);
-    $p_markup = number_format($clean_mu, 2, '.', '');
-}
+$clean_cp = ($p_current_price !== '' && $p_current_price !== null) ? floatval(preg_replace('/[^0-9.]/', '', strval($p_current_price))) : 0;
+$clean_ca = floatval(preg_replace('/[^0-9.]/', '', strval($p_capital_price)));
+$clean_mu = floatval(preg_replace('/[^0-9.]/', '', strval($p_markup)));
 
 $clean_np = round($clean_ca + $clean_mu, 2);
-$p_new_price = (isset($product['p_new_price']) && floatval(preg_replace('/[^0-9.]/', '', strval($product['p_new_price']))) > 0) ? number_format(floatval(preg_replace('/[^0-9.]/', '', strval($product['p_new_price']))), 2, '.', '') : number_format($clean_np, 2, '.', '');
+$p_new_price = (!empty($product['p_new_price']) && floatval(preg_replace('/[^0-9.]/', '', strval($product['p_new_price']))) > 0) ? number_format(floatval(preg_replace('/[^0-9.]/', '', strval($product['p_new_price']))), 2, '.', '') : number_format($clean_np, 2, '.', '');
+
+// Rule 4: If Current Price C is empty or <= 0, set C = N
+if ($clean_cp <= 0) {
+    $clean_cp = floatval($p_new_price);
+}
 $p_current_price = number_format($clean_cp, 2, '.', '');
+$p_capital_price = number_format($clean_ca, 2, '.', '');
+$p_markup = number_format($clean_mu, 2, '.', '');
 $p_qty = $product['p_qty'];
 $p_new_qty = isset($product['p_new_qty']) ? $product['p_new_qty'] : 0;
 $p_s_level = isset($product['p_s_level']) ? $product['p_s_level'] : 10;
@@ -668,7 +665,28 @@ foreach ($result as $row) {
 							<div class="col-sm-4" style="padding-top:4px;">
 								<input type="file" name="p_featured_photo">
                                 <br>
-                                <img src="../assets/uploads/<?php echo $p_featured_photo; ?>" style="width:120px;">
+                                <?php
+                                $featured_photo_display = '';
+                                if (!empty($p_featured_photo) && file_exists('../assets/uploads/' . $p_featured_photo)) {
+                                    $featured_photo_display = '../assets/uploads/' . htmlspecialchars($p_featured_photo);
+                                } elseif (!empty($p_featured_photo) && file_exists('../assets/uploads/product_photos/' . $p_featured_photo)) {
+                                    $featured_photo_display = '../assets/uploads/product_photos/' . htmlspecialchars($p_featured_photo);
+                                } elseif (!empty($p_featured_photo) && file_exists('../assets/uploads/product_photos/general_products/' . $p_featured_photo)) {
+                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/' . htmlspecialchars($p_featured_photo);
+                                } elseif (file_exists('../assets/uploads/product_photos/general_products/default.png')) {
+                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/default.png';
+                                } elseif (file_exists('../assets/uploads/product_photos/general_products/general_products.png')) {
+                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/general_products.png';
+                                } elseif (file_exists('../assets/uploads/product_photos/general_products.png')) {
+                                    $featured_photo_display = '../assets/uploads/product_photos/general_products.png';
+                                } else {
+                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/default.png';
+                                }
+                                ?>
+                                <img src="<?php echo $featured_photo_display; ?>" alt="Featured Photo" style="width:120px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;">
+                                <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                                    <i class="fa fa-folder-open text-primary"></i> Default source: <code>assets/uploads/product_photos/general_products</code>
+                                </div>
 							</div>
 						</div>
 						<div class="form-group">
@@ -771,119 +789,197 @@ function cancelNewCategoryInput() {
     $('#new_ecat_name').val('');
 }
 
-$(document).ready(function() {
-    $(document).on('change', '.end-cat', function() {
-        checkNewCategoryOption($(this).val());
-    });
+function cleanNum(val) {
+    if (!val) return 0;
+    var clean = val.toString().replace(/[^0-9.]/g, '');
+    return parseFloat(clean) || 0;
+}
 
-    function cleanNum(val) {
-        if (!val) return 0;
-        var clean = val.toString().replace(/[^0-9.]/g, '');
-        return parseFloat(clean) || 0;
+function cleanInt(val) {
+    if (!val) return 0;
+    var clean = val.toString().replace(/[^0-9]/g, '');
+    return parseInt(clean, 10) || 0;
+}
+
+function evaluateRulesLive() {
+    var caEl = document.getElementById('p_capital_price');
+    var muEl = document.getElementById('p_markup');
+    var existingCEl = document.getElementById('p_existing_current_price');
+    var npEl = document.getElementById('p_new_price');
+    var cpEl = document.getElementById('p_current_price');
+    var qEl = document.getElementById('p_qty');
+    var nqEl = document.getElementById('p_new_qty');
+    var sEl = document.getElementById('p_s_level');
+
+    var ca = caEl ? cleanNum(caEl.value) : 0;
+    var markup = muEl ? cleanNum(muEl.value) : 0;
+    var existingC = existingCEl ? cleanNum(existingCEl.value) : 0;
+    var manualN = npEl ? cleanNum(npEl.value) : 0;
+    var q = qEl ? cleanInt(qEl.value) : 0;
+    var nq = nqEl ? cleanInt(nqEl.value) : 0;
+    var s = sEl ? cleanInt(sEl.value) : 10;
+    if (s <= 0) s = 10;
+
+    // 1. New Price (N)
+    var calcN = Math.round((ca + markup) * 100) / 100;
+    var nPrice = (manualN > 0) ? manualN : calcN;
+    if (npEl && document.activeElement !== npEl && manualN <= 0) {
+        npEl.value = calcN.toFixed(2);
+        nPrice = calcN;
     }
 
-    function cleanInt(val) {
-        if (!val) return 0;
-        var clean = val.toString().replace(/[^0-9]/g, '');
-        return parseInt(clean, 10) || 0;
+    // 2. Price Rule evaluation strictly in sequential order:
+    // Priority Rule 4: If C is empty / <= 0 -> C = N
+    // Priority Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
+    // Priority Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
+    // Priority Rule 3: Else (all other cases) -> C = C (Default Selling Price)
+    var resultingC = existingC;
+    var priceNotice = (typeof $ !== 'undefined') ? $('#p_price_rule_notice') : null;
+    var priceNoticeEl = document.getElementById('p_price_rule_notice');
+
+    if (!existingC || existingC <= 0) {
+        // Rule 4: if C = empty, C = N
+        resultingC = nPrice;
+        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-info-circle"></i> <strong>Rule 4 (Initial / Empty Price):</strong> Current Price (C) is empty, automatically set to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>';
+    } else if (q < 6 && nq > 5) {
+        // Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
+        resultingC = nPrice;
+        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-check-circle"></i> <strong>Rule 1 (Low Stock Replenishment: Q &lt; 6 &amp; NQ &gt; 5):</strong> Selling price updates to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>';
+    } else if (existingC > nPrice && q > 5) {
+        // Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
+        resultingC = existingC;
+        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #d97706;"><i class="fa fa-shield"></i> <strong>Rule 2 (Price Protection: C &gt; N &amp; Q &gt; 5):</strong> Current Price protected from decreases and retained at <strong>₱' + existingC.toFixed(2) + '</strong>.</span>';
+    } else {
+        // Rule 3: Else (all other cases) -> C = C (Default Selling Price)
+        resultingC = existingC;
+        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span class="text-muted"><i class="fa fa-info-circle"></i> <strong>Rule 3 (Default Selling Price):</strong> Current Price remains unchanged at <strong>₱' + existingC.toFixed(2) + '</strong>.</span>';
     }
+    if (cpEl) cpEl.value = resultingC.toFixed(2);
 
-    function evaluateRulesLive() {
-        var ca = cleanNum($('#p_capital_price').val());
-        var markup = cleanNum($('#p_markup').val());
-        var existingC = cleanNum($('#p_existing_current_price').val());
-        var manualN = cleanNum($('#p_new_price').val());
-        var q = cleanInt($('#p_qty').val());
-        var nq = cleanInt($('#p_new_qty').val());
-        var s = cleanInt($('#p_s_level').val());
-        if (s <= 0) s = 10;
-
-        // 1. New Price (N)
-        var calcN = Math.round((ca + markup) * 100) / 100;
-        var nPrice = (manualN > 0) ? manualN : calcN;
-        if (document.activeElement && document.activeElement.id !== 'p_new_price' && manualN <= 0) {
-            $('#p_new_price').val(calcN.toFixed(2));
-            nPrice = calcN;
-        }
-
-        // 2. Price Rule evaluation (using original Q and NQ)
-        var resultingC = existingC;
-        var priceNotice = $('#p_price_rule_notice');
-
-        if (q < 6 && nq > 5) {
-            resultingC = nPrice;
-            priceNotice.html('<span style="color: #047857;"><i class="fa fa-check-circle"></i> <strong>Low Stock Replenishment Rule (Q &lt; 6 &amp; NQ &gt; 5):</strong> Current Price will update to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>');
-        } else if (existingC < nPrice && q < 5 && nq > 5) {
-            resultingC = nPrice;
-            priceNotice.html('<span style="color: #047857;"><i class="fa fa-check-circle"></i> <strong>Low Stock Rule (C &lt; N &amp; Q &lt; 5 &amp; NQ &gt; 5):</strong> Current Price will update to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>');
-        } else if (existingC > nPrice && q > 5) {
-            resultingC = existingC;
-            priceNotice.html('<span style="color: #d97706;"><i class="fa fa-shield"></i> <strong>Price Protected (C &gt; N &amp; Q &gt; 5):</strong> Current Price retained unchanged at <strong>₱' + existingC.toFixed(2) + '</strong>.</span>');
-        } else {
-            if (existingC > 0) {
-                resultingC = existingC;
-                priceNotice.html('<span class="text-muted"><i class="fa fa-info-circle"></i> Current Price retained at ₱' + existingC.toFixed(2) + '. Updates to New Price (₱' + nPrice.toFixed(2) + ') upon low-stock replenishment (Q &lt; 6 &amp; NQ &gt; 5).</span>');
-            } else {
-                resultingC = nPrice;
-                priceNotice.html('<span class="text-success"><i class="fa fa-info-circle"></i> Initial Price set to New Price ₱' + resultingC.toFixed(2) + '.</span>');
-            }
-        }
-        $('#p_current_price').val(resultingC.toFixed(2));
-
-        // 3. Quantity Rule evaluation
-        var qtyNotice = $('#p_qty_rule_notice');
+    // 3. Quantity Rule evaluation
+    var qtyNoticeEl = document.getElementById('p_qty_rule_notice');
+    if (qtyNoticeEl) {
         if (q < 2 && nq > 1) {
             var expectedQ = q + nq;
-            qtyNotice.html('<span style="color: #047857;"><i class="fa fa-refresh"></i> <strong>Inventory Transfer Triggered (Q &lt; 2 &amp; NQ &gt; 1):</strong> Upon saving, ' + nq + ' units will be transferred into stock (Q: ' + q + ' &rarr; <strong>' + expectedQ + '</strong>, NQ &rarr; <strong>0</strong>).</span>');
+            qtyNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-refresh"></i> <strong>Inventory Transfer Triggered (Q &lt; 2 &amp; NQ &gt; 1):</strong> Upon saving, ' + nq + ' units will be transferred into stock (Q: ' + q + ' &rarr; <strong>' + expectedQ + '</strong>, NQ &rarr; <strong>0</strong>).</span>';
         } else if (q >= 2 && nq > 0) {
-            qtyNotice.html('<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity (Quantity transfer does NOT trigger because Q &ge; 2).</span>');
+            qtyNoticeEl.innerHTML = '<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity (Quantity transfer does NOT trigger because Q &ge; 2).</span>';
         } else if (nq > 0) {
-            qtyNotice.html('<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity.</span>');
+            qtyNoticeEl.innerHTML = '<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity.</span>';
         } else {
-            qtyNotice.html('');
-        }
-
-        // 4. Stock Alert calculation (evaluated on expected final Q against S)
-        var alertQ = (q < 2 && nq > 1) ? (q + nq) : q;
-        var halfS = 0.50 * s;
-        var eightyS = 0.80 * s;
-        var badge = $('#p_stock_alert_badge');
-        var desc = $('#p_stock_alert_desc');
-
-        if (alertQ < halfS) {
-            // RED: Q < 50% of S (Priority 1)
-            badge.css({'background-color': '#ef4444', 'color': '#ffffff'}).html('<i class="fa fa-exclamation-triangle"></i> RED ALERT');
-            desc.html('<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-exclamation-circle"></i> Critical Depletion (Q &lt; 50% &times; S): Stock (' + alertQ + ') &lt; 50% of Safety Level (' + s + '). Replenishment urgently required.</span>');
-            $('#p_qty').css({'border-color': '#ef4444', 'background-color': '#fef2f2'});
-        } else if (alertQ < eightyS) {
-            // ORANGE: 50% <= Q < 80% of S (Priority 2)
-            badge.css({'background-color': '#f97316', 'color': '#ffffff'}).html('<i class="fa fa-exclamation-circle"></i> ORANGE ALERT');
-            desc.html('<span style="color: #ea580c; font-weight: 700;"><i class="fa fa-warning"></i> Low Stock Warning (50% &le; Q &lt; 80% &times; S): Stock (' + alertQ + ') is between 50% and 80% of Safety Level (' + s + ').</span>');
-            $('#p_qty').css({'border-color': '#f97316', 'background-color': '#fff7ed'});
-        } else {
-            // NORMAL: Q >= 80% of S (Priority 3)
-            badge.css({'background-color': '#10b981', 'color': '#ffffff'}).html('<i class="fa fa-check"></i> NORMAL');
-            desc.html('<span style="color: #059669; font-weight: 600;"><i class="fa fa-check-circle"></i> Acceptable Stock (Q &ge; 80% &times; S): Stock (' + alertQ + ') &ge; 80% of Safety Level (' + s + ').</span>');
-            $('#p_qty').css({'border-color': '#cbd5e1', 'background-color': '#ffffff'});
+            qtyNoticeEl.innerHTML = '';
         }
     }
 
-    // Event listeners
-    $('#p_capital_price, #p_markup').on('input keyup change', function() {
-        var ca = cleanNum($('#p_capital_price').val());
-        var markup = cleanNum($('#p_markup').val());
-        var calcN = Math.round((ca + markup) * 100) / 100;
-        $('#p_new_price').val(calcN.toFixed(2));
-        evaluateRulesLive();
+    // 4. Stock Alert calculation (evaluated on expected final Q against S)
+    var alertQ = (q < 2 && nq > 1) ? (q + nq) : q;
+    var halfS = 0.50 * s;
+    var eightyS = 0.80 * s;
+    var badgeEl = document.getElementById('p_stock_alert_badge');
+    var descEl = document.getElementById('p_stock_alert_desc');
+
+    if (alertQ < halfS) {
+        // RED: Q < 50% of S (Priority 1)
+        if (badgeEl) {
+            badgeEl.style.backgroundColor = '#ef4444';
+            badgeEl.style.color = '#ffffff';
+            badgeEl.innerHTML = '<i class="fa fa-exclamation-triangle"></i> RED ALERT';
+        }
+        if (descEl) descEl.innerHTML = '<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-exclamation-circle"></i> Critical Depletion (Q &lt; 50% &times; S): Stock (' + alertQ + ') &lt; 50% of Safety Level (' + s + '). Replenishment urgently required.</span>';
+        if (qEl) {
+            qEl.style.borderColor = '#ef4444';
+            qEl.style.backgroundColor = '#fef2f2';
+        }
+    } else if (alertQ < eightyS) {
+        // ORANGE: 50% <= Q < 80% of S (Priority 2)
+        if (badgeEl) {
+            badgeEl.style.backgroundColor = '#f97316';
+            badgeEl.style.color = '#ffffff';
+            badgeEl.innerHTML = '<i class="fa fa-exclamation-circle"></i> ORANGE ALERT';
+        }
+        if (descEl) descEl.innerHTML = '<span style="color: #ea580c; font-weight: 700;"><i class="fa fa-warning"></i> Low Stock Warning (50% &le; Q &lt; 80% &times; S): Stock (' + alertQ + ') is between 50% and 80% of Safety Level (' + s + ').</span>';
+        if (qEl) {
+            qEl.style.borderColor = '#f97316';
+            qEl.style.backgroundColor = '#fff7ed';
+        }
+    } else {
+        // NORMAL: Q >= 80% of S (Priority 3)
+        if (badgeEl) {
+            badgeEl.style.backgroundColor = '#10b981';
+            badgeEl.style.color = '#ffffff';
+            badgeEl.innerHTML = '<i class="fa fa-check"></i> NORMAL';
+        }
+        if (descEl) descEl.innerHTML = '<span style="color: #059669; font-weight: 600;"><i class="fa fa-check-circle"></i> Acceptable Stock (Q &ge; 80% &times; S): Stock (' + alertQ + ') &ge; 80% of Safety Level (' + s + ').</span>';
+        if (qEl) {
+            qEl.style.borderColor = '#cbd5e1';
+            qEl.style.backgroundColor = '#ffffff';
+        }
+    }
+}
+
+function bindAllEditListeners() {
+    var caEl = document.getElementById('p_capital_price');
+    var muEl = document.getElementById('p_markup');
+    var npEl = document.getElementById('p_new_price');
+    var qEl = document.getElementById('p_qty');
+    var nqEl = document.getElementById('p_new_qty');
+    var sEl = document.getElementById('p_s_level');
+
+    if (caEl) {
+        ['input', 'keyup', 'change', 'blur', 'paste'].forEach(function(evt) {
+            caEl.addEventListener(evt, function() {
+                var ca = cleanNum(caEl.value);
+                var markup = muEl ? cleanNum(muEl.value) : 0;
+                var calcN = Math.round((ca + markup) * 100) / 100;
+                if (npEl) npEl.value = calcN.toFixed(2);
+                evaluateRulesLive();
+            });
+        });
+    }
+    if (muEl) {
+        ['input', 'keyup', 'change', 'blur', 'paste'].forEach(function(evt) {
+            muEl.addEventListener(evt, function() {
+                var ca = caEl ? cleanNum(caEl.value) : 0;
+                var markup = cleanNum(muEl.value);
+                var calcN = Math.round((ca + markup) * 100) / 100;
+                if (npEl) npEl.value = calcN.toFixed(2);
+                evaluateRulesLive();
+            });
+        });
+    }
+
+    [npEl, qEl, nqEl, sEl].forEach(function(el) {
+        if (el) {
+            ['input', 'keyup', 'change', 'blur', 'paste'].forEach(function(evt) {
+                el.addEventListener(evt, evaluateRulesLive);
+            });
+        }
     });
 
-    $('#p_new_price, #p_qty, #p_new_qty, #p_s_level').on('input keyup change', function() {
-        evaluateRulesLive();
-    });
+    if (typeof $ !== 'undefined') {
+        $(document).on('change', '.end-cat', function() {
+            checkNewCategoryOption($(this).val());
+        });
+        $('#p_capital_price, #p_markup').on('input keyup change paste', function() {
+            var ca = cleanNum($('#p_capital_price').val());
+            var markup = cleanNum($('#p_markup').val());
+            var calcN = Math.round((ca + markup) * 100) / 100;
+            $('#p_new_price').val(calcN.toFixed(2));
+            evaluateRulesLive();
+        });
+        $('#p_new_price, #p_qty, #p_new_qty, #p_s_level').on('input keyup change paste', function() {
+            evaluateRulesLive();
+        });
+    }
 
-    // Initial evaluation on load
     evaluateRulesLive();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindAllEditListeners);
+} else {
+    bindAllEditListeners();
+}
 </script>
 
 <?php require_once('footer.php'); ?>

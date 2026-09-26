@@ -543,52 +543,49 @@ foreach ($pending_pos as $po) {
                                     </div>
 
                                     <!-- Printable PO Voucher Container (Read-Only) -->
-                                    <div id="poPrintVoucher-<?php echo $po_id; ?>" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px;">
-                                        
-                                        <!-- Voucher Header -->
-                                        <div style="text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 14px;">
-                                            <h3 style="margin: 0; font-size: 20px; font-weight: 900; color: #0f172a; text-transform: uppercase;">
-                                                CUSTOMER PURCHASE ORDER VOUCHER
-                                            </h3>
-                                            <p style="margin: 2px 0 0 0; font-size: 12px; color: #64748b; font-weight: 600;">
-                                                <?php echo htmlspecialchars($store_name); ?> &bull; Fulfillment Slip
-                                            </p>
+                                    <div id="poPrintVoucher-<?php echo $po_id; ?>" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 12px; font-family: 'Courier New', Courier, monospace; color: #000; font-size: 11pt; line-height: 1.25;">
+                                        <!-- 1. Header (Centered Monospace Standard) -->
+                                        <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-bottom: 3px; overflow: hidden; white-space: nowrap;">================================</div>
+                                        <div style="text-align: center;">
+                                            <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;"><?php echo htmlspecialchars(!empty($store_name) ? strtoupper($store_name) : 'SAM & INRI CONSTRUCTION SUPPLY'); ?></div>
+                                            <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: <?php echo htmlspecialchars(!empty($store_phone) ? $store_phone : '09612735733'); ?></div>
+                                            <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">PURCHASE ORDER VOUCHER</div>
+                                            <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;">(UNPAID)</div>
                                         </div>
+                                        <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>
 
-                                        <!-- PO Reference Block -->
-                                        <table style="width: 100%; font-size: 12px; margin-bottom: 14px; line-height: 1.5;">
+                                        <!-- 2. PO Metadata -->
+                                        <table style="width: 100%; font-family: 'Courier New', Courier, monospace; font-size: 10.5pt; line-height: 1.25; margin-bottom: 2px; border-collapse: collapse;">
                                             <tr>
-                                                <td style="width: 50%; vertical-align: top; padding-right: 10px;">
-                                                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-                                                        <strong style="color: #0369a1; font-size: 11px; text-transform: uppercase;">Purchase Order Number:</strong><br>
-                                                        <span style="font-size: 16px; font-weight: 900; font-family: monospace; color: #0284c7;"><?php echo htmlspecialchars($po_code); ?></span><br>
-                                                        <strong>Date:</strong> <?php echo date('M d, Y h:i A', strtotime($order_date)); ?><br>
-                                                        <strong>Status:</strong> <span style="color: #d97706; font-weight: 800;">Awaiting Payment (UNPAID)</span>
-                                                    </div>
-                                                </td>
-                                                <td style="width: 50%; vertical-align: top; padding-left: 10px;">
-                                                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-                                                        <strong style="color: #0369a1; font-size: 11px; text-transform: uppercase;">Customer Information:</strong><br>
-                                                        <strong><?php echo htmlspecialchars($cust_name); ?></strong><br>
-                                                        <?php if (!empty($cust_phone)): ?>
-                                                            Phone: <?php echo htmlspecialchars($cust_phone); ?><br>
-                                                        <?php endif; ?>
-                                                        Fulfillment: <strong><?php echo $is_delivery ? 'Delivery' : 'Store Pickup'; ?></strong>
-                                                    </div>
-                                                </td>
+                                                <td style="width: 28%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">PO NO   :</td>
+                                                <td style="padding: 1px 0; vertical-align: top; font-weight: bold;"><?php echo htmlspecialchars($po_code); ?></td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CUSTOMER:</td>
+                                                <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($cust_name ?? 'Walk-in Customer'); ?></td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">STATUS  :</td>
+                                                <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">AWAITING PAYMENT</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">DATE    :</td>
+                                                <td style="padding: 1px 0; vertical-align: top;"><?php echo date('Y-m-d H:i:s', strtotime($order_date)); ?></td>
                                             </tr>
                                         </table>
 
-                                        <!-- Order Items Table -->
-                                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px;">
+                                        <!-- 3. Items Table (2-Line Standard Format) -->
+                                        <div style="text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+                                        <table style="width: 100%; border-collapse: collapse; font-family: 'Courier New', Courier, monospace; font-size: 10.5pt; line-height: 1.2; margin: 0;">
                                             <thead>
-                                                <tr style="background: #f1f5f9; border-top: 1.5px solid #cbd5e1; border-bottom: 1.5px solid #cbd5e1;">
-                                                    <th style="padding: 7px 6px; text-align: left;">Product Item &amp; Details</th>
-                                                    <th style="padding: 7px 6px; text-align: center; width: 50px;">Qty</th>
-                                                    <th style="padding: 7px 6px; text-align: right; width: 90px;">Unit Price</th>
-                                                    <th style="padding: 7px 6px; text-align: right; width: 100px;">Total</th>
+                                                <tr>
+                                                    <th style="text-align: left; padding: 1px 0; font-weight: bold; width: 68%;">ITEM DESCRIPTION</th>
+                                                    <th style="text-align: right; padding: 1px 0; font-weight: bold; width: 32%;">AMOUNT</th>
                                                 </tr>
                                             </thead>
+                                        </table>
+                                        <div style="text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+                                        <table style="width: 100%; border-collapse: collapse; font-family: 'Courier New', Courier, monospace; font-size: 10.5pt; line-height: 1.2; margin: 0;">
                                             <tbody>
                                                 <?php 
                                                 $calculated_subtotal = 0;
@@ -598,39 +595,58 @@ foreach ($pending_pos as $po) {
                                                     $item_subtotal = $item_qty * $item_price;
                                                     $calculated_subtotal += $item_subtotal;
                                                     $is_sp = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER');
+                                                    $unit_label = ($item_qty > 1 ? 'pcs' : 'pc');
                                                 ?>
-                                                <tr style="border-bottom: 1px solid #f1f5f9; <?php echo $is_sp ? 'background-color: #fffbeb;' : ''; ?>">
-                                                    <td style="padding: 7px 6px;">
-                                                        <?php if ($is_sp): ?>
-                                                            <span class="label label-warning" style="font-size: 9px; padding: 1px 4px;">SPECIAL ORDER</span><br>
-                                                        <?php endif; ?>
-                                                        <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
+                                                <tr>
+                                                    <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">
+                                                        <?php if ($is_sp): ?>[SPECIAL ORDER] <?php endif; ?>
+                                                        <?php echo htmlspecialchars($item['product_name']); ?>
                                                         <?php if (!empty($item['size']) || !empty($item['color'])): ?>
-                                                            <div style="font-size: 11px; color: #64748b;">
+                                                            <div style="font-size: 9pt; font-weight: normal; margin-top: 1px;">
                                                                 <?php if (!empty($item['size'])) echo 'Size: ' . htmlspecialchars($item['size']) . ' '; ?>
                                                                 <?php if (!empty($item['color'])) echo 'Color: ' . htmlspecialchars($item['color']); ?>
                                                             </div>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <td style="padding: 7px 6px; text-align: center; font-weight: 700;"><?php echo $item_qty; ?></td>
-                                                    <td style="padding: 7px 6px; text-align: right;">&#8369;<?php echo number_format($item_price, 2); ?></td>
-                                                    <td style="padding: 7px 6px; text-align: right; font-weight: 700;">&#8369;<?php echo number_format($item_subtotal, 2); ?></td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
+                                                        <?php echo $item_qty; ?> <?php echo $unit_label; ?> @ <?php echo number_format($item_price, 2); ?>
+                                                    </td>
+                                                    <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
+                                                        <?php echo number_format($item_subtotal, 2); ?>
+                                                    </td>
                                                 </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
-                                            <tfoot>
-                                                <tr style="border-top: 2px solid #cbd5e1; background: #f8fafc; font-size: 14px;">
-                                                    <td colspan="2" style="padding: 8px 6px;"></td>
-                                                    <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #0284c7;">Total Amount Due:</td>
-                                                    <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #0284c7;">&#8369;<?php echo number_format($total_amount, 2); ?></td>
-                                                </tr>
-                                            </tfoot>
+                                        </table>
+                                        <div style="text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+
+                                        <!-- 4. Totals -->
+                                        <table style="width: 100%; border-collapse: collapse; font-family: 'Courier New', Courier, monospace; font-size: 10.5pt; line-height: 1.25; margin: 2px 0;">
+                                            <tr>
+                                                <td style="text-align: left; padding: 1px 0;">Subtotal:</td>
+                                                <td style="text-align: right; padding: 1px 0; white-space: nowrap;"><?php echo number_format($calculated_subtotal, 2); ?></td>
+                                            </tr>
+                                            <tr>
+                                                <td style="text-align: left; padding: 1px 0;">Discount:</td>
+                                                <td style="text-align: right; padding: 1px 0; white-space: nowrap;">0.00</td>
+                                            </tr>
+                                            <tr style="font-weight: bold;">
+                                                <td style="text-align: left; padding: 2px 0; font-size: 1.08em;">TOTAL DUE:</td>
+                                                <td style="text-align: right; padding: 2px 0; font-size: 1.08em; white-space: nowrap;"><?php echo number_format($total_amount, 2); ?></td>
+                                            </tr>
                                         </table>
 
-                                        <!-- Instruction Footer -->
-                                        <div style="text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 10px; font-size: 11px; color: #64748b;">
-                                            <strong><i class="fa fa-info-circle text-info"></i> Cashier Instruction:</strong> Present this PO Voucher at the Cashier counter to process payment and receive your official sales receipt.
+                                        <!-- 5. Footer -->
+                                        <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
+                                        <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
+                                            <div style="font-weight: bold;">*** PROCEED TO CASHIER ***</div>
+                                            <div style="font-weight: bold;">FOR PAYMENT</div>
+                                            <div style="margin-top: 3px;">Thank you for your business!</div>
+                                            <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
                                         </div>
+                                        <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
 
                                     </div>
 
@@ -644,8 +660,8 @@ foreach ($pending_pos as $po) {
                                         <button type="button" class="btn btn-default btn-sm" onclick="reprintPOCreated('poPrintVoucher-<?php echo $po_id; ?>', 210)" style="font-weight: 600; background: #fff; border-color: #cbd5e1; color: #334155;" title="Print standard A4 / PDF Voucher">
                                             <i class="fa fa-file-pdf-o text-danger"></i> A4 / PDF
                                         </button>
-                                        <button type="button" class="btn btn-primary btn-sm" onclick="reprintPOCreated('poPrintVoucher-<?php echo $po_id; ?>', 500)" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1;" title="Print on 500mm Wide Thermal Roll (Primary Default Standard)">
-                                            <i class="fa fa-print"></i> Reprint PO (500mm Thermal)
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="reprintPOCreated('poPrintVoucher-<?php echo $po_id; ?>', 58)" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1;" title="Print on 58mm / 80mm Thermal Printer">
+                                            <i class="fa fa-print"></i> Reprint PO (Thermal)
                                         </button>
                                     </div>
                                 </div>
@@ -697,15 +713,15 @@ function reprintPOCreated(elementId, requestedWidthMm) {
     }
     const rawContent = el.innerHTML;
     
-    // Read user configured printer settings (500mm thermal / A4 / etc.)
-    let widthMm = 500;
+    // Read user configured printer settings (58mm / 80mm / 210mm thermal / A4)
+    let widthMm = 58;
     let copies = 1;
     let isThermal = true;
     try {
         const saved = localStorage.getItem('pos_printer_settings');
         if (saved) {
             const parsed = JSON.parse(saved);
-            widthMm = parseInt(parsed.paperWidthMm, 10) || 500;
+            widthMm = parseInt(parsed.paperWidthMm, 10) || 58;
             copies = Math.min(5, Math.max(1, parseInt(parsed.copies, 10) || 1));
             isThermal = (parsed.printerType !== 'normal' && parsed.printerMode !== 'normal');
         }
@@ -714,18 +730,16 @@ function reprintPOCreated(elementId, requestedWidthMm) {
     }
 
     if (requestedWidthMm) {
-        widthMm = parseInt(requestedWidthMm, 10) || 500;
+        widthMm = parseInt(requestedWidthMm, 10) || 58;
         isThermal = (widthMm !== 210);
     }
 
-    const isA4 = (widthMm === 210 || (!isThermal && widthMm !== 500));
-    const is500mm = (!isA4 && widthMm >= 450);
-    const is58mm = (!isA4 && !is500mm && widthMm <= 65);
-    const is80mm = (!isA4 && !is500mm && !is58mm);
+    const isA4 = (widthMm === 210 || (!isThermal && widthMm > 80));
+    const is58mm = (!isA4 && widthMm <= 65);
+    const is80mm = (!isA4 && !is58mm && widthMm <= 90);
 
-    const actualWidthMm = isA4 ? 210 : (is500mm ? 500 : (is58mm ? 58 : 80));
-    const bodyFontPt = isA4 ? 10.0 : (is500mm ? 12.0 : (is58mm ? 8.5 : 9.8));
-    const titleFontPt = isA4 ? 14.0 : (is500mm ? 16.0 : (is58mm ? 10.5 : 12.0));
+    const actualWidthMm = isA4 ? 210 : (is58mm ? 58 : (is80mm ? 80 : 210));
+    const contentWidthMm = isA4 ? 190 : (is58mm ? 48 : (is80mm ? 72 : 120));
 
     let copiesHtml = '';
     for (let c = 0; c < copies; c++) {
@@ -752,30 +766,28 @@ function reprintPOCreated(elementId, requestedWidthMm) {
                     print-color-adjust: exact !important;
                 }
                 body {
-                    font-family: ${!isA4 ? "'Courier New', Consolas, 'Liberation Mono', monospace, Arial, sans-serif" : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"} !important;
+                    font-family: 'Courier New', Courier, monospace !important;
                     color: #000000 !important;
                     margin: 0;
                     padding: 0;
                     background: #ffffff !important;
-                    font-size: ${bodyFontPt}pt !important;
-                    line-height: 1.4 !important;
+                    font-size: 11pt !important;
+                    line-height: 1.25 !important;
                     font-variant-numeric: tabular-nums;
-                    font-weight: 500;
                 }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { vertical-align: top; padding: ${is500mm ? '6px 10px' : '4px 6px'}; color: #000000 !important; }
-                th { font-weight: 800 !important; border-bottom: 1.5pt dashed #000000 !important; border-top: 1.5pt dashed #000000 !important; }
+                table { width: 100%; border-collapse: collapse; font-family: 'Courier New', Courier, monospace !important; }
+                th, td { vertical-align: top; color: #000000 !important; }
                 .pos-page-break { page-break-before: always; margin-top: 25px; }
 
                 @media screen {
-                    body { padding: 25px; background: #f1f5f9; display: flex; justify-content: center; }
+                    body { padding: 25px; background: #334155; display: flex; justify-content: center; }
                     .pos-print-container {
-                        width: ${actualWidthMm}mm;
+                        width: ${contentWidthMm}mm;
                         max-width: 100%;
                         background: #ffffff;
-                        padding: ${is500mm ? '12mm 16mm' : (isA4 ? '12mm 15mm' : '4mm')};
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-                        border-radius: 6px;
+                        padding: 3mm;
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                        border-radius: 4px;
                     }
                 }
 
@@ -785,14 +797,15 @@ function reprintPOCreated(elementId, requestedWidthMm) {
                     }
                     body {
                         margin: 0 !important;
-                        padding: ${is500mm ? '8mm 12mm' : (isA4 ? '0' : '2mm')} !important;
+                        padding: 0 !important;
                         width: ${actualWidthMm}mm !important;
                         max-width: ${actualWidthMm}mm !important;
                         background: #ffffff !important;
                     }
                     .pos-print-container {
-                        width: 100% !important;
+                        width: ${contentWidthMm}mm !important;
                         max-width: ${actualWidthMm}mm !important;
+                        margin: 0 auto !important;
                         box-shadow: none !important;
                         padding: 0 !important;
                     }

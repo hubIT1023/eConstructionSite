@@ -82,6 +82,7 @@ if(isset($_POST['form1'])) {
     $path = $_FILES['p_featured_photo']['name'];
     $path_tmp = $_FILES['p_featured_photo']['tmp_name'];
 
+    $final_name = 'product_photos/general_products/default.png';
     if($path!='') {
         $ext = pathinfo( $path, PATHINFO_EXTENSION );
         $file_name = basename( $path, '.' . $ext );
@@ -89,9 +90,6 @@ if(isset($_POST['form1'])) {
             $valid = 0;
             $error_message .= 'You must upload jpg, jpeg, gif or png file<br>';
         }
-    } else {
-    	$valid = 0;
-        $error_message .= 'You must select a featured photo<br>';
     }
 
     if($valid == 1) {
@@ -137,8 +135,12 @@ if(isset($_POST['form1'])) {
             }            
         }
 
-		$final_name = 'product-featured-'.$ai_id.'.'.$ext;
-        move_uploaded_file( $path_tmp, '../assets/uploads/'.$final_name );
+		if($path!='') {
+			$final_name = 'product-featured-'.$ai_id.'.'.$ext;
+			move_uploaded_file( $path_tmp, '../assets/uploads/'.$final_name );
+		} else {
+			$final_name = 'product_photos/general_products.png';
+		}
 
         $ca_input = isset($_POST['p_capital_price']) ? trim($_POST['p_capital_price']) : '0';
         $p_capital_price_val = max(0, floatval(preg_replace('/[^0-9.]/', '', strval($ca_input))));
@@ -452,9 +454,16 @@ if(isset($_POST['form1'])) {
 							</div>
 						</div>
 						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Featured Photo <span>*</span></label>
+							<label for="" class="col-sm-3 control-label">Featured Photo</label>
 							<div class="col-sm-4" style="padding-top:4px;">
-								<input type="file" name="p_featured_photo">
+								<div style="margin-bottom: 8px;">
+									<img src="../assets/uploads/product_photos/general_products.png" alt="Default Product Photo" id="featured_photo_preview" style="width:120px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;">
+									<div style="font-size: 11.5px; color: #15803d; font-weight: 600; margin-top: 4px;">
+										<i class="fa fa-check-circle"></i> Default photo: <code>assets/uploads/product_photos/general_products.png</code>
+									</div>
+								</div>
+								<input type="file" name="p_featured_photo" id="p_featured_photo" onchange="previewFeaturedPhoto(this)">
+								<small class="text-muted" style="font-size: 11px;">Optional. If no image is chosen, <code>general_products.png</code> will be assigned automatically.</small>
 							</div>
 						</div>
 						<div class="form-group">
@@ -543,63 +552,128 @@ if(isset($_POST['form1'])) {
 		</div>
 	</div>
 <script>
+function cleanNum(val) {
+    if (!val) return 0;
+    var clean = val.toString().replace(/[^0-9.]/g, '');
+    return parseFloat(clean) || 0;
+}
+
+function updateAddPricing() {
+    var caInput = document.getElementById('p_capital_price');
+    var muInput = document.getElementById('p_markup');
+    var npInput = document.getElementById('p_new_price');
+    var cpInput = document.getElementById('p_current_price');
+    
+    if (!caInput || !muInput || !npInput || !cpInput) return;
+    
+    var ca = cleanNum(caInput.value);
+    var markup = cleanNum(muInput.value);
+    var nPrice = Math.round((ca + markup) * 100) / 100;
+    
+    if (document.activeElement !== npInput) {
+        npInput.value = nPrice > 0 ? nPrice.toFixed(2) : (ca > 0 ? ca.toFixed(2) : '0.00');
+    }
+    
+    var finalN = cleanNum(npInput.value);
+    cpInput.value = finalN > 0 ? finalN.toFixed(2) : (nPrice > 0 ? nPrice.toFixed(2) : '');
+}
+
+function previewFeaturedPhoto(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var preview = document.getElementById('featured_photo_preview');
+            if (preview) preview.src = e.target.result;
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
 function checkNewCategoryOption(val) {
     if (val === 'other_new') {
-        $('#newCategoryWrapper').slideDown(200);
-        $('#new_ecat_name').focus();
+        if (typeof $ !== 'undefined') $('#newCategoryWrapper').slideDown(200);
+        else document.getElementById('newCategoryWrapper').style.display = 'block';
+        var el = document.getElementById('new_ecat_name');
+        if (el) el.focus();
     } else {
-        $('#newCategoryWrapper').slideUp(200);
-        $('#new_ecat_name').val('');
+        if (typeof $ !== 'undefined') $('#newCategoryWrapper').slideUp(200);
+        else document.getElementById('newCategoryWrapper').style.display = 'none';
+        var el = document.getElementById('new_ecat_name');
+        if (el) el.value = '';
     }
 }
 
 function enableNewCategoryInput() {
-    var midCatVal = $('.mid-cat').val();
+    var midCatVal = (typeof $ !== 'undefined') ? $('.mid-cat').val() : (document.querySelector('.mid-cat') ? document.querySelector('.mid-cat').value : '');
     if (!midCatVal) {
         alert('Please select a Top Level Category and Mid Level Category first.');
-        $('.top-cat').focus();
+        var topCat = document.querySelector('.top-cat');
+        if (topCat) topCat.focus();
         return;
     }
     
-    // Add option if not present
-    if ($('.end-cat option[value="other_new"]').length === 0) {
-        $('.end-cat').append('<option value="other_new">+ Add New Category (Not Found in List)</option>');
+    if (typeof $ !== 'undefined') {
+        if ($('.end-cat option[value="other_new"]').length === 0) {
+            $('.end-cat').append('<option value="other_new">+ Add New Category (Not Found in List)</option>');
+        }
+        $('.end-cat').val('other_new').trigger('change');
+        $('#newCategoryWrapper').slideDown(200);
     }
-    
-    $('.end-cat').val('other_new').trigger('change');
-    $('#newCategoryWrapper').slideDown(200);
-    $('#new_ecat_name').focus();
+    var el = document.getElementById('new_ecat_name');
+    if (el) el.focus();
 }
 
 function cancelNewCategoryInput() {
-    $('.end-cat').val('').trigger('change');
-    $('#newCategoryWrapper').slideUp(200);
-    $('#new_ecat_name').val('');
+    if (typeof $ !== 'undefined') {
+        $('.end-cat').val('').trigger('change');
+        $('#newCategoryWrapper').slideUp(200);
+    }
+    var el = document.getElementById('new_ecat_name');
+    if (el) el.value = '';
 }
 
-$(document).ready(function() {
-    $(document).on('change', '.end-cat', function() {
-        checkNewCategoryOption($(this).val());
-    });
+function bindAllAddListeners() {
+    var caEl = document.getElementById('p_capital_price');
+    var muEl = document.getElementById('p_markup');
+    var npEl = document.getElementById('p_new_price');
 
-    function cleanNum(val) {
-        if (!val) return 0;
-        var clean = val.toString().replace(/[^0-9.]/g, '');
-        return parseFloat(clean) || 0;
+    if (caEl) {
+        ['input', 'keyup', 'change', 'blur', 'paste'].forEach(function(evt) {
+            caEl.addEventListener(evt, updateAddPricing);
+        });
+    }
+    if (muEl) {
+        ['input', 'keyup', 'change', 'blur', 'paste'].forEach(function(evt) {
+            muEl.addEventListener(evt, updateAddPricing);
+        });
+    }
+    if (npEl) {
+        ['input', 'keyup', 'change', 'blur', 'paste'].forEach(function(evt) {
+            npEl.addEventListener(evt, function() {
+                var cpInput = document.getElementById('p_current_price');
+                var val = cleanNum(npEl.value);
+                if (cpInput) cpInput.value = val > 0 ? val.toFixed(2) : '';
+            });
+        });
     }
 
-    function updateAddPricing() {
-        var ca = cleanNum($('#p_capital_price').val());
-        var markup = cleanNum($('#p_markup').val());
-        var nPrice = Math.round((ca + markup) * 100) / 100;
-        $('#p_new_price').val(nPrice.toFixed(2));
-        $('#p_current_price').val(nPrice.toFixed(2));
+    if (typeof $ !== 'undefined') {
+        $(document).on('change', '.end-cat', function() {
+            checkNewCategoryOption($(this).val());
+        });
+        $('#p_capital_price, #p_markup, #p_new_price').on('input keyup change paste', function() {
+            updateAddPricing();
+        });
     }
 
-    $('#p_capital_price, #p_markup').on('input keyup change', function() {
-        updateAddPricing();
-    });
-});
+    updateAddPricing();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindAllAddListeners);
+} else {
+    bindAllAddListeners();
+}
 </script>
 
 <?php require_once('footer.php'); ?>

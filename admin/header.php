@@ -39,6 +39,7 @@ if(!isset($_SESSION['user'])) {
 	<link rel="stylesheet" href="css/on-off-switch.css"/>
 	<link rel="stylesheet" href="css/summernote.css">
 	<link rel="stylesheet" href="style.css">
+	<script src="js/jquery-2.2.4.min.js"></script>
 
 </head>
 

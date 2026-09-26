@@ -159,10 +159,18 @@ $available_categories = $stmt_cats->fetchAll(PDO::FETCH_ASSOC);
 									$qty_style = 'text-align: center; font-weight: 700; color: #0f172a;';
 									$stock_alert_badge = '<span class="badge" style="background-color: #10b981; color: #fff; font-weight: 600; font-size: 10px; padding: 4px 7px;"><i class="fa fa-check"></i> NORMAL</span>';
 								}
+								$photo_src = '../assets/uploads/product_photos/general_products/default.png';
+								if (!empty($row['p_featured_photo']) && file_exists('../assets/uploads/' . $row['p_featured_photo'])) {
+									$photo_src = '../assets/uploads/' . $row['p_featured_photo'];
+								} elseif (!empty($row['p_featured_photo']) && file_exists('../assets/uploads/product_photos/' . $row['p_featured_photo'])) {
+									$photo_src = '../assets/uploads/product_photos/' . $row['p_featured_photo'];
+								} elseif (!empty($row['p_featured_photo']) && file_exists('../assets/uploads/product_photos/general_products/' . $row['p_featured_photo'])) {
+									$photo_src = '../assets/uploads/product_photos/general_products/' . $row['p_featured_photo'];
+								}
 								?>
 								<tr>
 									<td><?php echo $i; ?></td>
-									<td style="width:82px;"><img src="../assets/uploads/<?php echo $row['p_featured_photo']; ?>" alt="<?php echo $row['p_name']; ?>" style="width:80px;"></td>
+									<td style="width:82px;"><img src="<?php echo $photo_src; ?>" alt="<?php echo htmlspecialchars($row['p_name']); ?>" style="width:80px; border-radius: 4px;"></td>
 									<td><?php echo $row['p_name']; ?></td>
 									<td>&#8369;<?php echo number_format($clean_ca_price, 2); ?></td>
 									<td>&#8369;<?php echo number_format($clean_markup, 2); ?></td>

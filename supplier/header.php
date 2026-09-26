@@ -175,6 +175,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 	<link rel="stylesheet" href="css/on-off-switch.css"/>
 	<link rel="stylesheet" href="css/summernote.css">
 	<link rel="stylesheet" href="style.css">
+	<script src="js/jquery-2.2.4.min.js"></script>
 
 </head>
 
@@ -737,9 +738,8 @@ function reprintSidebarPOVoucher() {
     }
 
     var data = currentSidebarPOData;
-    var storeName = (data.supplier && data.supplier.store_name) ? data.supplier.store_name : 'E-Construction Supply Store';
-    var storeAddress = (data.supplier && data.supplier.address) ? data.supplier.address : '';
-    var storePhone = (data.supplier && data.supplier.phone) ? data.supplier.phone : '';
+    var storeName = (data.supplier && data.supplier.store_name) ? data.supplier.store_name : 'SAM & INRI CONSTRUCTION SUPPLY';
+    var storePhone = (data.supplier && data.supplier.phone) ? data.supplier.phone : '09612735733';
     var custName = (data.customer && data.customer.name) ? data.customer.name : 'Walk-in Customer';
     var poNum = data.po_number || 'PO-XXXXX';
     var poDate = data.date || '';
@@ -747,18 +747,21 @@ function reprintSidebarPOVoucher() {
     var subtotalAmt = data.summary ? parseFloat(data.summary.subtotal).toFixed(2) : '0.00';
     var discAmt = data.summary ? parseFloat(data.summary.discount_total).toFixed(2) : '0.00';
 
-    // Build print HTML document (supports 500mm / 80mm / A4 thermal layout)
+    // 2-line item standard format
     var itemsRows = '';
     if (data.items && data.items.length > 0) {
-        data.items.forEach(function(it, i) {
+        data.items.forEach(function(it) {
+            var itemQty = parseInt(it.quantity, 10) || 1;
+            var itemPrice = parseFloat(it.unit_price).toFixed(2);
+            var itemNet = parseFloat(it.line_net).toFixed(2);
+            var unitLabel = itemQty > 1 ? 'pcs' : 'pc';
+            
             itemsRows += '<tr>' +
-                '<td style="padding:6px 4px; border-bottom:1px dashed #ccc; font-size:12px;">' +
-                    '<strong>' + it.product_name + '</strong>' +
-                    (it.size || it.color ? '<div style="font-size:10px; color:#555;">' + (it.size ? 'Size: ' + it.size + ' ' : '') + (it.color ? 'Color: ' + it.color : '') + '</div>' : '') +
-                '</td>' +
-                '<td style="padding:6px 4px; text-align:center; border-bottom:1px dashed #ccc; font-size:12px;">' + it.quantity + '</td>' +
-                '<td style="padding:6px 4px; text-align:right; border-bottom:1px dashed #ccc; font-size:12px;">₱' + parseFloat(it.unit_price).toFixed(2) + '</td>' +
-                '<td style="padding:6px 4px; text-align:right; border-bottom:1px dashed #ccc; font-size:12px; font-weight:bold;">₱' + parseFloat(it.line_net).toFixed(2) + '</td>' +
+                '<td colspan="2" style="text-align:left; padding-top:3px; font-weight:bold; word-break:break-word;">' + it.product_name + '</td>' +
+            '</tr>' +
+            '<tr>' +
+                '<td style="text-align:left; padding-left:8px; padding-bottom:3px;">' + itemQty + ' ' + unitLabel + ' @ ' + itemPrice + '</td>' +
+                '<td style="text-align:right; padding-bottom:3px; white-space:nowrap; vertical-align:bottom;">' + itemNet + '</td>' +
             '</tr>';
         });
     }
@@ -766,67 +769,81 @@ function reprintSidebarPOVoucher() {
     var printContent = '<!DOCTYPE html>' +
         '<html>' +
         '<head>' +
-        '<title>Purchase Order - ' + poNum + '</title>' +
+        '<meta charset="utf-8">' +
+        '<title>Purchase Order Voucher - ' + poNum + '</title>' +
         '<style>' +
-        '@media print {' +
-            '@page { size: auto; margin: 5mm; }' +
-            'body { margin: 0; font-family: "Courier New", Courier, monospace, sans-serif; font-size: 12px; color: #000; }' +
-        '}' +
-        'body { font-family: "Courier New", Courier, monospace, sans-serif; font-size: 12px; line-height: 1.3; margin: 15px auto; max-width: 500mm; }' +
-        '.voucher-box { border: 1px solid #000; padding: 15px; }' +
-        '.text-center { text-align: center; }' +
-        '.text-right { text-align: right; }' +
-        '.title { font-size: 16px; font-weight: bold; }' +
-        '.po-tag { display: inline-block; background: #eee; border: 1px solid #999; padding: 2px 8px; font-weight: bold; margin: 4px 0; }' +
-        'table { width: 100%; border-collapse: collapse; margin-top: 10px; }' +
-        'th { border-bottom: 2px solid #000; text-align: left; padding: 5px 4px; font-size: 12px; }' +
+        '* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }' +
+        '@page { size: 58mm auto; margin: 0; }' +
+        'html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; color: #000 !important; font-family: "Courier New", Courier, monospace !important; font-size: 11pt !important; line-height: 1.25 !important; width: 58mm !important; }' +
+        '.thermal-receipt { width: 48mm !important; max-width: 48mm !important; margin: 0 auto !important; padding: 2mm 1mm !important; }' +
+        '.thermal-divider-double { text-align: center; font-weight: bold; letter-spacing: -0.5px; margin: 3px 0; overflow: hidden; white-space: nowrap; }' +
+        '.thermal-divider-single { text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap; }' +
+        '.thermal-header { text-align: center; }' +
+        '.thermal-title { font-size: 12pt; font-weight: bold; text-transform: uppercase; line-height: 1.2; }' +
+        '.thermal-phone { font-size: 10pt; margin-top: 1px; }' +
+        '.thermal-doc-title { font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; }' +
+        '.thermal-doc-sub { font-size: 10pt; font-weight: bold; text-transform: uppercase; }' +
+        '.thermal-meta { width: 100%; border-collapse: collapse; font-size: 10.5pt; margin: 2px 0; line-height: 1.25; }' +
+        '.thermal-meta td { padding: 1px 0; vertical-align: top; }' +
+        '.thermal-meta .meta-label { font-weight: bold; width: 28%; white-space: nowrap; }' +
+        '.thermal-table { width: 100% !important; border-collapse: collapse !important; margin: 0 !important; font-size: 10.5pt !important; line-height: 1.2 !important; }' +
+        '.thermal-table th { padding: 1px 0 !important; font-weight: bold !important; text-transform: uppercase !important; }' +
+        '.thermal-totals { width: 100% !important; border-collapse: collapse !important; margin: 2px 0 !important; font-size: 10.5pt !important; line-height: 1.25 !important; }' +
+        '.thermal-totals td { padding: 1px 0; }' +
+        '.thermal-footer { text-align: center; line-height: 1.35; padding: 2px 0; font-size: 10.5pt; }' +
+        '@media screen { body { padding: 15px; background: #334155; display: flex; flex-direction: column; align-items: center; min-height: 100vh; } .thermal-receipt { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.35); padding: 4mm !important; } }' +
+        '@media print { body { padding: 0 !important; } .thermal-receipt { box-shadow: none !important; } }' +
         '</style>' +
         '</head>' +
         '<body>' +
-        '<div class="voucher-box">' +
-            '<div class="text-center">' +
-                '<div class="title">' + storeName + '</div>' +
-                (storeAddress ? '<div>' + storeAddress + '</div>' : '') +
-                (storePhone ? '<div>Tel: ' + storePhone + '</div>' : '') +
-                '<div style="margin: 8px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0;">' +
-                    '<strong>PURCHASE ORDER VOUCHER (UNPAID)</strong>' +
-                '</div>' +
+        '<div class="thermal-receipt">' +
+            '<div class="thermal-divider-double">================================</div>' +
+            '<div class="thermal-header">' +
+                '<div class="thermal-title">' + storeName.toUpperCase() + '</div>' +
+                '<div class="thermal-phone">Tel: ' + storePhone + '</div>' +
+                '<div class="thermal-doc-title">PURCHASE ORDER VOUCHER</div>' +
+                '<div class="thermal-doc-sub">(UNPAID)</div>' +
             '</div>' +
-            '<div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 11px;">' +
-                '<div>' +
-                    '<strong>PO NO:</strong> <span class="po-tag">' + poNum + '</span><br>' +
-                    '<strong>Date:</strong> ' + poDate + '<br>' +
-                    '<strong>Customer:</strong> ' + custName +
-                '</div>' +
-                '<div class="text-right">' +
-                    '<strong>STATUS:</strong><br><span style="font-weight:bold; color:#000;">AWAITING PAYMENT</span><br>' +
-                    '<span style="font-size:10px;">(Queue to Cashier)</span>' +
-                '</div>' +
-            '</div>' +
-            '<table>' +
+            '<div class="thermal-divider-double">================================</div>' +
+
+            '<table class="thermal-meta">' +
+                '<tr><td class="meta-label">PO NO   :</td><td style="font-weight:bold;">' + poNum + '</td></tr>' +
+                '<tr><td class="meta-label">CUSTOMER:</td><td>' + custName + '</td></tr>' +
+                '<tr><td class="meta-label">STATUS  :</td><td style="font-weight:bold;">AWAITING PAYMENT</td></tr>' +
+                '<tr><td class="meta-label">DATE    :</td><td>' + poDate + '</td></tr>' +
+            '</table>' +
+
+            '<div class="thermal-divider-single">--------------------------------</div>' +
+            '<table class="thermal-table">' +
                 '<thead>' +
                     '<tr>' +
-                        '<th>Item Description</th>' +
-                        '<th style="text-align:center;">Qty</th>' +
-                        '<th style="text-align:right;">Price</th>' +
-                        '<th style="text-align:right;">Total</th>' +
+                        '<th style="text-align:left; width:68%;">ITEM DESCRIPTION</th>' +
+                        '<th style="text-align:right; width:32%;">AMOUNT</th>' +
                     '</tr>' +
                 '</thead>' +
+            '</table>' +
+            '<div class="thermal-divider-single">--------------------------------</div>' +
+            '<table class="thermal-table">' +
                 '<tbody>' +
                     itemsRows +
                 '</tbody>' +
             '</table>' +
-            '<div style="margin-top: 12px; border-top: 1px solid #000; padding-top: 8px;">' +
-                '<div style="display:flex; justify-content:space-between; font-size:11px;"><span>Subtotal:</span><span>₱' + subtotalAmt + '</span></div>' +
-                (parseFloat(discAmt) > 0 ? '<div style="display:flex; justify-content:space-between; font-size:11px; color:#900;"><span>Discounts:</span><span>-₱' + discAmt + '</span></div>' : '') +
-                '<div style="display:flex; justify-content:space-between; font-size:15px; font-weight:bold; margin-top:4px; border-top:1px dashed #000; padding-top:4px;">' +
-                    '<span>TOTAL DUE:</span><span>₱' + totalAmt + '</span>' +
-                '</div>' +
+            '<div class="thermal-divider-single">--------------------------------</div>' +
+
+            '<table class="thermal-totals">' +
+                '<tr><td style="text-align:left;">Subtotal:</td><td style="text-align:right; white-space:nowrap;">' + subtotalAmt + '</td></tr>' +
+                '<tr><td style="text-align:left;">Discount:</td><td style="text-align:right; white-space:nowrap;">' + discAmt + '</td></tr>' +
+                '<tr style="font-weight:bold;"><td style="text-align:left; font-size:1.08em;">TOTAL DUE:</td><td style="text-align:right; font-size:1.08em; white-space:nowrap;">' + totalAmt + '</td></tr>' +
+            '</table>' +
+
+            '<div class="thermal-divider-double">================================</div>' +
+            '<div class="thermal-footer">' +
+                '<div style="font-weight:bold;">*** PROCEED TO CASHIER ***</div>' +
+                '<div style="font-weight:bold;">FOR PAYMENT</div>' +
+                '<div style="margin-top:3px;">Thank you for your business!</div>' +
+                '<div style="font-size:9pt; margin-top:2px;">eConstruction Supply POS</div>' +
             '</div>' +
-            '<div class="text-center" style="margin-top: 15px; font-size: 10px; border-top: 1px dashed #999; padding-top: 8px;">' +
-                '*** PLEASE PROCEED TO CASHIER FOR PAYMENT ***<br>' +
-                'Thank you for your business!' +
-            '</div>' +
+            '<div class="thermal-divider-double">================================</div>' +
         '</div>' +
         '</body>' +
         '</html>';
