@@ -2868,7 +2868,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
             <!-- 1. Modal Header -->
             <div class="modal-header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
                 <h4 class="modal-title" style="font-weight: 700; font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa fa-check-circle" style="font-size: 18px;"></i> Official Sales Receipt &bull; <?php echo $receipt_id; ?>
+                    <i class="fa fa-check-circle" style="font-size: 18px;"></i> P.O.  RECEIPT &bull; <?php echo $receipt_id; ?>
                 </h4>
                 <button type="button" class="close" data-dismiss="modal" onclick="closeReceiptModal()" style="color: #fff; opacity: 0.9; font-size: 24px; text-shadow: none; line-height: 1; padding: 0 4px;">&times;</button>
             </div>
@@ -2885,7 +2885,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 PAYMENT STATUS: PAID / SETTLED
                             </div>
                             <div style="font-size: 12px; color: #047857;">
-                                Transaction recorded and official sales receipt generated.
+                                Transaction recorded and P.O. receipt generated.
                             </div>
                         </div>
                     </div>
@@ -2994,7 +2994,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <div style="text-align: center;">
                         <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;"><?php echo htmlspecialchars(strtoupper($pos_success_receipt['supplier_name'] ?? 'SAM & INRI CONSTRUCTION SUPPLY')); ?></div>
                         <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_success_receipt['supplier_phone']) ? htmlspecialchars($pos_success_receipt['supplier_phone']) : '09612735733'; ?></div>
-                        <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">OFFICIAL SALES RECEIPT</div>
+                        <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">P.O.  RECEIPT</div>
                         <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;">(PAID)</div>
                     </div>
                     <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>

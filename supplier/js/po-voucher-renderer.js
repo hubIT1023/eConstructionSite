@@ -393,7 +393,7 @@
                     <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;">${POVoucherRenderer.escapeHtml(d.store_name.toUpperCase())}</div>
                     ${d.store_address ? `<div style="font-size: 9.5pt; margin-top: 2px; color: #000;">${POVoucherRenderer.escapeHtml(d.store_address)}</div>` : ''}
                     <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: ${POVoucherRenderer.escapeHtml(d.store_phone)}</div>
-                    <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">OFFICIAL SALES RECEIPT</div>
+                    <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">P.O.  RECEIPT</div>
                     <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;">(PAID)</div>
                 </div>
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>

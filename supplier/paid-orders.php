@@ -1078,7 +1078,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                  <!-- Modern Modal Header -->
                                                  <div class="modal-header-modern" style="background: #059669; display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; color: #ffffff;">
                                                      <h4 class="modal-title" style="margin: 0; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #ffffff;">
-                                                         <i class="fa fa-check-circle"></i> Official Sales Receipt — <span style="font-family: monospace; font-size: 17px;"><?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></span>
+                                                         <i class="fa fa-check-circle"></i> P.O.  RECEIPT — <span style="font-family: monospace; font-size: 17px;"><?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></span>
                                                      </h4>
                                                      <div style="display: flex; align-items: center; gap: 8px;">
                                                          <button type="button" class="btn btn-xs btn-default" onclick="printReceiptModal(<?php echo $row['id']; ?>)" style="background: #ffffff; color: #059669; font-weight: 700; border: none; border-radius: 5px; padding: 6px 14px; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
@@ -1097,7 +1097,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                              <span class="label" style="background: #059669; color: #ffffff; font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 4px; text-transform: uppercase;">
                                                                  <i class="fa fa-check"></i> Paid &amp; Completed
                                                              </span>
-                                                             <span style="font-size: 12.5px; color: #065f46; font-weight: 600;">Official sales transaction recorded</span>
+                                                             <span style="font-size: 12.5px; color: #065f46; font-weight: 600;">P.O. transaction recorded</span>
                                                          </div>
                                                          <div style="font-size: 12px; color: #64748b; font-weight: 600;">
                                                              <i class="fa fa-calendar"></i> <?php echo date('M d, Y h:i A', strtotime($row['payment_date'])); ?>
@@ -1245,7 +1245,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                      <div style="font-size: 9.5pt;"><?php echo htmlspecialchars($sup_data['supplier_address']); ?></div>
                                                                  <?php endif; ?>
                                                                  <div style="font-size: 10pt;">Tel: <?php echo htmlspecialchars(!empty($sup_data['supplier_phone']) ? $sup_data['supplier_phone'] : '09612735733'); ?></div>
-                                                                 <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px;">OFFICIAL SALES RECEIPT</div>
+                                                                 <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px;">P.O.  RECEIPT</div>
                                                                  <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase;">(PAID)</div>
                                                              </div>
                                                              <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
