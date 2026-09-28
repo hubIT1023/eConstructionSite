@@ -1,0 +1,25 @@
+Paper Size Settings Verification
+Here is the verified paper size configuration for both Windows OS / Printer Driver and the POS Web Application:
+
+1. Windows OS Printer Configuration (JK-5802H)
+Setting	Value	Notes
+Printer Name	JK-5802H	Connected on USB003
+Driver	Generic / Text Only	Standard Windows ESC/POS driver
+Default Paper Size	custom / Form 5	57.9 mm x 210.1 mm (2.28" x 8.27") (Calibrated from previous default of Letter)
+Width	58 mm (57.9 mm)	Exact physical roll width
+Height	210 mm (Continuous / Roll)	Standard roll feed length
+Resolution	203 DPI / 600 DPI mode	Crisp text rendering
+2. POS Web Application Configuration (pos.php & paid-orders.php)
+Setting	Value	Notes
+Selected Modal Default	58 mm POS Roll (Standard)	Both Sale Receipt & Purchase Order Voucher
+Print Head Printable Width	48 mm	Exact 384-dot printable head width (prevents edge cutoffs)
+CSS Print Directive	@page { size: 58mm auto; margin: 0 !important; }	Removes browser default letterhead margins
+Container Width	width: 48mm !important; margin: 0 auto !important;	Perfectly centered on 58mm thermal paper roll
+Typography	Courier New, 10pt	Calibrated so 32 columns (================================) fit cleanly without line-wrapping
+3. What to Expect When Printing from Chrome
+When Chrome opens the Print Preview dialog, it will now automatically detect the 58 mm (custom / 5) paper profile instead of Letter.
+In Chrome Print Preview:
+Destination: JK-5802H
+Paper Size: 58mm / custom (or 5)
+Margins: None (or Custom: 0)
+Scale: 100% (Default)
