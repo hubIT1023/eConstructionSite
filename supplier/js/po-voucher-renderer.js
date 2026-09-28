@@ -66,9 +66,22 @@
          */
         wrapThermalHtml: function(innerHtml, format) {
             const is80 = (format === '80' || format === '80mm' || format === 80);
-            const paperWidthMm = is80 ? 80 : 58;
-            const printableWidthMm = is80 ? 72 : 53;
-            const fontSizePt = is80 ? '11.5pt' : '11pt';
+            
+            // Dynamic settings from localStorage
+            let savedSettings = {};
+            try {
+                const raw = localStorage.getItem('pos_printer_settings');
+                if (raw) savedSettings = JSON.parse(raw);
+            } catch(e){}
+
+            const paperWidthMm = is80 ? 80 : (savedSettings.paperWidthMm || 58);
+            const printableWidthMm = is80 
+                ? (savedSettings.printContentWidthMm_80 || 72) 
+                : (savedSettings.printContentWidthMm || parseFloat(localStorage.getItem('pos_printer_content_width')) || 53);
+            const fontName = savedSettings.thermalFontName || localStorage.getItem('pos_printer_font_name') || 'Courier New';
+            const fontSizeVal = savedSettings.thermalDefaultFontSize || localStorage.getItem('pos_printer_font_size') || (is80 ? 11.5 : 10.5);
+            const fontSizePt = (typeof fontSizeVal === 'string' && fontSizeVal.endsWith('pt')) ? fontSizeVal : (fontSizeVal + 'pt');
+            const lineHeight = savedSettings.thermalLineHeight || localStorage.getItem('pos_printer_line_height') || '1.25';
 
             return `<!DOCTYPE html>
 <html>
@@ -91,9 +104,11 @@
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: 'Courier New', Consolas, monospace !important;
+            font-family: '${fontName}', Consolas, monospace !important;
             font-size: ${fontSizePt} !important;
-            line-height: 1.25 !important;
+            line-height: ${lineHeight} !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
             -webkit-font-smoothing: antialiased;
         }
         .thermal-print-container {
@@ -110,6 +125,7 @@
             border-collapse: collapse !important;
             font-family: inherit !important;
             font-size: inherit !important;
+            line-height: inherit !important;
         }
         th, td {
             vertical-align: top !important;
