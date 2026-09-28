@@ -671,17 +671,13 @@ function openReturnSlipModal(data) {
 
 function printPageReturnSlip() {
     const printContent = document.getElementById('returnsPageSlipContent').innerHTML;
-    const printWindow = window.open('', '_blank', 'width=750,height=800');
-    if (!printWindow) {
-        showPageAlert('Print popup was blocked by browser. Please allow popups for this site.', 'warning');
-        return;
-    }
-    printWindow.document.write(`
+    const html = `
+        <!DOCTYPE html>
         <html>
         <head>
             <title>Official Return & Refund Slip</title>
             <style>
-                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; margin: 0; }
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 0; color: #333; margin: 0; background: #fff; }
                 table { width: 100%; border-collapse: collapse; }
                 @media print {
                     body { padding: 0; }
@@ -693,13 +689,35 @@ function printPageReturnSlip() {
             ${printContent}
         </body>
         </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
+    `;
+    let iframe = document.getElementById('returns-page-print-frame');
+    if (iframe) {
+        iframe.parentNode.removeChild(iframe);
+    }
+    iframe = document.createElement('iframe');
+    iframe.id = 'returns-page-print-frame';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    iframe.contentWindow.focus();
     setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 350);
+        try {
+            iframe.contentWindow.print();
+        } catch (e) {
+            console.error('Print error:', e);
+        }
+    }, 250);
 }
 
 function escapeHtml(text) {

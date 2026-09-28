@@ -1,0 +1,132 @@
+function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedContentWidthMm) {
+    const s = getPOSPrintSettings();
+    let paperWidthMm = requestedWidthMm || s.paperWidthMm || 58;
+    let contentWidthMm = requestedContentWidthMm || (paperWidthMm <= 58 ? 48 : 72);
+
+    const fontStack = "'Courier New', Courier, monospace";
+    const fontSizePt = 11;
+    const titleFontSizePt = 12;
+
+    const supplierName  = orderData.supplier_name  || 'SAM & INRI CONSTRUCTION SUPPLY';
+    const supplierPhone = orderData.supplier_phone || '09612735733';
+    const orderNo       = orderData.payment_id     || 'POS-20260925-01';
+    const dateStr       = orderData.payment_date   || '';
+    const customerName  = orderData.customer_name  || 'Walk-in Customer';
+    const paymentMethod = orderData.payment_method || 'Cash';
+    const paymentStatus = (orderData.payment_status || 'PAID').toUpperCase();
+
+    const items = orderData.items || [];
+    let itemsRows = '';
+    items.forEach(function(item) {
+        const rawName = item.name || 'Item';
+        const formattedName = escapeHtml(rawName).replace(/\n/g, '<br>');
+        const itemQty = parseInt(item.qty, 10) || 1;
+        const itemPrice = parseFloat(item.price || 0).toFixed(2);
+        const itemAmount = parseFloat(item.amount || (parseFloat(item.price || 0) * itemQty)).toFixed(2);
+        const unitLabel = itemQty > 1 ? 'pcs' : 'pc';
+        
+        itemsRows += `
+            <tr>
+                <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">${formattedName}</td>
+            </tr>
+            <tr>
+                <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">${itemQty} ${unitLabel} @ ${itemPrice}</td>
+                <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">${itemAmount}</td>
+            </tr>
+        `;
+    });
+
+    const subtotal = parseFloat(orderData.subtotal || 0).toFixed(2);
+    const delivery = parseFloat(orderData.delivery || 0).toFixed(2);
+    const discount = parseFloat(orderData.discount || 0).toFixed(2);
+    const total    = parseFloat(orderData.total || 0).toFixed(2);
+    const tendered = orderData.tendered ? parseFloat(orderData.tendered).toFixed(2) : null;
+    const change   = orderData.change ? parseFloat(orderData.change).toFixed(2) : null;
+
+    let tenderedRows = '';
+    if (tendered !== null && parseFloat(tendered) > 0) {
+        tenderedRows = `
+            <tr>
+                <td style="text-align: left; padding: 1px 0;">Tendered:</td>
+                <td style="text-align: right; padding: 1px 0; white-space: nowrap;">${tendered}</td>
+            </tr>
+            <tr>
+                <td style="text-align: left; padding: 1px 0;">Change:</td>
+                <td style="text-align: right; padding: 1px 0; white-space: nowrap;">${change || '0.00'}</td>
+            </tr>
+        `;
+    }
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Purchase Order Receipt - ${escapeHtml(orderNo)}</title>
+    <style>
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        @page { size: ${paperWidthMm}mm auto; margin: 0; }
+        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; color: #000 !important; font-family: ${fontStack} !important; font-size: ${fontSizePt}pt !important; line-height: 1.25 !important; width: ${paperWidthMm}mm !important; }
+        .thermal-receipt { width: ${contentWidthMm}mm !important; max-width: ${contentWidthMm}mm !important; margin: 0 auto !important; padding: 2mm 1mm !important; font-family: ${fontStack} !important; }
+        .thermal-divider-double { text-align: center; font-weight: bold; letter-spacing: -0.5px; margin: 3px 0; overflow: hidden; white-space: nowrap; }
+        .thermal-divider-single { text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap; }
+        .thermal-meta { width: 100%; border-collapse: collapse; font-size: ${fontSizePt}pt; margin: 2px 0; line-height: 1.25; }
+        .thermal-meta td { padding: 1px 0; vertical-align: top; }
+        .thermal-meta .meta-label { font-weight: bold; width: 32%; white-space: nowrap; }
+        .thermal-table { width: 100% !important; border-collapse: collapse !important; margin: 0 !important; font-size: ${fontSizePt}pt !important; line-height: 1.2 !important; }
+        .thermal-table th { padding: 1px 0 !important; font-weight: bold !important; text-transform: uppercase !important; }
+        .thermal-totals { width: 100% !important; border-collapse: collapse !important; margin: 2px 0 !important; font-size: ${fontSizePt}pt !important; line-height: 1.25 !important; }
+        .thermal-totals td { padding: 1px 0; }
+        .thermal-footer { text-align: center; font-weight: bold; padding: 2px 0; text-transform: uppercase; font-size: ${fontSizePt}pt; }
+        @media screen { body { padding: 15px; background: #334155; display: flex; flex-direction: column; align-items: center; min-height: 100vh; } .thermal-receipt { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.35); padding: 4mm !important; } }
+        @media print { body { padding: 0 !important; } .thermal-receipt { box-shadow: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="thermal-receipt">
+        <div class="thermal-divider-double">================================</div>
+        <div style="text-align: center;">
+            <div style="font-size: ${titleFontSizePt}pt; font-weight: bold; text-transform: uppercase;">${escapeHtml(supplierName)}</div>
+            <div style="font-size: 10pt; margin-top: 1px;">Tel: ${escapeHtml(supplierPhone)}</div>
+            <div style="font-size: 10.5pt; font-weight: normal; margin-top: 2px;">Purchase Order Receipt</div>
+        </div>
+        <div class="thermal-divider-double">================================</div>
+
+        <table class="thermal-meta">
+            <tr><td class="meta-label">RECEIPT NO:</td><td>${escapeHtml(orderNo)}</td></tr>
+            <tr><td class="meta-label">CUSTOMER  :</td><td>${escapeHtml(customerName)}</td></tr>
+            <tr><td class="meta-label">PAYMENT   :</td><td>${escapeHtml(paymentMethod)} (${escapeHtml(paymentStatus)})</td></tr>
+            <tr><td class="meta-label">DATE      :</td><td>${escapeHtml(dateStr)}</td></tr>
+        </table>
+
+        <div class="thermal-divider-single">--------------------------------</div>
+        <table class="thermal-table">
+            <thead>
+                <tr>
+                    <th style="text-align: left; width: 68%;">ITEM DESCRIPTION</th>
+                    <th style="text-align: right; width: 32%;">AMOUNT</th>
+                </tr>
+            </thead>
+        </table>
+        <div class="thermal-divider-single">--------------------------------</div>
+        <table class="thermal-table">
+            <tbody>
+                ${itemsRows}
+            </tbody>
+        </table>
+        <div class="thermal-divider-single">--------------------------------</div>
+
+        <table class="thermal-totals">
+            <tr><td style="text-align: left;">Subtotal:</td><td style="text-align: right; white-space: nowrap;">${subtotal}</td></tr>
+            <tr><td style="text-align: left;">Discount:</td><td style="text-align: right; white-space: nowrap;">${discount}</td></tr>
+            <tr><td style="text-align: left;">Delivery:</td><td style="text-align: right; white-space: nowrap;">${delivery}</td></tr>
+            <tr style="font-weight: bold;"><td style="text-align: left; font-size: 1.08em;">TOTAL:</td><td style="text-align: right; font-size: 1.08em; white-space: nowrap;">${total}</td></tr>
+            ${tenderedRows}
+        </table>
+
+        <div class="thermal-divider-double">================================</div>
+        <div class="thermal-footer">THANK YOU FOR YOUR BUSINESS!</div>
+        <div class="thermal-divider-double">================================</div>
+    </div>
+</body>
+</html>`;
+}

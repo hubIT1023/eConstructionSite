@@ -1,0 +1,51 @@
+/* Monospace font & crisp thermal print metrics */
+* {
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+@page {
+    size: 58mm auto;
+    margin: 0;
+}
+
+html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 11pt !important;
+    line-height: 1.25 !important;
+    width: 58mm !important;
+}
+
+.thermal-receipt {
+    width: 48mm !important;          /* 384 dots @ 203 DPI = 48mm printable width */
+    max-width: 48mm !important;
+    margin: 0 auto !important;
+    padding: 2mm 1mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+}
+
+/* Dividers spanning exactly 32 columns */
+.thermal-divider-double {
+    text-align: center;
+    font-weight: bold;
+    letter-spacing: -0.5px;
+    margin: 3px 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.thermal-divider-single {
+    text-align: center;
+    letter-spacing: -0.5px;
+    margin: 2px 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+

@@ -176,6 +176,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 	<link rel="stylesheet" href="css/summernote.css">
 	<link rel="stylesheet" href="style.css">
 	<script src="js/jquery-2.2.4.min.js"></script>
+	<script src="js/po-voucher-renderer.js"></script>
 
 </head>
 
@@ -736,129 +737,8 @@ function reprintSidebarPOVoucher() {
         alert('Please select a Purchase Order first.');
         return;
     }
-
-    var data = currentSidebarPOData;
-    var storeName = (data.supplier && data.supplier.store_name) ? data.supplier.store_name : 'SAM & INRI CONSTRUCTION SUPPLY';
-    var storePhone = (data.supplier && data.supplier.phone) ? data.supplier.phone : '09612735733';
-    var custName = (data.customer && data.customer.name) ? data.customer.name : 'Walk-in Customer';
-    var poNum = data.po_number || 'PO-XXXXX';
-    var poDate = data.date || '';
-    var totalAmt = data.summary ? parseFloat(data.summary.total_amount).toFixed(2) : '0.00';
-    var subtotalAmt = data.summary ? parseFloat(data.summary.subtotal).toFixed(2) : '0.00';
-    var discAmt = data.summary ? parseFloat(data.summary.discount_total).toFixed(2) : '0.00';
-
-    // 2-line item standard format
-    var itemsRows = '';
-    if (data.items && data.items.length > 0) {
-        data.items.forEach(function(it) {
-            var itemQty = parseInt(it.quantity, 10) || 1;
-            var itemPrice = parseFloat(it.unit_price).toFixed(2);
-            var itemNet = parseFloat(it.line_net).toFixed(2);
-            var unitLabel = itemQty > 1 ? 'pcs' : 'pc';
-            
-            itemsRows += '<tr>' +
-                '<td colspan="2" style="text-align:left; padding-top:3px; font-weight:bold; word-break:break-word;">' + it.product_name + '</td>' +
-            '</tr>' +
-            '<tr>' +
-                '<td style="text-align:left; padding-left:8px; padding-bottom:3px;">' + itemQty + ' ' + unitLabel + ' @ ' + itemPrice + '</td>' +
-                '<td style="text-align:right; padding-bottom:3px; white-space:nowrap; vertical-align:bottom;">' + itemNet + '</td>' +
-            '</tr>';
-        });
-    }
-
-    var printContent = '<!DOCTYPE html>' +
-        '<html>' +
-        '<head>' +
-        '<meta charset="utf-8">' +
-        '<title>Purchase Order Voucher - ' + poNum + '</title>' +
-        '<style>' +
-        '* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }' +
-        '@page { size: 58mm auto; margin: 0; }' +
-        'html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; color: #000 !important; font-family: "Courier New", Courier, monospace !important; font-size: 11pt !important; line-height: 1.25 !important; width: 58mm !important; }' +
-        '.thermal-receipt { width: 48mm !important; max-width: 48mm !important; margin: 0 auto !important; padding: 2mm 1mm !important; }' +
-        '.thermal-divider-double { text-align: center; font-weight: bold; letter-spacing: -0.5px; margin: 3px 0; overflow: hidden; white-space: nowrap; }' +
-        '.thermal-divider-single { text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap; }' +
-        '.thermal-header { text-align: center; }' +
-        '.thermal-title { font-size: 12pt; font-weight: bold; text-transform: uppercase; line-height: 1.2; }' +
-        '.thermal-phone { font-size: 10pt; margin-top: 1px; }' +
-        '.thermal-doc-title { font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; }' +
-        '.thermal-doc-sub { font-size: 10pt; font-weight: bold; text-transform: uppercase; }' +
-        '.thermal-meta { width: 100%; border-collapse: collapse; font-size: 10.5pt; margin: 2px 0; line-height: 1.25; }' +
-        '.thermal-meta td { padding: 1px 0; vertical-align: top; }' +
-        '.thermal-meta .meta-label { font-weight: bold; width: 28%; white-space: nowrap; }' +
-        '.thermal-table { width: 100% !important; border-collapse: collapse !important; margin: 0 !important; font-size: 10.5pt !important; line-height: 1.2 !important; }' +
-        '.thermal-table th { padding: 1px 0 !important; font-weight: bold !important; text-transform: uppercase !important; }' +
-        '.thermal-totals { width: 100% !important; border-collapse: collapse !important; margin: 2px 0 !important; font-size: 10.5pt !important; line-height: 1.25 !important; }' +
-        '.thermal-totals td { padding: 1px 0; }' +
-        '.thermal-footer { text-align: center; line-height: 1.35; padding: 2px 0; font-size: 10.5pt; }' +
-        '@media screen { body { padding: 15px; background: #334155; display: flex; flex-direction: column; align-items: center; min-height: 100vh; } .thermal-receipt { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.35); padding: 4mm !important; } }' +
-        '@media print { body { padding: 0 !important; } .thermal-receipt { box-shadow: none !important; } }' +
-        '</style>' +
-        '</head>' +
-        '<body>' +
-        '<div class="thermal-receipt">' +
-            '<div class="thermal-divider-double">================================</div>' +
-            '<div class="thermal-header">' +
-                '<div class="thermal-title">' + storeName.toUpperCase() + '</div>' +
-                '<div class="thermal-phone">Tel: ' + storePhone + '</div>' +
-                '<div class="thermal-doc-title">PURCHASE ORDER VOUCHER</div>' +
-                '<div class="thermal-doc-sub">(UNPAID)</div>' +
-            '</div>' +
-            '<div class="thermal-divider-double">================================</div>' +
-
-            '<table class="thermal-meta">' +
-                '<tr><td class="meta-label">PO NO   :</td><td style="font-weight:bold;">' + poNum + '</td></tr>' +
-                '<tr><td class="meta-label">CUSTOMER:</td><td>' + custName + '</td></tr>' +
-                '<tr><td class="meta-label">STATUS  :</td><td style="font-weight:bold;">AWAITING PAYMENT</td></tr>' +
-                '<tr><td class="meta-label">DATE    :</td><td>' + poDate + '</td></tr>' +
-            '</table>' +
-
-            '<div class="thermal-divider-single">--------------------------------</div>' +
-            '<table class="thermal-table">' +
-                '<thead>' +
-                    '<tr>' +
-                        '<th style="text-align:left; width:68%;">ITEM DESCRIPTION</th>' +
-                        '<th style="text-align:right; width:32%;">AMOUNT</th>' +
-                    '</tr>' +
-                '</thead>' +
-            '</table>' +
-            '<div class="thermal-divider-single">--------------------------------</div>' +
-            '<table class="thermal-table">' +
-                '<tbody>' +
-                    itemsRows +
-                '</tbody>' +
-            '</table>' +
-            '<div class="thermal-divider-single">--------------------------------</div>' +
-
-            '<table class="thermal-totals">' +
-                '<tr><td style="text-align:left;">Subtotal:</td><td style="text-align:right; white-space:nowrap;">' + subtotalAmt + '</td></tr>' +
-                '<tr><td style="text-align:left;">Discount:</td><td style="text-align:right; white-space:nowrap;">' + discAmt + '</td></tr>' +
-                '<tr style="font-weight:bold;"><td style="text-align:left; font-size:1.08em;">TOTAL DUE:</td><td style="text-align:right; font-size:1.08em; white-space:nowrap;">' + totalAmt + '</td></tr>' +
-            '</table>' +
-
-            '<div class="thermal-divider-double">================================</div>' +
-            '<div class="thermal-footer">' +
-                '<div style="font-weight:bold;">*** PROCEED TO CASHIER ***</div>' +
-                '<div style="font-weight:bold;">FOR PAYMENT</div>' +
-                '<div style="margin-top:3px;">Thank you for your business!</div>' +
-                '<div style="font-size:9pt; margin-top:2px;">eConstruction Supply POS</div>' +
-            '</div>' +
-            '<div class="thermal-divider-double">================================</div>' +
-        '</div>' +
-        '</body>' +
-        '</html>';
-
-    var printWin = window.open('', '_blank', 'width=800,height=700');
-    if (printWin) {
-        printWin.document.open();
-        printWin.document.write(printContent);
-        printWin.document.close();
-        printWin.focus();
-        setTimeout(function() {
-            printWin.print();
-        }, 300);
-    } else {
-        alert('Popup blocked. Please allow popups to print Purchase Order vouchers.');
+    if (window.POVoucherRenderer) {
+        window.POVoucherRenderer.print(currentSidebarPOData, '58');
     }
 }
 </script>

@@ -902,14 +902,7 @@ function executeReturnSlipPrint(requestedFormat) {
     const is500mm = (!isA4 && widthMm >= 450);
     const is58mm = (!isA4 && !is500mm && widthMm <= 65);
     const actualWidthMm = isA4 ? 210 : (is500mm ? 500 : (is58mm ? 58 : 80));
-
     const bodyFontPt = isA4 ? 10.0 : (is500mm ? 12.0 : (is58mm ? 8.5 : 9.8));
-
-    const printWindow = window.open('', '_blank', 'width=850,height=900');
-    if (!printWindow) {
-        showPageAlert('Print popup was blocked by browser. Please allow popups.', 'warning');
-        return;
-    }
     
     const html = `
         <!DOCTYPE html>
@@ -938,17 +931,6 @@ function executeReturnSlipPrint(requestedFormat) {
                 th, td { vertical-align: top; padding: ${is500mm ? '6px 10px' : '4px 6px'}; color: #000000 !important; }
                 th { font-weight: 800 !important; border-bottom: 1.5pt dashed #000000 !important; border-top: 1.5pt dashed #000000 !important; }
 
-                @media screen {
-                    body { padding: 20px; background: #334155; display: flex; justify-content: center; }
-                    .return-slip-box {
-                        width: ${actualWidthMm}mm;
-                        max-width: 100%;
-                        background: #ffffff;
-                        padding: ${is500mm ? '12mm 16mm' : (isA4 ? '12mm 15mm' : '4mm')};
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-                        border-radius: 4px;
-                    }
-                }
                 @media print {
                     @page {
                         ${isA4 ? 'size: 210mm 297mm; margin: 12mm 15mm;' : `size: ${actualWidthMm}mm auto; margin: 0;`}
@@ -977,14 +959,34 @@ function executeReturnSlipPrint(requestedFormat) {
         </html>
     `;
     
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
+    let iframe = document.getElementById('return-slip-print-frame');
+    if (iframe) {
+        iframe.parentNode.removeChild(iframe);
+    }
+    iframe = document.createElement('iframe');
+    iframe.id = 'return-slip-print-frame';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    iframe.contentWindow.focus();
     setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 450);
+        try {
+            iframe.contentWindow.print();
+        } catch (e) {
+            console.error('Print error:', e);
+        }
+    }, 250);
 }
 
 function escapeHtml(text) {
