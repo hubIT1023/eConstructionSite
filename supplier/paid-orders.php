@@ -1256,7 +1256,8 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                              </div>
                                                              <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                                              <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt; margin-bottom: 2px;">
-                                                                 <tr><td style="width: 28%; font-weight: bold;">OR NO   :</td><td style="font-weight: bold;"><?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></td></tr>
+                                                                 <tr><td colspan="2" style="font-weight: bold; padding: 1px 0; white-space: nowrap;">P.O. Receipt No:</td></tr>
+                                                                 <tr><td colspan="2" style="padding: 0 0 2px 8px; font-weight: bold;">&nbsp;&nbsp;<?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">CUSTOMER:</td><td><?php echo htmlspecialchars($row['customer_name'] ?? 'Walk-in Customer'); ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">PAY METH:</td><td><?php echo htmlspecialchars($row['payment_method'] ?? 'Cash'); ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">STATUS  :</td><td style="font-weight: bold;">PAID</td></tr>

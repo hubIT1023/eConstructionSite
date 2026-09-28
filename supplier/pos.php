@@ -3006,11 +3006,13 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                     <table style="width: 100%; font-family: 'Courier New', Consolas, monospace; font-size: 10.5pt; line-height: 1.25; margin-bottom: 2px; border-collapse: collapse;">
                         <tr>
-                            <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">RECEIPT NO:</td>
-                            <td style="padding: 1px 0; vertical-align: top; font-weight: bold;"><?php echo $receipt_id; ?></td>
+                            <td colspan="2" style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">P.O. Receipt No:</td>
                         </tr>
                         <tr>
-                            <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CASHIER   :</td>
+                            <td colspan="2" style="padding: 0 0 2px 8px; vertical-align: top; font-weight: bold;">&nbsp;&nbsp;<?php echo $receipt_id; ?></td>
+                        </tr>
+                        <tr>
+                            <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CASHIER   :</td>
                             <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($cashier_name); ?></td>
                         </tr>
                         <tr>

@@ -400,8 +400,10 @@
 
                 <table style="width: 100%; font-family: 'Courier New', Consolas, monospace; font-size: 10.5pt; line-height: 1.25; margin-bottom: 2px; border-collapse: collapse;">
                     <tr>
-                        <td style="width: 28%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">OR NO   :</td>
-                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${POVoucherRenderer.escapeHtml(d.payment_id)}</td>
+                        <td colspan="2" style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">P.O. Receipt No:</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="padding: 0 0 2px 8px; vertical-align: top; font-weight: bold;">&nbsp;&nbsp;${POVoucherRenderer.escapeHtml(d.payment_id)}</td>
                     </tr>
                     ${d.cashier_name ? `
                     <tr>
