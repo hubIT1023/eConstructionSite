@@ -1136,6 +1136,12 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                  <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 8px; letter-spacing: 0.5px;">
                                                                      <i class="fa fa-building-o"></i> Store &amp; Payment Details
                                                                  </div>
+                                                                 <div style="margin-bottom: 6px; font-size: 13px;">
+                                                                     <strong>P.O. Receipt No:</strong>
+                                                                     <div style="padding-left: 8px; margin-top: 2px;">
+                                                                         <span style="font-family: monospace; font-weight: 700; font-size: 13.5px; color: #059669;"><?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></span>
+                                                                     </div>
+                                                                 </div>
                                                                  <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
                                                                      <?php echo htmlspecialchars(!empty($sup_data['supplier_name']) ? $sup_data['supplier_name'] : 'SAM & INRI CONSTRUCTION SUPPLY'); ?>
                                                                  </div>

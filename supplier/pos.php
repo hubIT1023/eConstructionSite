@@ -2899,9 +2899,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <div class="col-sm-6">
                         <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; height: 100%;">
                             <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Transaction Details</div>
-                            <div style="font-size: 13px; line-height: 1.6; color: #1e293b;">
-                                <div><strong>Receipt No:</strong> <span style="font-family: monospace; font-weight: 700; color: #059669;"><?php echo $receipt_id; ?></span></div>
-                                <div><strong>Cashier:</strong> <?php echo htmlspecialchars($cashier_name); ?></div>
+                            <div style="font-size: 13px; line-height: 1.5; color: #1e293b;">
+                                <div style="margin-bottom: 6px;">
+                                    <strong>P.O. Receipt No:</strong>
+                                    <div style="padding-left: 8px; margin-top: 2px;">
+                                        <span style="font-family: monospace; font-weight: 700; font-size: 13.5px; color: #059669;"><?php echo $receipt_id; ?></span>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 4px;"><strong>Cashier:</strong> <?php echo htmlspecialchars($cashier_name); ?></div>
                                 <div><strong>Date &amp; Time:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_date']); ?></div>
                             </div>
                         </div>
