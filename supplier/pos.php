@@ -1430,35 +1430,61 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     border-radius: 4px;
 }
 .pos-variant-chip {
+    height: 48px;
+    min-height: 48px;
+    min-width: 140px;
+    padding: 0 16px;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #0f172a;
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    border-radius: 8px;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 6px 10px;
-    border: 1.5px solid #cbd5e1;
-    background: #fff;
-    color: #1e293b;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    justify-content: space-between;
+    gap: 10px;
     cursor: pointer;
     transition: all 0.15s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    user-select: none;
     text-decoration: none !important;
 }
 .pos-variant-chip:hover {
-    border-color: #2563eb;
-    background: #f8fafc;
-    color: #2563eb;
+    border-color: #0284c7;
+    background: #f0f9ff;
+    color: #0284c7;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(2, 132, 199, 0.18);
 }
 .pos-variant-chip.active {
-    border-color: #2563eb;
-    background: #2563eb;
-    color: #fff;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+    border-color: #0284c7 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 10px rgba(2, 132, 199, 0.35) !important;
+}
+.pos-variant-chip.active .chip-price-badge {
+    background: #ffffff !important;
+    color: #0369a1 !important;
+    border-color: #ffffff !important;
 }
 .pos-variant-chip.disabled {
-    opacity: 0.5;
+    opacity: 0.55;
     cursor: not-allowed;
     background: #f1f5f9;
     border-color: #e2e8f0;
+    color: #94a3b8;
+}
+.chip-price-badge {
+    font-size: 14px;
+    font-weight: 800;
+    padding: 3px 8px;
+    background: #ecfdf5;
+    color: #047857;
+    border-radius: 4px;
+    border: 1px solid #a7f3d0;
+    display: inline-block;
+    letter-spacing: -0.2px;
 }
 .pos-color-badge {
     display: inline-block;
@@ -2234,7 +2260,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <label style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; display: block; text-transform: uppercase;">
                         Quick Variant Selector:
                     </label>
-                    <div id="vModalChipsList" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; padding: 2px;"></div>
+                    <div id="vModalChipsList" style="display: flex; flex-wrap: wrap; gap: 8px 10px; max-height: 200px; overflow-y: auto; padding: 4px;"></div>
                 </div>
 
                 <!-- Quantity & Live Subtotal -->
@@ -3857,14 +3883,20 @@ function openVariantModal(group) {
         opt.innerText = `${v.spec_label} - ₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${isOutOfStock ? 'Out of stock' : v.stock + ' in stock'})`;
         select.appendChild(opt);
         
-        // Populate Quick Variant Chip
+        // Populate Quick Variant Chip (Senior-Friendly 48px Touch Pill)
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = `pos-variant-chip ${isOutOfStock ? 'disabled' : ''}`;
         chip.id = `vChip_${v.id}`;
         chip.setAttribute('data-id', v.id);
-        chip.title = isOutOfStock ? 'Out of stock' : `${v.stock} in stock`;
-        chip.innerHTML = `<i class="fa ${isOutOfStock ? 'fa-ban text-danger' : 'fa-check-circle'}"></i> ${escapeHtml(v.spec_label)} <span style="font-weight: 800; margin-left: 2px;">₱${v.price.toFixed(0)}</span>`;
+        chip.title = isOutOfStock ? 'Out of stock' : `${v.stock} units available in stock`;
+        chip.innerHTML = `
+            <span style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <i class="fa ${isOutOfStock ? 'fa-ban text-danger' : 'fa-check-circle'}" style="font-size: 15px;"></i>
+                <span style="font-size: 14.5px; font-weight: 800;">${escapeHtml(v.spec_label)}</span>
+            </span>
+            <span class="chip-price-badge">₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+        `;
         if (!isOutOfStock) {
             chip.onclick = function() { onVariantSelectChange(v.id); };
         }
