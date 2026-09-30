@@ -1144,13 +1144,26 @@ $statement_prod = $pdo->prepare("SELECT p.*, ec.ecat_name, mc.mcat_name, tc.tcat
 $statement_prod->execute(array($supplier_id));
 $raw_products = $statement_prod->fetchAll(PDO::FETCH_ASSOC);
 
-// Group Products by End Level Category and Parent Base Name
+// Group Products by End Level Category (tbl_end_category)
 $grouped_products = array();
 $categories = array();
 $total_inventory_items = count($raw_products);
 
 foreach ($raw_products as $prod) {
-    $ecat_name = !empty($prod['ecat_name']) ? trim($prod['ecat_name']) : 'Uncategorized';
+    $has_ecat = (!empty($prod['ecat_id']) && intval($prod['ecat_id']) > 0 && !empty($prod['ecat_name']));
+    $ecat_name = $has_ecat ? trim($prod['ecat_name']) : 'Uncategorized';
+    
+    // Grouping key: Relational End Level Category ID (ecat_id) creates 1 single card per category
+    if ($has_ecat) {
+        $group_key = 'ecat_' . intval($prod['ecat_id']);
+        $card_title = $ecat_name;
+    } else {
+        $parsed_spec = parseConstructionProductDetails($prod['p_name']);
+        $base_name = !empty($parsed_spec['base_name']) ? $parsed_spec['base_name'] : $prod['p_name'];
+        $group_key = 'uncat_' . strtolower(preg_replace('/[^a-z0-9]/', '', $base_name));
+        $card_title = $base_name;
+    }
+
     if (!in_array($ecat_name, $categories)) {
         $categories[] = $ecat_name;
     }
@@ -1162,17 +1175,20 @@ foreach ($raw_products as $prod) {
         : '../assets/uploads/photo-6.jpg';
 
     $parsed_spec = parseConstructionProductDetails($prod['p_name']);
-    $base_name = $parsed_spec['base_name'];
-
-    // Grouping key: ecat_id + sanitized base_name
-    $group_key = $prod['ecat_id'] . '_' . strtolower(preg_replace('/[^a-z0-9]/', '', $base_name));
+    $spec_label = $parsed_spec['spec_label'];
+    
+    // If spec_label is default 'Standard' or empty, derive clean variant specification label
+    if (empty($spec_label) || $spec_label === 'Standard') {
+        $stripped = trim(preg_replace('/^' . preg_quote($card_title, '/') . '[\s\-\:\,]*/i', '', $prod['p_name']));
+        $spec_label = !empty($stripped) ? $stripped : $prod['p_name'];
+    }
 
     $variant_item = array(
         'id' => intval($prod['p_id']),
         'sku' => !empty($prod['p_sku']) ? $prod['p_sku'] : ('SKU-' . str_pad($prod['p_id'], 5, '0', STR_PAD_LEFT)),
         'name' => $prod['p_name'],
-        'base_name' => $base_name,
-        'spec_label' => $parsed_spec['spec_label'],
+        'base_name' => $card_title,
+        'spec_label' => $spec_label,
         'size' => $parsed_spec['size'],
         'thickness' => $parsed_spec['thickness'],
         'diameter' => $parsed_spec['diameter'],
@@ -1192,12 +1208,13 @@ foreach ($raw_products as $prod) {
     if (!isset($grouped_products[$group_key])) {
         $grouped_products[$group_key] = array(
             'group_key' => $group_key,
-            'base_name' => $base_name,
+            'base_name' => $card_title,
             'ecat_id' => $prod['ecat_id'],
             'ecat_name' => $ecat_name,
             'mcat_name' => $prod['mcat_name'] ?: '',
             'tcat_name' => $prod['tcat_name'] ?: '',
             'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic',
+            'brands' => array(!empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic'),
             'photo' => $img_src,
             'min_price' => $clean_price,
             'max_price' => $clean_price,
@@ -1212,6 +1229,17 @@ foreach ($raw_products as $prod) {
         }
         if ($clean_price > $grouped_products[$group_key]['max_price']) {
             $grouped_products[$group_key]['max_price'] = $clean_price;
+        }
+        // If current group photo is placeholder but variant has real image, use it
+        if (strpos($grouped_products[$group_key]['photo'], 'photo-6.jpg') !== false && strpos($img_src, 'photo-6.jpg') === false) {
+            $grouped_products[$group_key]['photo'] = $img_src;
+        }
+        $b = !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic';
+        if (!in_array($b, $grouped_products[$group_key]['brands'])) {
+            $grouped_products[$group_key]['brands'][] = $b;
+        }
+        if (count($grouped_products[$group_key]['brands']) > 1) {
+            $grouped_products[$group_key]['brand'] = 'Multi-Brand';
         }
     }
 }
@@ -1601,9 +1629,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                  onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
                                 
                                 <div class="pos-product-card <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>">
-                                    <!-- End Category Badge -->
-                                    <span class="pos-cat-badge" title="<?php echo htmlspecialchars($group['ecat_name']); ?>">
-                                        <?php echo htmlspecialchars($group['ecat_name']); ?>
+                                    <!-- Category Hierarchy Badge -->
+                                    <span class="pos-cat-badge" title="<?php echo htmlspecialchars(!empty($group['mcat_name']) ? ($group['mcat_name'] . ' • ' . $group['ecat_name']) : $group['ecat_name']); ?>">
+                                        <?php echo htmlspecialchars(!empty($group['mcat_name']) ? $group['mcat_name'] : $group['ecat_name']); ?>
                                     </span>
 
                                     <!-- Stock Badge -->
@@ -1620,7 +1648,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                             <?php echo htmlspecialchars($group['base_name']); ?>
                                         </div>
                                         <div class="pos-parent-meta">
-                                            <span class="text-muted"><i class="fa fa-tag"></i> <?php echo htmlspecialchars($group['brand']); ?></span>
+                                            <span class="text-muted"><i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($group['ecat_name']); ?> &bull; <i class="fa fa-tag"></i> <?php echo htmlspecialchars($group['brand']); ?></span>
                                         </div>
                                         
                                         <!-- Variant Indicator Badge -->
