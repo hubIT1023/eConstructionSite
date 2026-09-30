@@ -1147,11 +1147,14 @@ $raw_products = $statement_prod->fetchAll(PDO::FETCH_ASSOC);
 // Group Products by End Level Category (tbl_end_category)
 $grouped_products = array();
 $categories = array();
+$parent_departments = array();
+$categories_with_parent = array();
 $total_inventory_items = count($raw_products);
 
 foreach ($raw_products as $prod) {
     $has_ecat = (!empty($prod['ecat_id']) && intval($prod['ecat_id']) > 0 && !empty($prod['ecat_name']));
     $ecat_name = $has_ecat ? trim($prod['ecat_name']) : 'Uncategorized';
+    $parent_dept = !empty($prod['tcat_name']) ? trim($prod['tcat_name']) : (!empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Hardware');
     
     // Grouping key: Relational End Level Category ID (ecat_id) creates 1 single card per category
     if ($has_ecat) {
@@ -1166,6 +1169,14 @@ foreach ($raw_products as $prod) {
 
     if (!in_array($ecat_name, $categories)) {
         $categories[] = $ecat_name;
+    }
+    
+    if (!isset($parent_departments[$parent_dept])) {
+        $parent_departments[$parent_dept] = array();
+    }
+    if (!in_array($ecat_name, $parent_departments[$parent_dept])) {
+        $parent_departments[$parent_dept][] = $ecat_name;
+        $categories_with_parent[] = array('name' => $ecat_name, 'dept' => $parent_dept);
     }
 
     $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
@@ -1504,19 +1515,152 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     font-size: 13px;
     font-weight: 700;
 }
-.pos-cat-pill {
-    margin-right: 6px;
-    margin-bottom: 6px;
-    border-radius: 20px;
-    padding: 6px 16px;
-    font-size: 13px;
-    font-weight: 600;
+.pos-category-accordion-wrapper {
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    transition: border-color 0.2s ease;
+}
+.pos-cat-toggle-bar {
+    padding: 7px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+.pos-cat-toggle-bar:hover {
+    background: #f1f5f9;
+}
+.pos-cat-collapsible-body {
+    padding: 10px 10px 10px;
+    transition: max-height 0.25s ease-in-out, opacity 0.2s ease, padding 0.2s ease;
+    max-height: 400px;
+    opacity: 1;
+    overflow: hidden;
+}
+.pos-category-accordion-wrapper.collapsed .pos-cat-collapsible-body {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    padding: 0 10px !important;
+}
+.pos-category-accordion-wrapper.collapsed .pos-cat-toggle-bar {
+    border-bottom: none;
+}
+.pos-dept-tabs-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+    overflow-x: hidden;
+}
+.pos-dept-tab {
+    height: 40px;
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #475569;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    white-space: nowrap;
+    text-decoration: none !important;
+}
+.pos-dept-tab:hover {
+    background: #f1f5f9;
+    border-color: #0284c7;
+    color: #0284c7;
+    transform: translateY(-1px);
+}
+.pos-dept-tab.active {
+    background: #0f172a !important;
+    color: #ffffff !important;
+    border-color: #0f172a !important;
+    box-shadow: 0 2px 6px rgba(15,23,42,0.3) !important;
+}
+.pos-dept-tab.active i {
+    color: #38bdf8;
+}
+.pos-dept-tab.active .badge {
+    background: #334155 !important;
+    color: #f8fafc !important;
+}
+.pos-category-filter-box {
+    margin-bottom: 0;
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-height: 138px; /* Constrains to 3 clean visible rows */
+    overflow-y: auto;
+    overflow-x: hidden; /* Completely eliminates horizontal scroll */
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-content: flex-start;
+}
+.pos-category-filter-box::-webkit-scrollbar {
+    width: 6px;
+}
+.pos-category-filter-box::-webkit-scrollbar-track {
+    background: #edf2f7;
+    border-radius: 4px;
+}
+.pos-category-filter-box::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+.pos-category-filter-box::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+.pos-cat-pill {
+    height: 38px;
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #334155;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    white-space: nowrap;
+    text-decoration: none !important;
+}
+.pos-cat-pill:hover {
+    background: #f1f5f9;
+    border-color: #0284c7;
+    color: #0284c7;
+    transform: translateY(-1px);
 }
 .pos-cat-pill.active {
-    background-color: #2563eb !important;
-    color: #fff !important;
-    border-color: #2563eb !important;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+    color: #ffffff !important;
+    border-color: #0284c7 !important;
+    box-shadow: 0 2px 5px rgba(2, 132, 199, 0.3) !important;
+}
+.pos-cat-pill.active i {
+    color: #bae6fd;
 }
 </style>
 
@@ -1582,13 +1726,54 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </div>
                     </div>
 
-                    <!-- Category Filter Pills (End Level Categories) -->
-                    <?php if (!empty($categories)): ?>
-                    <div style="margin-bottom: 15px; overflow-x: auto; white-space: nowrap; padding-bottom: 5px;">
-                        <button type="button" class="btn btn-default btn-sm pos-cat-pill active" onclick="filterCategory('all', this)">All Categories (<?php echo count($grouped_products); ?>)</button>
-                        <?php foreach ($categories as $cat): ?>
-                            <button type="button" class="btn btn-default btn-sm pos-cat-pill" onclick="filterCategory('<?php echo htmlspecialchars(addslashes($cat)); ?>', this)"><?php echo htmlspecialchars($cat); ?></button>
-                        <?php endforeach; ?>
+                    <!-- Hierarchical 2-Tier Category Navigation (Dedicated Collapsible Accordion Header with Persistent Memory) -->
+                    <?php if (!empty($parent_departments)): ?>
+                    <div class="pos-category-accordion-wrapper" id="posCategoryAccordion">
+                        <!-- Dedicated Accordion Toggle Bar -->
+                        <div class="pos-cat-toggle-bar" onclick="togglePOSCategories()">
+                            <div class="pos-cat-toggle-left" style="display: flex; align-items: center; gap: 8px;">
+                                <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; background: #e0f2fe; color: #0284c7; font-size: 11px;">
+                                    <i class="fa fa-sitemap"></i>
+                                </span>
+                                <span style="font-weight: 800; font-size: 13px; color: #1e293b;">Category Filters</span>
+                                <span id="posActiveFilterBreadcrumb" class="label label-info" style="font-size: 11px; font-weight: 700; background-color: #0284c7; border-radius: 4px; padding: 2px 8px;">
+                                    Top Categories &bull; All in Selected
+                                </span>
+                            </div>
+                            <button type="button" class="btn btn-xs btn-default pos-cat-toggle-btn" id="posCatToggleBtn" style="font-weight: 700; font-size: 11px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Toggle category panel">
+                                <i class="fa fa-chevron-up" id="posCatToggleIcon"></i> <span id="posCatToggleText">Collapse</span>
+                            </button>
+                        </div>
+
+                        <!-- Collapsible Body (Tier 1 + Tier 2) -->
+                        <div class="pos-cat-collapsible-body" id="posCatCollapsibleBody">
+                            <!-- Tier 1: Main Department Tabs -->
+                            <div class="pos-dept-tabs-bar">
+                                <button type="button" class="pos-dept-tab active" data-dept="all" onclick="filterDepartment('all', this)">
+                                    <i class="fa fa-th-large"></i> Top Categories (<?php echo count($grouped_products); ?>)
+                                </button>
+                                <?php foreach ($parent_departments as $dept_name => $dept_cats): ?>
+                                    <button type="button" class="pos-dept-tab" data-dept="<?php echo htmlspecialchars($dept_name); ?>" onclick="filterDepartment('<?php echo htmlspecialchars(addslashes($dept_name)); ?>', this)">
+                                        <i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($dept_name); ?> <span class="badge" style="background:#e2e8f0; color:#334155; margin-left:3px;"><?php echo count($dept_cats); ?></span>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <!-- Tier 2: Sub-Category Pills (Clean 2-3 Rows, Zero Horizontal Scroll) -->
+                            <div class="pos-category-filter-box" id="posCategoryFilterBox">
+                                <button type="button" class="pos-cat-pill active" data-dept="all" data-cat="all" onclick="filterCategory('all', this)">
+                                    <i class="fa fa-th-list"></i> All in Selected
+                                </button>
+                                <?php foreach ($categories_with_parent as $item): ?>
+                                    <button type="button" class="pos-cat-pill" 
+                                            data-dept="<?php echo htmlspecialchars($item['dept']); ?>" 
+                                            data-cat="<?php echo htmlspecialchars($item['name']); ?>" 
+                                            onclick="filterCategory('<?php echo htmlspecialchars(addslashes($item['name'])); ?>', this)">
+                                        <?php echo htmlspecialchars($item['name']); ?>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
                     </div>
                     <?php endif; ?>
 
@@ -1598,6 +1783,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             <?php foreach ($grouped_products as $group_key => $group): 
                                 $is_out_of_stock = ($group['total_stock'] <= 0);
                                 $variant_count = count($group['variants']);
+                                $group_dept = !empty($group['tcat_name']) ? $group['tcat_name'] : (!empty($group['mcat_name']) ? $group['mcat_name'] : 'General Hardware');
                                 
                                 // Build thorough search index for this parent group
                                 $search_terms = array(
@@ -1625,6 +1811,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             <div class="pos-product-item" 
                                  data-name="<?php echo htmlspecialchars($search_index, ENT_QUOTES, 'UTF-8'); ?>"
                                  data-category="<?php echo htmlspecialchars($group['ecat_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-dept="<?php echo htmlspecialchars($group_dept, ENT_QUOTES, 'UTF-8'); ?>"
                                  data-group='<?php echo htmlspecialchars(json_encode($group), ENT_QUOTES, 'UTF-8'); ?>'
                                  onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
                                 
@@ -4836,21 +5023,89 @@ function handleLocationChange() {
     updatePOSCalculations();
 }
 
+let currentActiveDept = 'all';
+let currentActiveCat = 'all';
+
+function togglePOSCategories() {
+    const wrapper = document.getElementById('posCategoryAccordion');
+    const icon = document.getElementById('posCatToggleIcon');
+    const text = document.getElementById('posCatToggleText');
+    if (!wrapper) return;
+
+    wrapper.classList.toggle('collapsed');
+    const isCollapsed = wrapper.classList.contains('collapsed');
+
+    if (isCollapsed) {
+        if (icon) icon.className = 'fa fa-chevron-down';
+        if (text) text.innerText = 'Expand';
+        try { localStorage.setItem('pos_categories_collapsed', '1'); } catch (e) {}
+    } else {
+        if (icon) icon.className = 'fa fa-chevron-up';
+        if (text) text.innerText = 'Collapse';
+        try { localStorage.setItem('pos_categories_collapsed', '0'); } catch (e) {}
+    }
+}
+
+function updateCategoryBreadcrumb() {
+    const badge = document.getElementById('posActiveFilterBreadcrumb');
+    if (!badge) return;
+    const deptText = (currentActiveDept === 'all') ? 'Top Categories' : currentActiveDept;
+    const catText = (currentActiveCat === 'all') ? 'All in Selected' : currentActiveCat;
+    badge.innerHTML = `${escapeHtml(deptText)} &bull; ${escapeHtml(catText)}`;
+}
+
+function filterDepartment(deptName, btn) {
+    currentActiveDept = deptName || 'all';
+    currentActiveCat = 'all';
+
+    // Update active state on Department Tabs
+    document.querySelectorAll('.pos-dept-tab').forEach(t => t.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    // Show/Hide sub-category pills in Tier 2
+    document.querySelectorAll('.pos-cat-pill').forEach(pill => {
+        const pDept = pill.getAttribute('data-dept');
+        const pCat = pill.getAttribute('data-cat');
+
+        if (pCat === 'all') {
+            pill.style.display = '';
+            pill.classList.add('active');
+        } else if (currentActiveDept === 'all' || pDept === currentActiveDept) {
+            pill.style.display = '';
+            pill.classList.remove('active');
+        } else {
+            pill.style.display = 'none';
+            pill.classList.remove('active');
+        }
+    });
+
+    updateCategoryBreadcrumb();
+    filterPOSProducts();
+}
+
+function filterCategory(catName, btn) {
+    currentActiveCat = catName || 'all';
+    document.querySelectorAll('.pos-cat-pill').forEach(pill => pill.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    updateCategoryBreadcrumb();
+    filterPOSProducts();
+}
+
 function filterPOSProducts() {
-    const query = document.getElementById('posSearchInput').value.toLowerCase().trim();
+    const query = document.getElementById('posSearchInput')?.value.toLowerCase().trim() || '';
     const items = document.querySelectorAll('.pos-product-item');
-    const activePill = document.querySelector('.pos-cat-pill.active');
-    const activeCat = activePill ? activePill.innerText.replace(/\s*\(\d+\)$/, '').trim() : 'All Categories';
     let visibleCount = 0;
 
     items.forEach(item => {
         const searchData = item.getAttribute('data-name') || '';
         const itemCat = item.getAttribute('data-category') || '';
+        const itemDept = item.getAttribute('data-dept') || '';
 
         const matchesQuery = (query === '' || searchData.indexOf(query) > -1);
-        const matchesCat = (activeCat === 'All Categories' || itemCat === activeCat);
+        const matchesDept = (currentActiveDept === 'all' || itemDept === currentActiveDept);
+        const matchesCat = (currentActiveCat === 'all' || itemCat === currentActiveCat);
 
-        if (matchesQuery && matchesCat) {
+        if (matchesQuery && matchesDept && matchesCat) {
             item.style.display = '';
             visibleCount++;
         } else {
@@ -4858,17 +5113,13 @@ function filterPOSProducts() {
         }
     });
 
-    document.getElementById('productCount').innerText = visibleCount;
+    const productCountEl = document.getElementById('productCount');
+    if (productCountEl) productCountEl.innerText = visibleCount;
 }
 
 function clearPOSSearch() {
-    document.getElementById('posSearchInput').value = '';
-    filterPOSProducts();
-}
-
-function filterCategory(catName, btn) {
-    document.querySelectorAll('.pos-cat-pill').forEach(pill => pill.classList.remove('active'));
-    btn.classList.add('active');
+    const input = document.getElementById('posSearchInput');
+    if (input) input.value = '';
     filterPOSProducts();
 }
 
@@ -7013,6 +7264,16 @@ $(document).ready(function() {
     toggleLocationOption();
     handlePaymentMethodChange();
     updatePOSCalculations();
+    try {
+        if (localStorage.getItem('pos_categories_collapsed') === '1') {
+            const wrapper = document.getElementById('posCategoryAccordion');
+            if (wrapper) wrapper.classList.add('collapsed');
+            const icon = document.getElementById('posCatToggleIcon');
+            const text = document.getElementById('posCatToggleText');
+            if (icon) icon.className = 'fa fa-chevron-down';
+            if (text) text.innerText = 'Expand';
+        }
+    } catch (e) {}
     <?php if ($pos_po_success_data): ?>
     $('#posPOSuccessModal').modal({ backdrop: 'static', keyboard: false });
     if (typeof updatePOVoucherModalPreview === 'function') {
