@@ -1343,3 +1343,7 @@ if (!function_exists('can_user_delete_return')) {
         return ($norm === 'ADMIN');
     }
 }
+
+if (file_exists(dirname(__DIR__, 2) . '/admin/inc/CategoryEngine.php')) {
+    require_once dirname(__DIR__, 2) . '/admin/inc/CategoryEngine.php';
+}

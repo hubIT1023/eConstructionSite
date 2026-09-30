@@ -5,6 +5,7 @@
 		<h1>View Products</h1>
 	</div>
 	<div class="content-header-right">
+		<a href="product-categorization.php" class="btn btn-info btn-sm" style="margin-right:6px;"><i class="fa fa-sitemap"></i> Product Categorization</a>
 		<a href="product-add.php" class="btn btn-primary btn-sm">Add Product</a>
 	</div>
 </section>

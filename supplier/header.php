@@ -276,6 +276,12 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'product-categorization.php') ) {echo 'active';} ?>">
+                        <a href="product-categorization.php">
+                            <i class="fa fa-sitemap" style="color: #34d399;"></i> <span>Product Categorization</span>
+                        </a>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'order.php') ) {echo 'active';} ?>">
                         <a href="order.php">
                             <i class="fa fa-sticky-note"></i> <span>Receive Orders</span>
@@ -374,6 +380,11 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                     <li class="treeview <?php if( ($cur_page == 'product.php') || ($cur_page == 'product-add.php') || ($cur_page == 'product-edit.php') ) {echo 'active';} ?>">
                         <a href="product.php">
                             <i class="fa fa-shopping-bag"></i> <span>Manage Products</span>
+                        </a>
+                    </li>
+                    <li class="treeview <?php if( ($cur_page == 'product-categorization.php') ) {echo 'active';} ?>">
+                        <a href="product-categorization.php">
+                            <i class="fa fa-sitemap" style="color: #34d399;"></i> <span>Product Categorization</span>
                         </a>
                     </li>
                     <?php endif; ?>

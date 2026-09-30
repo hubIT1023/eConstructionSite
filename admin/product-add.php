@@ -251,9 +251,86 @@ if(isset($_POST['form1'])) {
 						<div class="form-group">
 							<label for="" class="col-sm-3 control-label">Product Name <span>*</span></label>
 							<div class="col-sm-4">
-								<input type="text" name="p_name" class="form-control">
+								<input type="text" name="p_name" id="p_name_input" class="form-control">
 							</div>
-						</div>	
+							<div class="col-sm-4" style="padding-top: 4px;">
+								<button type="button" class="btn btn-success btn-sm" onclick="autoClassifyProductCategory()">
+									<i class="fa fa-magic"></i> Auto-Classify Category
+								</button>
+							</div>
+						</div>
+						<div class="form-group" id="aiCategorySuggestionBox" style="display:none;">
+							<div class="col-sm-offset-3 col-sm-8">
+								<div class="alert alert-info" style="margin-bottom:0; padding:10px 14px; font-size:12.5px;">
+									<div id="aiCategorySuggestionText"></div>
+								</div>
+							</div>
+						</div>
+						<script>
+						function autoClassifyProductCategory() {
+							var pNameEl = document.querySelector('input[name="p_name"]');
+							var pName = pNameEl ? pNameEl.value.trim() : '';
+							if (!pName) {
+								alert('Please enter a Product Name first so the Categorization Engine can classify it.');
+								return;
+							}
+							var fd = new FormData();
+							fd.append('action', 'classify_single');
+							fd.append('p_name', pName);
+							fd.append('resolve_ids', '1');
+							fetch('categorization-api.php', { method: 'POST', body: fd })
+								.then(function(r) { return r.json(); })
+								.then(function(res) {
+									if (!res.success) { alert(res.error || 'Classification error'); return; }
+									var c = res.classification;
+									var box = document.getElementById('aiCategorySuggestionBox');
+									var txt = document.getElementById('aiCategorySuggestionText');
+									box.style.display = 'block';
+									txt.innerHTML = '<strong><i class="fa fa-sitemap"></i> Suggested Hierarchy:</strong> ' +
+										c.main_category + ' &rarr; ' + c.mid_category + ' &rarr; <strong>' + c.end_category + '</strong>' +
+										' &nbsp;|&nbsp; <span class="label label-success">Confidence: ' + c.confidence + '% (' + c.status + ')</span>' +
+										'<br><small><strong>Base Product:</strong> ' + c.base_product + ' &nbsp;|&nbsp; <strong>Variant:</strong> ' + c.variant +
+										' &nbsp;|&nbsp; <strong>Reason:</strong> ' + c.reason + '</small>';
+									if (res.category_ids && res.category_ids.tcat_id > 0) {
+										var topSel = document.querySelector('select.top-cat');
+										var midSel = document.querySelector('select.mid-cat');
+										var endSel = document.querySelector('select.end-cat');
+										if (topSel) {
+											if (!topSel.querySelector('option[value="' + res.category_ids.tcat_id + '"]')) {
+												var optT = document.createElement('option');
+												optT.value = res.category_ids.tcat_id;
+												optT.textContent = c.main_category;
+												topSel.appendChild(optT);
+											}
+											topSel.value = res.category_ids.tcat_id;
+											if (window.jQuery && jQuery(topSel).data('select2')) jQuery(topSel).trigger('change.select2');
+										}
+										if (midSel && res.mid_options) {
+											midSel.innerHTML = '<option value="">Select Mid Level Category</option>';
+											res.mid_options.forEach(function(m) {
+												var o = document.createElement('option');
+												o.value = m.mcat_id;
+												o.textContent = m.mcat_name;
+												if (parseInt(m.mcat_id, 10) === parseInt(res.category_ids.mcat_id, 10)) o.selected = true;
+												midSel.appendChild(o);
+											});
+											if (window.jQuery && jQuery(midSel).data('select2')) jQuery(midSel).trigger('change.select2');
+										}
+										if (endSel && res.end_options) {
+											endSel.innerHTML = '<option value="">Select End Level Category</option>';
+											res.end_options.forEach(function(e) {
+												var o = document.createElement('option');
+												o.value = e.ecat_id;
+												o.textContent = e.ecat_name;
+												if (parseInt(e.ecat_id, 10) === parseInt(res.category_ids.ecat_id, 10)) o.selected = true;
+												endSel.appendChild(o);
+											});
+											if (window.jQuery && jQuery(endSel).data('select2')) jQuery(endSel).trigger('change.select2');
+										}
+									}
+								});
+						}
+						</script>	
 						<div class="form-group">
 							<label for="" class="col-sm-3 control-label">Old Price <br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
 							<div class="col-sm-4">

@@ -137,6 +137,12 @@ if(!isset($_SESSION['user'])) {
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'product-categorization.php') ) {echo 'active';} ?>">
+                        <a href="product-categorization.php">
+                            <i class="fa fa-sitemap"></i> <span>Product Categorization</span>
+                        </a>
+                    </li>
+
 
                     <li class="treeview <?php if( ($cur_page == 'order.php') ) {echo 'active';} ?>">
                         <a href="order.php">

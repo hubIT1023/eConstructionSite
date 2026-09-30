@@ -1538,7 +1538,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </div>
                         </div>
                         <div class="col-sm-7 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Printer Configuration / Setup (Auto Detect, 210mm / 80mm / 58mm / A4)">
+                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Printer Setup (Auto Detect / Any Connected Printer • Default: 58mm Thermal)">
                                 <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer Setup</span>
                             </button>
                             <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Create custom/manual order item not in catalogue">
@@ -2541,167 +2541,317 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 </style>
 
 <div class="modal fade" id="posPrinterModal" tabindex="-1" role="dialog" aria-labelledby="posPrinterModalLabel" aria-hidden="true">
-    <div class="modal-dialog printer-dialog" style="max-width: 680px;">
-        <div class="modal-content printer-dialog-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.3); border: none;">
+    <div class="modal-dialog printer-dialog" style="max-width: 740px;">
+        <div class="modal-content printer-dialog-content" style="border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.35); border: none;">
             <!-- HEADER -->
-            <div class="cfg-header" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div class="cfg-header" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h1 id="posPrinterModalLabel" style="margin: 0; font-size: 16px; font-weight: 700; color: #ffffff;">🖨️ POS Thermal Printer Configuration</h1>
-                    <div class="sub" style="font-size: 12px; color: #bae6fd; margin-top: 2px;">Configure 58mm thermal receipt printable width, typography, and line height</div>
+                    <h1 id="posPrinterModalLabel" style="margin: 0; font-size: 17px; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                        <span>🖨️</span> Universal POS Printer &amp; ESC/POS Configuration
+                    </h1>
+                    <div class="sub" style="font-size: 12px; color: #bae6fd; margin-top: 3px;">Configure ESC/POS Hardware Streaming, Auto-Detection (JK-5802H, Epson, Xprinter, A4), Presets &amp; Thermal Density</div>
                 </div>
                 <button type="button" class="close-btn" data-dismiss="modal" aria-hidden="true" title="Close" style="color: #ffffff; opacity: 0.9; font-size: 24px; background: none; border: none; cursor: pointer;">&times;</button>
             </div>
 
             <!-- BODY -->
-            <div class="cfg-body" style="padding: 20px; background: #f8fafc; max-height: calc(100vh - 180px); overflow-y: auto;">
-                <!-- 1. PRINTER DETECTION -->
-                <div class="cfg-section cfg-detect" id="posPrinterStatusBox" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div class="cfg-label" style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Printer Detection</div>
-                        <div class="cfg-status" id="posPrinterStatusText" style="font-weight: 700; color: #0284c7; font-size: 13px;">
-                            <i class="fa fa-info-circle"></i> Auto Detect Active • Windows Driver / Browser Print
+            <div class="cfg-body" style="padding: 20px; background: #f8fafc; max-height: calc(100vh - 160px); overflow-y: auto;">
+                
+                <!-- 1. LIVE AUTO-DETECTION & PROBING BANNER -->
+                <div class="cfg-section cfg-detect" id="posPrinterStatusBox" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 260px;">
+                        <div class="cfg-label" style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Hardware Probing &amp; Auto-Detection</div>
+                        <div class="cfg-status" id="posPrinterStatusText" style="font-weight: 700; color: #0284c7; font-size: 13px; margin-top: 2px;">
+                            <i class="fa fa-info-circle"></i> Auto Detect Active &bull; Ready (JK-5802H / System Spooler)
                         </div>
-                        <div class="cfg-desc" style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Uses your default POS printer (e.g. JK-5802H) via Windows print service.</div>
+                        <div class="cfg-desc" style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Probes connected USB thermal printers, local ESC/POS daemons, and system drivers.</div>
                     </div>
                     <div>
-                        <button type="button" class="cfg-btn primary" onclick="refreshPOSPrinters()" style="font-weight: 700; padding: 6px 14px; font-size: 12px; background: #0284c7; color: #fff; border: none; border-radius: 5px;" title="Re-probe printer status">
-                            ↻ Refresh
+                        <button type="button" class="cfg-btn primary" onclick="refreshPOSPrinters()" style="font-weight: 700; padding: 7px 16px; font-size: 12px; background: #0284c7; color: #fff; border: none; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" title="Re-probe connected USB &amp; ESC/POS hardware">
+                            <i class="fa fa-refresh"></i> Re-probe Hardware
                         </button>
                     </div>
                 </div>
 
-                <!-- 2. ACTIVE CONFIGURATION SUMMARY (TOP) -->
+                <!-- 2. ACTIVE CONFIGURATION DIAGNOSTIC CARD -->
                 <div class="cfg-section cfg-active-card" id="posCompatibilityBadge" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
-                    <h3 class="cfg-title green" style="margin: 0 0 10px 0; font-size: 12px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.5px;">🔖 Active Print Profile</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h3 class="cfg-title green" style="margin: 0; font-size: 12px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.5px;">🔖 Active Print Profile Diagnostic</h3>
+                        <span id="posEngineBadge" style="font-size: 11px; font-weight: 800; color: #166534; background: #dcfce7; padding: 2px 8px; border-radius: 4px; border: 1px solid #86efac;">Browser Dialog Mode</span>
+                    </div>
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
                         <div style="background: #fff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 10px;">
-                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">🖨️ Roll Width</div>
-                            <div style="font-size: 13px; font-weight: 800; color: #166534;" id="posActiveWidthVal">58 mm</div>
+                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">🖨️ Target Device</div>
+                            <div style="font-size: 12.5px; font-weight: 800; color: #166534; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="posActivePrinterVal">JK-5802H 58mm</div>
+                        </div>
+                        <div style="background: #fff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 10px;">
+                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">📏 Roll &amp; Content</div>
+                            <div style="font-size: 12.5px; font-weight: 800; color: #0284c7;" id="posActiveWidthVal">58mm (53mm)</div>
                             <span id="aw" style="display:none;">58 mm</span>
+                            <span id="posActiveContentWidthVal" style="display:none;">53 mm</span>
                         </div>
                         <div style="background: #fff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 10px;">
-                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">📐 Content Width</div>
-                            <div style="font-size: 13px; font-weight: 800; color: #0284c7;" id="posActiveContentWidthVal">53 mm</div>
-                        </div>
-                        <div style="background: #fff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 10px;">
-                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">Aᵀ Font &amp; Size</div>
-                            <div style="font-size: 13px; font-weight: 800; color: #0f172a;" id="posActiveFontCombinedVal"><span id="posActiveFontNameVal">Courier New</span> <span id="posActiveFontVal">10.5 pt</span></div>
+                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">🖋️ Font &amp; Size</div>
+                            <div style="font-size: 12.5px; font-weight: 800; color: #0f172a;" id="posActiveFontCombinedVal"><span id="posActiveFontNameVal">Courier</span> <span id="posActiveFontVal">10.5 pt</span></div>
                             <span id="af" style="display:none;">Courier New</span>
                             <span id="as" style="display:none;">10.5 pt</span>
                         </div>
                         <div style="background: #fff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 10px;">
-                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">↕ Line Height</div>
-                            <div style="font-size: 13px; font-weight: 800; color: #d97706;" id="posActiveLineHeightVal">1.25</div>
+                            <div style="font-size: 10.5px; color: #64748b; font-weight: 700;">🔥 Density / Heat</div>
+                            <div style="font-size: 12.5px; font-weight: 800; color: #d97706;" id="posActiveDensityVal">120% Dark</div>
+                            <span id="posActiveLineHeightVal" style="display:none;">1.25</span>
+                            <span id="posActiveCopiesVal" style="display:none;">1 Copy</span>
+                            <span id="posActiveA4Val" style="display:none;">A4 Portrait</span>
+                            <span id="posActivePdfVal" style="display:none;">Preview Only</span>
                         </div>
                     </div>
-                    <span id="posActivePrinterVal" style="display:none;">AUTO DETECT</span>
-                    <span id="posActiveCopiesVal" style="display:none;">1 Copy</span>
-                    <span id="posActiveA4Val" style="display:none;">A4 Portrait</span>
-                    <span id="posActivePdfVal" style="display:none;">Preview Only</span>
-                    <div id="posLayoutDesc" style="display:none;"></div>
                 </div>
 
                 <form id="posPrinterForm">
-                    <!-- MAIN CARD: THERMAL PRINTER SETTINGS -->
+                    <!-- SECTION 1: CONNECTED PRINTER SELECTION & AUTO-DETECT -->
                     <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 14px;">
-                        
-                        <!-- 1. PRINT / CONTENT WIDTH SECTION -->
-                        <div class="cfg-group" style="margin-bottom: 16px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label class="cfg-input-lbl" style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 0;">Printable Content Width (.thermal-print-container width)</label>
-                                <span id="posSuggestedContentWidth" style="font-size: 11px; font-weight: 700; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">Recommended: 53 mm</span>
-                            </div>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="number" id="posPrintContentWidth" class="form-control" style="width: 100px; text-align: center; font-weight: 700; font-size: 14px;" min="35" max="58" value="53" oninput="handlePrintContentWidthInput(this.value)">
-                                <b style="font-size: 13px; color: #334155;">mm</b>
-                                <span style="font-size: 11.5px; color: #64748b;">(Printable margin area on standard 58mm roll)</span>
-                            </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label class="cfg-input-lbl" style="font-size: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0;">
+                                1. Connected Printer / Driver Profile
+                            </label>
+                            <span style="font-size: 11px; color: #64748b;">Select or let system auto-detect</span>
                         </div>
+                        <select id="posPrinterSelect" class="form-control" onchange="handlePrinterSelectChange()" style="height: 38px; font-weight: 700; font-size: 13px; color: #0369a1; border-color: #cbd5e1;">
+                            <optgroup label="Auto-Detected &amp; System Printers" id="posDetectedGroup">
+                                <option value="system_default" selected>AUTO DETECT (System Default / OS Print Spooler)</option>
+                            </optgroup>
+                            <optgroup label="Popular 58mm Thermal Printers (POS-58)">
+                                <option value="jk_5802h">JK-5802H 58mm Thermal (USB / Bluetooth / COM)</option>
+                                <option value="xprinter_58">Xprinter XP-58 / POS-58 (58mm Roll)</option>
+                                <option value="generic_58">Generic ESC/POS Thermal 58mm (32 Columns)</option>
+                            </optgroup>
+                            <optgroup label="Popular 80mm Thermal Printers (POS-80)">
+                                <option value="epson_tmt20">Epson TM-T20 / TM-T82 / TM-T88 (80mm ESC/POS)</option>
+                                <option value="xprinter_80">Xprinter XP-80 / POS-80 (80mm Roll)</option>
+                                <option value="generic_80">Generic ESC/POS Thermal 80mm (48 Columns)</option>
+                                <option value="network_escpos">Network LAN / WiFi ESC/POS Thermal (Port 9100)</option>
+                            </optgroup>
+                            <optgroup label="Standard Document Printers">
+                                <option value="generic_a4">Standard Office / Inkjet / Laser (A4 Sheet)</option>
+                            </optgroup>
+                        </select>
+                    </div>
 
-                        <!-- 2. THERMAL TYPOGRAPHY -->
-                        <div style="border-top: 1px solid #e2e8f0; padding-top: 14px; margin-bottom: 16px;">
-                            <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; color: #475569; margin-bottom: 10px; letter-spacing: 0.5px;">
-                                Aᵀ Typography &amp; Spacing
-                            </div>
-
-                            <!-- Font Name -->
-                            <div class="cfg-group" style="margin-bottom: 14px;">
-                                <label class="cfg-input-lbl" style="font-size: 12px; font-weight: 700; color: #334155;">Font Family (font-family)</label>
-                                <select id="posThermalFontName" class="form-control" onchange="handleThermalFontChange()">
-                                    <option value="Courier New" selected>Courier New (Standard ESC/POS Monospace)</option>
-                                    <option value="Consolas">Consolas</option>
-                                    <option value="Lucida Console">Lucida Console</option>
-                                    <option value="Arial">Arial</option>
-                                    <option value="Tahoma">Tahoma</option>
-                                    <option value="Verdana">Verdana</option>
-                                    <option value="Liberation Mono">Liberation Mono</option>
-                                </select>
-                            </div>
-
-                            <!-- Font Size -->
-                            <div class="cfg-group" style="margin-bottom: 14px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                    <label class="cfg-input-lbl" style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 0;">Font Size (font-size)</label>
-                                    <span id="posThermalFontSizeBadge" style="font-size: 11px; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">10.5 pt</span>
-                                </div>
-                                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
-                                    <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalFontSize(-0.5)" style="font-weight: 800; width: 34px;">−</button>
-                                    <input type="number" id="posThermalCustomFontSize" class="form-control" style="width: 100px; text-align: center; font-weight: 700;" min="8" max="24" step="0.5" value="10.5" oninput="syncFontSizeFromCustom(this.value)">
-                                    <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalFontSize(0.5)" style="font-weight: 800; width: 34px;">+</button>
-                                    <b style="font-size: 13px; color: #334155;">pt</b>
-                                </div>
-                                <div class="cfg-quick" style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(9.5)">9.5 pt</button>
-                                    <button type="button" class="btn btn-xs btn-primary" onclick="setThermalFontSize(10.5)">10.5 pt (Default)</button>
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(11)">11 pt</button>
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(12)">12 pt</button>
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(14)">14 pt</button>
-                                </div>
-                            </div>
-
-                            <!-- Line Height -->
-                            <div class="cfg-group" style="margin-bottom: 12px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                    <label class="cfg-input-lbl" style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 0;">Line Height (line-height)</label>
-                                    <span id="posThermalLineHeightBadge" style="font-size: 11px; font-weight: 800; color: #d97706; background: #fef3c7; padding: 2px 8px; border-radius: 4px; border: 1px solid #fde68a;">1.25</span>
-                                </div>
-                                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
-                                    <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalLineHeight(-0.05)" style="font-weight: 800; width: 34px;">−</button>
-                                    <input type="number" id="posThermalLineHeight" class="form-control" style="width: 100px; text-align: center; font-weight: 700;" min="1.0" max="2.0" step="0.05" value="1.25" oninput="syncLineHeightFromCustom(this.value)">
-                                    <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalLineHeight(0.05)" style="font-weight: 800; width: 34px;">+</button>
-                                    <span style="font-size: 11.5px; color: #64748b;">(Spacing between receipt lines)</span>
-                                </div>
-                                <div class="cfg-quick" style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalLineHeight(1.15)">1.15 (Compact)</button>
-                                    <button type="button" class="btn btn-xs btn-primary" onclick="setThermalLineHeight(1.25)">1.25 (Default)</button>
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalLineHeight(1.35)">1.35</button>
-                                    <button type="button" class="btn btn-xs btn-default" onclick="setThermalLineHeight(1.50)">1.50 (Relaxed)</button>
-                                </div>
-                            </div>
+                    <!-- SECTION 2: DUAL PRINT TRANSMISSION ENGINE -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 14px;">
+                        <div style="font-size: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+                            2. Print Transmission Engine
                         </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <label style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; transition: all 0.2s;" id="posEngineCardBrowser">
+                                <input type="radio" name="posPrintEngine" id="posEngineBrowser" value="browser" checked onchange="handlePrintEngineChange('browser')" style="margin-top: 2px;">
+                                <div>
+                                    <div style="font-weight: 800; color: #0284c7; font-size: 13px;">🌐 Browser / OS Print Dialog</div>
+                                    <div style="font-size: 11.5px; color: #64748b; line-height: 1.35; margin-top: 3px;">High-contrast 1-bit thermal HTML with print preview. Universal compatibility across all PCs &amp; browsers.</div>
+                                </div>
+                            </label>
 
-                        <!-- 3. TEST PRINT ACTION -->
-                        <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <span style="font-size: 12px; color: #64748b;">Verify print alignment with current settings:</span>
-                            <button type="button" class="btn btn-sm btn-info" onclick="testPrintActiveThermalProfile()" style="font-weight: 700; background: #0284c7; border: none; padding: 6px 14px;">
-                                🖨️ Test Thermal Print
-                            </button>
+                            <label style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; transition: all 0.2s;" id="posEngineCardEscpos">
+                                <input type="radio" name="posPrintEngine" id="posEngineEscpos" value="escpos" onchange="handlePrintEngineChange('escpos')" style="margin-top: 2px;">
+                                <div>
+                                    <div style="font-weight: 800; color: #059669; font-size: 13px;">⚡ Direct ESC/POS Hardware Stream</div>
+                                    <div style="font-size: 11.5px; color: #64748b; line-height: 1.35; margin-top: 3px;">Instant zero-dialog print, pitch-black hardware ROM fonts, auto-cutter &amp; cash drawer pulse (Local Daemon / USB).</div>
+                                </div>
+                            </label>
                         </div>
                     </div>
 
-                    <!-- Hidden Compatibility Inputs (Preserves Existing JS Callbacks) -->
-                    <input type="hidden" id="posPaperWidth" value="58">
+                    <!-- SECTION 3: PAPER ROLL SIZE & PRINTABLE WIDTH PRESETS -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="font-size: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">
+                                3. Paper Size &amp; Width Presets
+                            </div>
+                            <span style="font-size: 11.5px; color: #64748b;">1-Click Quick Configuration</span>
+                        </div>
+
+                        <!-- 1-Click Preset Buttons -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;">
+                            <button type="button" class="btn btn-default" id="posPresetBtn58" onclick="setPaperPreset('58')" style="text-align: left; padding: 10px 12px; border: 1.5px solid #0284c7; background: #f0f9ff; border-radius: 6px;">
+                                <div style="font-weight: 800; color: #0284c7; font-size: 12.5px;">🟢 58 mm Roll</div>
+                                <div style="font-size: 11px; color: #64748b; margin-top: 2px;">53mm Content &bull; 32 Columns<br><strong>(JK-5802H / POS-58)</strong></div>
+                            </button>
+                            <button type="button" class="btn btn-default" id="posPresetBtn80" onclick="setPaperPreset('80')" style="text-align: left; padding: 10px 12px; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 6px;">
+                                <div style="font-weight: 800; color: #334155; font-size: 12.5px;">🔵 80 mm Roll</div>
+                                <div style="font-size: 11px; color: #64748b; margin-top: 2px;">72mm Content &bull; 48 Columns<br><strong>(Epson / POS-80)</strong></div>
+                            </button>
+                            <button type="button" class="btn btn-default" id="posPresetBtnA4" onclick="setPaperPreset('a4')" style="text-align: left; padding: 10px 12px; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 6px;">
+                                <div style="font-weight: 800; color: #334155; font-size: 12.5px;">⚪ A4 Sheet</div>
+                                <div style="font-size: 11px; color: #64748b; margin-top: 2px;">195mm Content &bull; Laser/Inkjet<br><strong>(Standard Invoice)</strong></div>
+                            </button>
+                        </div>
+
+                        <!-- Manual Fine-Tuning Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px;">
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Paper Roll Width</label>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <input type="number" id="posPaperWidth" class="form-control input-sm" style="font-weight: 700; text-align: center;" min="40" max="210" value="58" onchange="handlePaperWidthChange(this.value)">
+                                    <span style="font-size: 12px; font-weight: 700; color: #64748b;">mm</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Printable Content Width</label>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <input type="number" id="posPrintContentWidth" class="form-control input-sm" style="font-weight: 700; text-align: center; color: #0284c7;" min="35" max="210" value="53" oninput="handlePrintContentWidthInput(this.value)">
+                                    <span style="font-size: 12px; font-weight: 700; color: #64748b;">mm</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Character Columns</label>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <input type="number" id="posPrintColumns" class="form-control input-sm" style="font-weight: 700; text-align: center;" min="24" max="80" value="32" onchange="updateCompatibilityBadge()">
+                                    <span style="font-size: 12px; font-weight: 700; color: #64748b;">cols</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 4: THERMAL CLARITY, HEAD DENSITY & TYPOGRAPHY -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 14px;">
+                        <div style="font-size: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+                            4. Thermal Darkness, Head Heat &amp; Typography
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                            <!-- Hardware ROM Font -->
+                            <div>
+                                <label class="cfg-input-lbl" style="font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">ESC/POS Hardware ROM Font</label>
+                                <select id="posHardwareFont" class="form-control input-sm" onchange="handleHardwareFontChange()">
+                                    <option value="font_a" selected>Font A (12×24 Standard - Sharp &amp; Bold)</option>
+                                    <option value="font_b">Font B (9×17 Condensed - High Density)</option>
+                                    <option value="font_a_bold">Font A + Double Strike (Ultra Bold)</option>
+                                </select>
+                            </div>
+
+                            <!-- Thermal Head Density / Heat -->
+                            <div>
+                                <label class="cfg-input-lbl" style="font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">Thermal Head Heat / Darkness</label>
+                                <select id="posThermalDensity" class="form-control input-sm" onchange="handleThermalDensityChange()">
+                                    <option value="100">100% Normal Heat</option>
+                                    <option value="120" selected>120% Dark / High Contrast (Recommended)</option>
+                                    <option value="140">140% Ultra Dark / Deep Pitch Black</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Browser Font Family -->
+                        <div class="cfg-group" style="margin-bottom: 14px;">
+                            <label class="cfg-input-lbl" style="font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">Browser Print Font Family (font-family)</label>
+                            <select id="posThermalFontName" class="form-control input-sm" onchange="handleThermalFontChange()">
+                                <option value="Courier New" selected>Courier New (Standard POS Monospace)</option>
+                                <option value="Consolas">Consolas</option>
+                                <option value="Lucida Console">Lucida Console</option>
+                                <option value="Liberation Mono">Liberation Mono</option>
+                                <option value="Arial">Arial (Clean Sans-Serif)</option>
+                                <option value="Tahoma">Tahoma</option>
+                            </select>
+                        </div>
+
+                        <!-- Font Size & Steppers -->
+                        <div class="cfg-group" style="margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <label class="cfg-input-lbl" style="font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 0;">Thermal Font Size (font-size)</label>
+                                <span id="posThermalFontSizeBadge" style="font-size: 11px; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">10.5 pt</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+                                <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalFontSize(-0.5)" style="font-weight: 800; width: 34px;">−</button>
+                                <input type="number" id="posThermalCustomFontSize" class="form-control input-sm" style="width: 100px; text-align: center; font-weight: 700;" min="8" max="24" step="0.5" value="10.5" oninput="syncFontSizeFromCustom(this.value)">
+                                <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalFontSize(0.5)" style="font-weight: 800; width: 34px;">+</button>
+                                <b style="font-size: 13px; color: #334155;">pt</b>
+                            </div>
+                            <div class="cfg-quick" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(9.5)">9.5 pt</button>
+                                <button type="button" class="btn btn-xs btn-primary" onclick="setThermalFontSize(10.5)">10.5 pt (Default)</button>
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(11)">11 pt</button>
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(12)">12 pt</button>
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalFontSize(14)">14 pt</button>
+                            </div>
+                        </div>
+
+                        <!-- Line Height & Steppers -->
+                        <div class="cfg-group" style="margin-bottom: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <label class="cfg-input-lbl" style="font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 0;">Line Spacing / Height (line-height)</label>
+                                <span id="posThermalLineHeightBadge" style="font-size: 11px; font-weight: 800; color: #d97706; background: #fef3c7; padding: 2px 8px; border-radius: 4px; border: 1px solid #fde68a;">1.25</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+                                <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalLineHeight(-0.05)" style="font-weight: 800; width: 34px;">−</button>
+                                <input type="number" id="posThermalLineHeight" class="form-control input-sm" style="width: 100px; text-align: center; font-weight: 700;" min="1.0" max="2.0" step="0.05" value="1.25" oninput="syncLineHeightFromCustom(this.value)">
+                                <button type="button" class="btn btn-default btn-sm" onclick="adjustThermalLineHeight(0.05)" style="font-weight: 800; width: 34px;">+</button>
+                                <span style="font-size: 11.5px; color: #64748b;">(Vertical spacing between receipt items)</span>
+                            </div>
+                            <div class="cfg-quick" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalLineHeight(1.15)">1.15 (Compact)</button>
+                                <button type="button" class="btn btn-xs btn-primary" onclick="setThermalLineHeight(1.25)">1.25 (Default)</button>
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalLineHeight(1.35)">1.35</button>
+                                <button type="button" class="btn btn-xs btn-default" onclick="setThermalLineHeight(1.50)">1.50 (Relaxed)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 5: HARDWARE PERIPHERAL AUTOMATION & COPIES -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 14px;">
+                        <div style="font-size: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+                            5. Hardware Peripheral Automation &amp; Copies
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px;">
+                            <label style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 0;">
+                                <input type="checkbox" id="posAutoCashDrawer" checked style="width: 16px; height: 16px; cursor: pointer;">
+                                <span>💵 Auto Cash Drawer (ESC p)</span>
+                            </label>
+
+                            <label style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 0;">
+                                <input type="checkbox" id="posAutoCutter" checked style="width: 16px; height: 16px; cursor: pointer;">
+                                <span>✂️ Auto Paper Cut (GS V)</span>
+                            </label>
+
+                            <label style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 0;">
+                                <input type="checkbox" id="posBuzzerBeep" style="width: 16px; height: 16px; cursor: pointer;">
+                                <span>🔔 Buzzer Beep (ESC B)</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                            <div style="font-size: 12px; font-weight: 700; color: #334155;">Print Copies:</div>
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                <button type="button" class="btn btn-default btn-xs" onclick="adjustPrintCopies(-1)" style="font-weight: 800; width: 28px; height: 26px;">−</button>
+                                <input type="number" id="posPrintCopies" class="form-control input-sm" style="width: 60px; text-align: center; font-weight: 800; height: 26px;" min="1" max="5" value="1">
+                                <button type="button" class="btn btn-default btn-xs" onclick="adjustPrintCopies(1)" style="font-weight: 800; width: 28px; height: 26px;">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hidden Compatibility Inputs -->
                     <input type="hidden" id="posPrinterType" value="thermal">
                     <input type="hidden" id="posThermalBoldImportant" value="1">
-                    <select id="posPrinterSelect" style="display: none;"><option value="system_default" selected>AUTO DETECT</option></select>
+                    <input type="hidden" id="posA4Orientation" value="portrait">
                 </form>
+
+                <!-- 6. TEST PRINT TRIGGER BOX -->
+                <div style="background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <div style="font-weight: 800; color: #0369a1; font-size: 13px;">🧪 Alignment &amp; Clarity Test</div>
+                        <div style="font-size: 11.5px; color: #0284c7;">Verify column bounds, double-strike density, and typography on your printer:</div>
+                    </div>
+                    <button type="button" class="btn btn-info" onclick="testPrintActiveThermalProfile()" style="font-weight: 800; background: #0284c7; border-color: #0369a1; padding: 7px 18px; font-size: 13px; box-shadow: 0 2px 6px rgba(2,132,199,0.25);">
+                        <i class="fa fa-print"></i> Test Print Active Profile
+                    </button>
+                </div>
+
             </div>
 
             <!-- FOOTER -->
             <div class="cfg-footer" style="background: #ffffff; border-top: 1px solid #e2e8f0; padding: 14px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
-                <button type="button" class="btn btn-default" data-dismiss="modal" style="padding: 7px 18px; font-weight: 600;">Cancel</button>
-                <button type="button" class="btn btn-success" onclick="savePOSPrinterSettings()" style="padding: 7px 22px; font-weight: 700; background-color: #059669; border-color: #047857;">
-                    💾 Save Configuration
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="padding: 8px 18px; font-weight: 600; border-radius: 6px;">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="savePOSPrinterSettings()" style="padding: 8px 24px; font-weight: 800; background-color: #059669; border-color: #047857; border-radius: 6px; box-shadow: 0 2px 6px rgba(5,150,105,0.25);">
+                    <i class="fa fa-save"></i> Save Configuration
                 </button>
             </div>
         </div>
@@ -2712,6 +2862,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     $cashier_name = !empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier');
     $receipt_id = htmlspecialchars($pos_success_receipt['payment_id']);
 ?>
+<script>
+window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
+</script>
 <div class="modal fade in" id="posSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.65); z-index: 10080;">
     <div class="modal-dialog modal-lg" role="document" style="max-width: 720px; margin: 30px auto;">
         <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.35); border: none;">
@@ -4754,7 +4907,7 @@ function closePOSPurchaseOrderModal() {
 
 
 // ============================================================================
-// POS AUTOMATIC PRINTER DETECTION & DYNAMIC PRINT FORMATTING ENGINE
+// POS UNIVERSAL MULTI-PRINTER ENGINE & ESC/POS CONFIGURATION JAVASCRIPT
 // ============================================================================
 
 let posDetectedPrinters = [];
@@ -4765,26 +4918,30 @@ function getRecommendedContentWidth(paperWidthMm) {
     const w = parseInt(paperWidthMm, 10);
     if (isNaN(w) || w <= 0) return 53;
     if (w <= 52) return 44;
-    if (w <= 65) return 53; // 58 mm paper -> 53 mm content width
-    if (w <= 90) return 72; // 80 mm paper -> 72 mm content width
-    if (w >= 180) return 120; // 210 mm paper -> 120 mm content width
+    if (w <= 65) return 53; // 58 mm roll -> 53 mm content width
+    if (w <= 90) return 72; // 80 mm roll -> 72 mm content width
+    if (w >= 180) return 195; // 210 mm A4 sheet -> 195 mm content width
     return Math.min(w, Math.max(30, Math.round(w * 0.9)));
 }
 
 let posPrinterSettings = {
-    printerId: 'system_default',
-    printerName: 'AUTO DETECT (System Default Printer)',
-    printerMode: 'thermal',
+    printerId: 'jk_5802h',
+    printerName: 'JK-5802H 58mm Thermal (USB / Bluetooth / COM)',
+    printEngine: 'browser',
     printerType: 'thermal',
     paperWidthMm: 58,
     printContentWidthMm: 53,
-    autoAdjustContentWidth: true,
+    printColumns: 32,
+    hardwareFont: 'font_a',
+    thermalDensity: 120,
     thermalFontName: 'Courier New',
     thermalMinFontSize: 8,
     thermalDefaultFontSize: 10.5,
     thermalLineHeight: 1.25,
-    thermalFontStrategy: 'native',
     thermalBoldImportant: true,
+    autoCashDrawer: true,
+    autoCutter: true,
+    buzzerBeep: false,
     a4Orientation: 'portrait',
     printWidthA4Mm: 80,
     copies: 1
@@ -4800,19 +4957,28 @@ function getPOSPrintSettings() {
     } catch (e) {
         console.warn('Could not read saved POS printer settings', e);
     }
-    if (!posPrinterSettings.paperWidthMm || posPrinterSettings.paperWidthMm > MAX_THERMAL_WIDTH_MM || posPrinterSettings.paperWidthMm === 500 || posPrinterSettings.paperWidthMm === 400 || posPrinterSettings.paperWidthMm === 250) {
+    
+    // Normalization & Defaults
+    if (!posPrinterSettings.paperWidthMm || isNaN(parseInt(posPrinterSettings.paperWidthMm, 10))) {
         posPrinterSettings.paperWidthMm = 58;
     }
     if (!posPrinterSettings.printContentWidthMm || isNaN(parseFloat(posPrinterSettings.printContentWidthMm))) {
-        posPrinterSettings.printContentWidthMm = 53;
-    } else {
-        posPrinterSettings.printContentWidthMm = Math.min(58, Math.max(35, Math.round(parseFloat(posPrinterSettings.printContentWidthMm))));
+        posPrinterSettings.printContentWidthMm = getRecommendedContentWidth(posPrinterSettings.paperWidthMm);
     }
-    if (!posPrinterSettings.printerMode) {
-        posPrinterSettings.printerMode = 'thermal';
+    if (!posPrinterSettings.printColumns || isNaN(parseInt(posPrinterSettings.printColumns, 10))) {
+        posPrinterSettings.printColumns = (posPrinterSettings.paperWidthMm === 80) ? 48 : 32;
+    }
+    if (!posPrinterSettings.printEngine) {
+        posPrinterSettings.printEngine = 'browser';
+    }
+    if (!posPrinterSettings.hardwareFont) {
+        posPrinterSettings.hardwareFont = 'font_a';
+    }
+    if (!posPrinterSettings.thermalDensity) {
+        posPrinterSettings.thermalDensity = 120;
     }
     if (!posPrinterSettings.thermalDefaultFontSize || isNaN(parseFloat(posPrinterSettings.thermalDefaultFontSize))) {
-        posPrinterSettings.thermalDefaultFontSize = 10.5;
+        posPrinterSettings.thermalDefaultFontSize = (posPrinterSettings.paperWidthMm === 80) ? 11.5 : 10.5;
     }
     if (!posPrinterSettings.thermalLineHeight || isNaN(parseFloat(posPrinterSettings.thermalLineHeight))) {
         posPrinterSettings.thermalLineHeight = 1.25;
@@ -4823,46 +4989,129 @@ function getPOSPrintSettings() {
     return posPrinterSettings;
 }
 
-function handlePrinterModeRadioChange(mode) {
-    posPrinterSettings.printerMode = mode;
-    updateCompatibilityBadge();
-}
-
-function getA4PrintWidthMm() {
+function setPaperPreset(preset) {
     const s = getPOSPrintSettings();
-    let w = parseFloat(s.printWidthA4Mm);
-    if (isNaN(w) || w === null || typeof w === 'undefined') {
-        w = 80;
+    const pBtn58 = document.getElementById('posPresetBtn58');
+    const pBtn80 = document.getElementById('posPresetBtn80');
+    const pBtnA4 = document.getElementById('posPresetBtnA4');
+
+    if (pBtn58) { pBtn58.style.borderColor = '#cbd5e1'; pBtn58.style.background = '#ffffff'; }
+    if (pBtn80) { pBtn80.style.borderColor = '#cbd5e1'; pBtn80.style.background = '#ffffff'; }
+    if (pBtnA4) { pBtnA4.style.borderColor = '#cbd5e1'; pBtnA4.style.background = '#ffffff'; }
+
+    let paperW = 58, contentW = 53, cols = 32, fontPt = 10.5, lineH = 1.25;
+
+    if (preset === '80') {
+        paperW = 80; contentW = 72; cols = 48; fontPt = 11.5; lineH = 1.25;
+        if (pBtn80) { pBtn80.style.borderColor = '#0284c7'; pBtn80.style.background = '#f0f9ff'; }
+    } else if (preset === 'a4') {
+        paperW = 210; contentW = 195; cols = 80; fontPt = 12; lineH = 1.30;
+        if (pBtnA4) { pBtnA4.style.borderColor = '#0284c7'; pBtnA4.style.background = '#f0f9ff'; }
+    } else {
+        paperW = 58; contentW = 53; cols = 32; fontPt = 10.5; lineH = 1.25;
+        if (pBtn58) { pBtn58.style.borderColor = '#0284c7'; pBtn58.style.background = '#f0f9ff'; }
     }
-    return Math.max(0, Math.min(210, Math.round(w)));
-}
 
-function setA4PrintWidthMm(val) {
-    let w = parseFloat(val);
-    if (isNaN(w)) w = 0;
-    w = Math.max(0, Math.min(210, Math.round(w)));
-    posPrinterSettings.printWidthA4Mm = w;
-    try {
-        localStorage.setItem('pos_printer_settings', JSON.stringify(posPrinterSettings));
-    } catch (e) {}
-    
-    const input = document.getElementById('posA4PrintWidthInput');
-    if (input && document.activeElement !== input) input.value = w;
-    const range = document.getElementById('posA4PrintWidthRange');
-    if (range && document.activeElement !== range) range.value = w;
-    const badgeVal = document.getElementById('posPdfWidthBadgeVal');
-    if (badgeVal) badgeVal.innerText = w;
-    const btnLabels = document.querySelectorAll('.pdf-btn-width-label');
-    btnLabels.forEach(el => el.innerText = w + 'mm');
-    
+    const paperInput = document.getElementById('posPaperWidth');
+    if (paperInput) paperInput.value = paperW;
+
+    const contentInput = document.getElementById('posPrintContentWidth');
+    if (contentInput) contentInput.value = contentW;
+
+    const colsInput = document.getElementById('posPrintColumns');
+    if (colsInput) colsInput.value = cols;
+
+    setThermalFontSize(fontPt);
+    setThermalLineHeight(lineH);
+
     updateCompatibilityBadge();
-    syncModalPaperSizeSelects();
 }
 
-function adjustA4PrintWidth(delta) {
-    let current = parseFloat(document.getElementById('posA4PrintWidthInput')?.value || getA4PrintWidthMm());
-    if (isNaN(current)) current = 80;
-    setA4PrintWidthMm(current + delta);
+function handlePrintEngineChange(engine) {
+    const cardBrowser = document.getElementById('posEngineCardBrowser');
+    const cardEscpos = document.getElementById('posEngineCardEscpos');
+    const badge = document.getElementById('posEngineBadge');
+
+    if (engine === 'escpos') {
+        if (cardEscpos) { cardEscpos.style.borderColor = '#059669'; cardEscpos.style.background = '#ecfdf5'; }
+        if (cardBrowser) { cardBrowser.style.borderColor = '#cbd5e1'; cardBrowser.style.background = '#f8fafc'; }
+        if (badge) {
+            badge.innerText = '⚡ ESC/POS Stream Mode';
+            badge.style.color = '#065f46';
+            badge.style.background = '#d1fae5';
+            badge.style.borderColor = '#6ee7b7';
+        }
+    } else {
+        if (cardBrowser) { cardBrowser.style.borderColor = '#0284c7'; cardBrowser.style.background = '#f0f9ff'; }
+        if (cardEscpos) { cardEscpos.style.borderColor = '#cbd5e1'; cardEscpos.style.background = '#f8fafc'; }
+        if (badge) {
+            badge.innerText = '🌐 Browser Dialog Mode';
+            badge.style.color = '#075985';
+            badge.style.background = '#e0f2fe';
+            badge.style.borderColor = '#7dd3fc';
+        }
+    }
+    updateCompatibilityBadge();
+}
+
+function handlePrinterSelectChange() {
+    const select = document.getElementById('posPrinterSelect');
+    const val = select ? select.value : 'jk_5802h';
+
+    if (val === 'epson_tmt20' || val === 'xprinter_80' || val === 'generic_80' || val === 'network_escpos') {
+        setPaperPreset('80');
+    } else if (val === 'generic_a4') {
+        setPaperPreset('a4');
+    } else if (val === 'jk_5802h' || val === 'xprinter_58' || val === 'generic_58') {
+        setPaperPreset('58');
+    }
+
+    const activePrinterEl = document.getElementById('posActivePrinterVal');
+    if (activePrinterEl && select && select.selectedOptions[0]) {
+        activePrinterEl.innerText = select.selectedOptions[0].text.split('(')[0].trim();
+    }
+    updateCompatibilityBadge();
+}
+
+function handleHardwareFontChange() {
+    updateCompatibilityBadge();
+}
+
+function handleThermalDensityChange() {
+    updateCompatibilityBadge();
+}
+
+function handleThermalFontChange() {
+    const fontNameInput = document.getElementById('posThermalFontName');
+    const fontName = (fontNameInput && fontNameInput.value.trim()) ? fontNameInput.value.trim() : 'Courier New';
+    const activeFontNameEl = document.getElementById('posActiveFontNameVal');
+    const afEl = document.getElementById('af');
+    if (activeFontNameEl) activeFontNameEl.innerText = fontName;
+    if (afEl) afEl.innerText = fontName;
+    updateCompatibilityBadge();
+}
+
+function handlePrintContentWidthInput(val) {
+    let contentW = parseFloat(val);
+    if (isNaN(contentW)) contentW = 53;
+    contentW = Math.min(210, Math.max(35, Math.round(contentW)));
+    const activeContentWidthEl = document.getElementById('posActiveContentWidthVal');
+    if (activeContentWidthEl) activeContentWidthEl.innerText = contentW + ' mm';
+    updateCompatibilityBadge();
+}
+
+function handlePaperWidthChange(val) {
+    let paperW = parseInt(val, 10);
+    if (isNaN(paperW) || paperW < 40) paperW = 58;
+    const contentInput = document.getElementById('posPrintContentWidth');
+    if (contentInput) {
+        contentInput.value = getRecommendedContentWidth(paperW);
+    }
+    const colsInput = document.getElementById('posPrintColumns');
+    if (colsInput) {
+        colsInput.value = (paperW >= 180) ? 80 : ((paperW === 80) ? 48 : 32);
+    }
+    updateCompatibilityBadge();
 }
 
 function adjustThermalFontSize(delta) {
@@ -4942,17 +5191,6 @@ function syncLineHeightFromCustom(val) {
     updateCompatibilityBadge();
 }
 
-function setA4Orientation(orient) {
-    const pBtn = document.getElementById('posOrientPortrait');
-    const lBtn = document.getElementById('posOrientLandscape');
-    const hidden = document.getElementById('posA4Orientation');
-    const val = (orient === 'landscape') ? 'landscape' : 'portrait';
-    if (pBtn) pBtn.classList.toggle('sel', val === 'portrait');
-    if (lBtn) lBtn.classList.toggle('sel', val === 'landscape');
-    if (hidden) hidden.value = val;
-    updateCompatibilityBadge();
-}
-
 function adjustPrintCopies(delta) {
     const input = document.getElementById('posPrintCopies');
     let current = parseInt(input?.value, 10) || 1;
@@ -4961,40 +5199,30 @@ function adjustPrintCopies(delta) {
     updateCompatibilityBadge();
 }
 
-function handleThermalFontChange() {
-    const fontNameInput = document.getElementById('posThermalFontName');
-    const fontName = (fontNameInput && fontNameInput.value.trim()) ? fontNameInput.value.trim() : 'Courier New';
-    const activeFontNameEl = document.getElementById('posActiveFontNameVal');
-    const afEl = document.getElementById('af');
-    if (activeFontNameEl) activeFontNameEl.innerText = fontName;
-    if (afEl) afEl.innerText = fontName;
-    updateCompatibilityBadge();
-}
-
-function handlePrintContentWidthInput(val) {
-    let contentW = parseFloat(val);
-    if (isNaN(contentW)) contentW = 53;
-    contentW = Math.min(58, Math.max(35, Math.round(contentW)));
-    const activeContentWidthEl = document.getElementById('posActiveContentWidthVal');
-    if (activeContentWidthEl) activeContentWidthEl.innerText = contentW + ' mm';
-    updateCompatibilityBadge();
-}
-
 function savePOSPrinterSettings() {
-    posPrinterSettings.printerMode = 'thermal';
-    posPrinterSettings.printerId = document.getElementById('posPrinterSelect')?.value || 'system_default';
+    posPrinterSettings.printerId = document.getElementById('posPrinterSelect')?.value || 'jk_5802h';
     const selectedOption = document.getElementById('posPrinterSelect')?.selectedOptions[0];
-    posPrinterSettings.printerName = selectedOption ? selectedOption.text : 'AUTO DETECT (System Default Printer)';
+    posPrinterSettings.printerName = selectedOption ? selectedOption.text : 'JK-5802H 58mm Thermal';
+    posPrinterSettings.printEngine = document.querySelector('input[name="posPrintEngine"]:checked')?.value || 'browser';
     posPrinterSettings.printerType = 'thermal';
-    posPrinterSettings.paperWidthMm = 58;
+
+    // Paper width
+    const paperWidthInput = document.getElementById('posPaperWidth');
+    let paperVal = parseInt(paperWidthInput?.value, 10) || 58;
+    posPrinterSettings.paperWidthMm = Math.min(210, Math.max(40, paperVal));
 
     // Content width
     const contentWidthInput = document.getElementById('posPrintContentWidth');
     let contentVal = parseFloat(contentWidthInput?.value) || 53;
-    posPrinterSettings.printContentWidthMm = Math.min(58, Math.max(35, Math.round(contentVal)));
-    if (contentWidthInput) {
-        contentWidthInput.value = posPrinterSettings.printContentWidthMm;
-    }
+    posPrinterSettings.printContentWidthMm = Math.min(posPrinterSettings.paperWidthMm, Math.max(35, Math.round(contentVal)));
+
+    // Columns
+    const colsInput = document.getElementById('posPrintColumns');
+    posPrinterSettings.printColumns = parseInt(colsInput?.value, 10) || (posPrinterSettings.paperWidthMm === 80 ? 48 : 32);
+
+    // Hardware font & Density
+    posPrinterSettings.hardwareFont = document.getElementById('posHardwareFont')?.value || 'font_a';
+    posPrinterSettings.thermalDensity = parseInt(document.getElementById('posThermalDensity')?.value, 10) || 120;
 
     // Font Name
     const fontNameInput = document.getElementById('posThermalFontName');
@@ -5010,8 +5238,11 @@ function savePOSPrinterSettings() {
     let lineHeight = parseFloat(lineHeightInput?.value) || 1.25;
     posPrinterSettings.thermalLineHeight = Math.max(1.0, Math.min(2.0, Math.round(lineHeight * 100) / 100));
 
-    posPrinterSettings.thermalBoldImportant = true;
-    posPrinterSettings.copies = 1;
+    // Peripherals
+    posPrinterSettings.autoCashDrawer = document.getElementById('posAutoCashDrawer')?.checked ?? true;
+    posPrinterSettings.autoCutter = document.getElementById('posAutoCutter')?.checked ?? true;
+    posPrinterSettings.buzzerBeep = document.getElementById('posBuzzerBeep')?.checked ?? false;
+    posPrinterSettings.copies = parseInt(document.getElementById('posPrintCopies')?.value, 10) || 1;
 
     try {
         localStorage.setItem('pos_printer_settings', JSON.stringify(posPrinterSettings));
@@ -5019,6 +5250,7 @@ function savePOSPrinterSettings() {
         localStorage.setItem('pos_printer_line_height', String(posPrinterSettings.thermalLineHeight));
         localStorage.setItem('pos_printer_content_width', String(posPrinterSettings.printContentWidthMm));
         localStorage.setItem('pos_printer_font_name', posPrinterSettings.thermalFontName);
+        localStorage.setItem('pos_preferred_thermal_format', String(posPrinterSettings.paperWidthMm));
     } catch (e) {
         console.warn('Could not persist POS printer settings', e);
     }
@@ -5026,27 +5258,32 @@ function savePOSPrinterSettings() {
     updatePOSPrinterBadge();
     syncModalPaperSizeSelects();
     $('#posPrinterModal').modal('hide');
+    
+    if (window.POVoucherRenderer && typeof window.POVoucherRenderer.showToast === 'function') {
+        window.POVoucherRenderer.showToast('💾 Printer settings saved successfully!', 'success');
+    }
 }
 
 function updatePOSPrinterBadge() {
     const s = getPOSPrintSettings();
     const btnLabel = document.getElementById('posPrinterBtnLabel');
     const btn = document.getElementById('posPrinterStatusBtn');
+    const modeLabel = (s.printEngine === 'escpos') ? 'ESC/POS' : 'Thermal';
     if (btnLabel) {
         btnLabel.innerText = 'Printer Setup';
     }
     if (btn) {
-        btn.title = 'Printer Setup (58mm Thermal - Auto Detect, Windows Driver)';
+        btn.title = 'Printer Setup (' + (s.printerName || 'Universal') + ' • ' + (s.paperWidthMm || 58) + 'mm • ' + modeLabel + ')';
     }
 }
 
 function syncModalPaperSizeSelects() {
     const s = getPOSPrintSettings();
-    const effectiveThermalWidth = 58;
+    const effectiveThermalWidth = s.paperWidthMm || 58;
     const effectiveContentWidth = s.printContentWidthMm || 53;
     const summaryModes = document.querySelectorAll('.receipt-summary-mode');
     summaryModes.forEach(el => {
-        el.innerText = 'Thermal Printer (Primary Default)';
+        el.innerText = (s.printEngine === 'escpos') ? 'ESC/POS Direct Stream' : 'Thermal Print Dialog';
     });
     const summaryWidths = document.querySelectorAll('.receipt-summary-width');
     summaryWidths.forEach(el => {
@@ -5054,7 +5291,7 @@ function syncModalPaperSizeSelects() {
     });
     const summaryPapers = document.querySelectorAll('.receipt-summary-paper');
     summaryPapers.forEach(el => {
-        el.innerText = '58 mm Roll';
+        el.innerText = effectiveThermalWidth + ' mm Roll';
     });
     const summaryFonts = document.querySelectorAll('.receipt-summary-font');
     summaryFonts.forEach(el => {
@@ -5066,19 +5303,25 @@ function updatePOVoucherModalPreview(val) {
     const area = document.getElementById('posPrintPOArea');
     if (!area || !window.posPOSuccessData || !window.POVoucherRenderer) return;
     
-    let fmt = val || '58';
-    area.style.width = '48mm';
-    area.style.maxWidth = '48mm';
+    let fmt = val || (getPOSPrintSettings().paperWidthMm ? String(getPOSPrintSettings().paperWidthMm) : '58');
+    area.style.width = (fmt === '80' ? '72mm' : (fmt === 'a4' ? '195mm' : '53mm'));
+    area.style.maxWidth = (fmt === '80' ? '72mm' : (fmt === 'a4' ? '195mm' : '53mm'));
     area.style.padding = '10px 4px';
     area.innerHTML = window.POVoucherRenderer.render(window.posPOSuccessData, fmt);
 }
 
 function handleModalPaperSizeChange(val) {
     const s = getPOSPrintSettings();
-    s.paperWidthMm = 58;
-    s.printContentWidthMm = 53;
-    s.printerMode = 'thermal';
-    s.printerType = 'thermal';
+    if (val === '80') {
+        s.paperWidthMm = 80;
+        s.printContentWidthMm = 72;
+    } else if (val === 'pdf' || val === 'a4') {
+        s.paperWidthMm = 210;
+        s.printContentWidthMm = 195;
+    } else {
+        s.paperWidthMm = 58;
+        s.printContentWidthMm = 53;
+    }
     localStorage.setItem('pos_printer_settings', JSON.stringify(s));
     updatePOSPrinterBadge();
     syncModalPaperSizeSelects();
@@ -5087,17 +5330,39 @@ function handleModalPaperSizeChange(val) {
 
 function openPOSPrinterModal() {
     const s = getPOSPrintSettings();
-    s.paperWidthMm = 58;
+
+    const select = document.getElementById('posPrinterSelect');
+    if (select && s.printerId) {
+        select.value = s.printerId;
+    }
+
+    if (s.printEngine === 'escpos') {
+        const rEsc = document.getElementById('posEngineEscpos');
+        if (rEsc) rEsc.checked = true;
+        handlePrintEngineChange('escpos');
+    } else {
+        const rBro = document.getElementById('posEngineBrowser');
+        if (rBro) rBro.checked = true;
+        handlePrintEngineChange('browser');
+    }
+
+    const paperWidthInput = document.getElementById('posPaperWidth');
+    if (paperWidthInput) paperWidthInput.value = s.paperWidthMm || 58;
 
     const contentWidthInput = document.getElementById('posPrintContentWidth');
-    if (contentWidthInput) {
-        contentWidthInput.value = s.printContentWidthMm || 53;
-    }
+    if (contentWidthInput) contentWidthInput.value = s.printContentWidthMm || 53;
+
+    const colsInput = document.getElementById('posPrintColumns');
+    if (colsInput) colsInput.value = s.printColumns || (s.paperWidthMm === 80 ? 48 : 32);
+
+    const hwFont = document.getElementById('posHardwareFont');
+    if (hwFont) hwFont.value = s.hardwareFont || 'font_a';
+
+    const dens = document.getElementById('posThermalDensity');
+    if (dens) dens.value = s.thermalDensity || 120;
 
     const fontNameInput = document.getElementById('posThermalFontName');
-    if (fontNameInput) {
-        fontNameInput.value = s.thermalFontName || 'Courier New';
-    }
+    if (fontNameInput) fontNameInput.value = s.thermalFontName || 'Courier New';
 
     const customSizeInput = document.getElementById('posThermalCustomFontSize');
     if (customSizeInput) {
@@ -5111,6 +5376,18 @@ function openPOSPrinterModal() {
         syncLineHeightFromCustom(lineHeightInput.value);
     }
 
+    const drawerChk = document.getElementById('posAutoCashDrawer');
+    if (drawerChk) drawerChk.checked = (s.autoCashDrawer !== false);
+
+    const cutChk = document.getElementById('posAutoCutter');
+    if (cutChk) cutChk.checked = (s.autoCutter !== false);
+
+    const buzzChk = document.getElementById('posBuzzerBeep');
+    if (buzzChk) buzzChk.checked = (s.buzzerBeep === true);
+
+    const copiesInput = document.getElementById('posPrintCopies');
+    if (copiesInput) copiesInput.value = s.copies || 1;
+
     updateCompatibilityBadge();
     $('#posPrinterModal').modal('show');
     initPOSPrinterDetection();
@@ -5120,69 +5397,49 @@ function refreshPOSPrinters() {
     initPOSPrinterDetection(true);
 }
 
-function handlePaperWidthChange() {
-    updateCompatibilityBadge();
-}
-
-function handleAutoAdjustToggle(checked) {
-    updateCompatibilityBadge();
-}
-
-function handlePrinterTypeChange() {
-    updateCompatibilityBadge();
-}
-
-function handlePrinterSelectChange() {
-    updateCompatibilityBadge();
-}
-
 function updateCompatibilityBadge() {
     const s = getPOSPrintSettings();
-    const widthMm = 58;
+
+    const paperInput = document.getElementById('posPaperWidth');
+    let paperWidthMm = paperInput ? parseInt(paperInput.value, 10) : (s.paperWidthMm || 58);
 
     const contentInput = document.getElementById('posPrintContentWidth');
     let contentWidthMm = contentInput ? parseFloat(contentInput.value) : (s.printContentWidthMm || 53);
     if (isNaN(contentWidthMm) || contentWidthMm <= 0) contentWidthMm = 53;
-    contentWidthMm = Math.min(58, Math.max(35, Math.round(contentWidthMm)));
+
+    const select = document.getElementById('posPrinterSelect');
+    const selectedText = select?.selectedOptions[0]?.text || s.printerName || 'JK-5802H 58mm';
+    const shortName = selectedText.split('(')[0].trim();
 
     const fontNameInput = document.getElementById('posThermalFontName');
     const fontName = (fontNameInput && fontNameInput.value.trim()) ? fontNameInput.value.trim() : (s.thermalFontName || 'Courier New');
 
     const customSizeInput = document.getElementById('posThermalCustomFontSize');
     let fontPt = customSizeInput ? parseFloat(customSizeInput.value) : (s.thermalDefaultFontSize || 10.5);
-    if (isNaN(fontPt) || fontPt < 8) fontPt = 10.5;
 
-    const lineHeightInput = document.getElementById('posThermalLineHeight');
-    let lineHeight = lineHeightInput ? parseFloat(lineHeightInput.value) : (s.thermalLineHeight || 1.25);
-    if (isNaN(lineHeight) || lineHeight < 1.0) lineHeight = 1.25;
+    const densitySelect = document.getElementById('posThermalDensity');
+    let densityVal = densitySelect ? densitySelect.value : (s.thermalDensity || 120);
+
+    const activePrinterEl = document.getElementById('posActivePrinterVal');
+    if (activePrinterEl) activePrinterEl.innerText = shortName;
 
     const activeWidthEl = document.getElementById('posActiveWidthVal');
-    if (activeWidthEl) activeWidthEl.innerText = '58 mm';
-
-    const awEl = document.getElementById('aw');
-    if (awEl) awEl.innerText = '58 mm';
-
-    const activeContentWidthEl = document.getElementById('posActiveContentWidthVal');
-    if (activeContentWidthEl) activeContentWidthEl.innerText = contentWidthMm + ' mm';
+    if (activeWidthEl) activeWidthEl.innerText = paperWidthMm + 'mm (' + Math.round(contentWidthMm) + 'mm)';
 
     const activeFontNameEl = document.getElementById('posActiveFontNameVal');
-    if (activeFontNameEl) activeFontNameEl.innerText = fontName;
-
-    const afEl = document.getElementById('af');
-    if (afEl) afEl.innerText = fontName;
+    if (activeFontNameEl) activeFontNameEl.innerText = fontName.substring(0, 10);
 
     const activeFontEl = document.getElementById('posActiveFontVal');
     if (activeFontEl) activeFontEl.innerText = fontPt + ' pt';
 
-    const asEl = document.getElementById('as');
-    if (asEl) asEl.innerText = fontPt + ' pt';
-
-    const activeLineHeightEl = document.getElementById('posActiveLineHeightVal');
-    if (activeLineHeightEl) activeLineHeightEl.innerText = (Math.round(lineHeight * 100) / 100).toFixed(2);
+    const activeDensityEl = document.getElementById('posActiveDensityVal');
+    if (activeDensityEl) activeDensityEl.innerText = densityVal + '% Dark';
 
     const fontBadge = document.getElementById('posThermalFontSizeBadge');
     if (fontBadge) fontBadge.innerText = fontPt + ' pt';
 
+    const lineHeightInput = document.getElementById('posThermalLineHeight');
+    let lineHeight = lineHeightInput ? parseFloat(lineHeightInput.value) : (s.thermalLineHeight || 1.25);
     const lineHeightBadge = document.getElementById('posThermalLineHeightBadge');
     if (lineHeightBadge) lineHeightBadge.innerText = (Math.round(lineHeight * 100) / 100).toFixed(2);
 }
@@ -5191,32 +5448,34 @@ function testPrintActiveThermalProfile() {
     const s = getPOSPrintSettings();
     const contentWidthInput = document.getElementById('posPrintContentWidth');
     const contentWidthMm = contentWidthInput ? (parseFloat(contentWidthInput.value) || 53) : (s.printContentWidthMm || 53);
-
     const fontNameInput = document.getElementById('posThermalFontName');
     const fontName = fontNameInput ? (fontNameInput.value.trim() || 'Courier New') : (s.thermalFontName || 'Courier New');
-
     const customSizeInput = document.getElementById('posThermalCustomFontSize');
     const fontSizePt = customSizeInput ? (parseFloat(customSizeInput.value) || 10.5) : (s.thermalDefaultFontSize || 10.5);
-
     const lineHeightInput = document.getElementById('posThermalLineHeight');
     const lineHeight = lineHeightInput ? (parseFloat(lineHeightInput.value) || 1.25) : (s.thermalLineHeight || 1.25);
+    const engine = document.querySelector('input[name="posPrintEngine"]:checked')?.value || s.printEngine || 'browser';
+    const paperWidth = parseInt(document.getElementById('posPaperWidth')?.value || s.paperWidthMm || 58, 10);
+    const columns = parseInt(document.getElementById('posPrintColumns')?.value || s.printColumns || (paperWidth === 80 ? 48 : 32), 10);
+    const hardwareFont = document.getElementById('posHardwareFont')?.value || s.hardwareFont || 'font_a';
+    const density = parseInt(document.getElementById('posThermalDensity')?.value || s.thermalDensity || 120, 10);
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-CA') + ' ' + now.toLocaleTimeString('en-US', { hour12: false });
-    const receiptNum = 'POS-' + now.toISOString().slice(0, 10).replace(/-/g, '') + '-62006';
+    const receiptNum = 'TEST-' + now.toISOString().slice(0, 10).replace(/-/g, '') + '-01';
 
     const sampleReceiptData = {
         supplier_name: 'SAM & INRI CONSTRUCTION SUPPLY',
         supplier_phone: '09612735733',
         payment_id: receiptNum,
         payment_date: dateStr,
-        customer_name: 'Walk-in Customer',
-        payment_method: 'Cash',
+        customer_name: 'POS System Self-Test',
+        payment_method: 'Cash / Alignment Test',
         payment_status: 'PAID',
-        cashier_name: 'Cashier 1',
+        cashier_name: 'Hardware Diagnostic',
         items: [
-            { name: 'Portland Cement 40kg', qty: 2, price: 270.00, line_net: 540.00 },
-            { name: 'PVC Pipe 1/2 Blue', qty: 5, price: 85.00, line_net: 425.00 }
+            { name: 'Portland Cement 40kg Type 1', qty: 2, price: 270.00, line_net: 540.00 },
+            { name: '1/2" Blue PVC Electrical Pipe 3m', qty: 5, price: 85.00, line_net: 425.00 }
         ],
         gross_subtotal: 965.00,
         subtotal: 965.00,
@@ -5227,64 +5486,28 @@ function testPrintActiveThermalProfile() {
         change_amount: 35.00
     };
 
-    if (window.POVoucherRenderer && typeof window.POVoucherRenderer.renderThermalReceipt === 'function') {
-        const receiptInner = window.POVoucherRenderer.renderThermalReceipt(sampleReceiptData, '58');
-        const printHtml = `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Test Print (${receiptNum})</title>
-    <style>
-        * {
-            box-sizing: border-box !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
-        @page {
-            size: 58mm auto;
-            margin: 0 !important;
-        }
-        html, body {
-            width: 58mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            font-family: '${fontName}', Consolas, monospace !important;
-            font-size: ${fontSizePt}pt !important;
-            line-height: ${lineHeight} !important;
-            -webkit-font-smoothing: antialiased;
-        }
-        .thermal-print-container {
-            width: ${contentWidthMm}mm !important;
-            max-width: ${contentWidthMm}mm !important;
-            margin: 0 auto !important;
-            padding: 2mm 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            background: transparent !important;
-        }
-        table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            font-family: inherit !important;
-            font-size: inherit !important;
-            line-height: inherit !important;
-        }
-        th, td {
-            vertical-align: top !important;
-            color: #000000 !important;
-            font-family: inherit !important;
-        }
-    </style>
-</head>
-<body>
-    ${receiptInner}
-</body>
-</html>`;
-        executePOSPrintJob(printHtml, true);
+    const activeOpts = {
+        printerId: document.getElementById('posPrinterSelect')?.value || s.printerId,
+        printerName: document.getElementById('posPrinterSelect')?.selectedOptions[0]?.text || s.printerName,
+        printEngine: engine,
+        paperWidthMm: paperWidth,
+        printContentWidthMm: contentWidthMm,
+        printColumns: columns,
+        hardwareFont: hardwareFont,
+        thermalDensity: density,
+        thermalFontName: fontName,
+        thermalDefaultFontSize: fontSizePt,
+        thermalLineHeight: lineHeight,
+        autoCashDrawer: document.getElementById('posAutoCashDrawer')?.checked ?? true,
+        autoCutter: document.getElementById('posAutoCutter')?.checked ?? true,
+        buzzerBeep: document.getElementById('posBuzzerBeep')?.checked ?? false,
+        copies: 1
+    };
+
+    if (window.POVoucherRenderer && typeof window.POVoucherRenderer.printReceiptData === 'function') {
+        window.POVoucherRenderer.printReceiptData(sampleReceiptData, String(paperWidth), activeOpts);
     } else {
-        testPrintThermalPaidOrder(58, contentWidthMm);
+        testPrintThermalPaidOrder(paperWidth, contentWidthMm);
     }
 }
 
@@ -5293,12 +5516,12 @@ function initPOSPrinterDetection(forceRefresh = false) {
     const select = document.getElementById('posPrinterSelect');
 
     if (statusBox) {
-        statusBox.innerHTML = '<i class="fa fa-circle-o-notch fa-spin text-info"></i> Probing available printers, USB & print daemons...';
+        statusBox.innerHTML = '<i class="fa fa-circle-o-notch fa-spin text-info"></i> Probing connected USB printers &amp; ESC/POS print services...';
     }
 
     posDetectedPrinters = [];
 
-    // Probe 1: Local ESC/POS / QZ Tray / Local Daemon (localhost:9100 / localhost:8080)
+    // Probe 1: Local ESC/POS Daemon (localhost:9100)
     const probeLocalAgent = new Promise((resolve) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 1200);
@@ -5310,8 +5533,8 @@ function initPOSPrinterDetection(forceRefresh = false) {
                     id: 'local_escpos_9100',
                     name: 'Local ESC/POS Thermal Agent (127.0.0.1:9100)',
                     type: 'thermal',
-                    connection: 'Local Service',
-                    paperWidth: 210
+                    connection: 'Direct ESC/POS Daemon',
+                    paperWidth: 58
                 });
                 resolve();
             })
@@ -5332,7 +5555,7 @@ function initPOSPrinterDetection(forceRefresh = false) {
                             name: (d.productName || 'USB Thermal POS Device') + ' (USB Direct)',
                             type: 'thermal',
                             connection: 'USB Hardware',
-                            paperWidth: 210
+                            paperWidth: 58
                         });
                     });
                     resolve();
@@ -5349,13 +5572,13 @@ function initPOSPrinterDetection(forceRefresh = false) {
             window.queryLocalPrinters()
                 .then((printers) => {
                     printers.forEach((p) => {
-                        const isThermal = /pos|thermal|receipt|epson|star|tm-/i.test(p.name);
+                        const isThermal = /pos|thermal|receipt|epson|star|tm-|jk-|xp-/i.test(p.name);
                         posDetectedPrinters.push({
                             id: 'sys_' + p.name.replace(/[^a-zA-Z0-9]/g, '_'),
                             name: p.name + (p.isDefault ? ' (System Default)' : ''),
                             type: isThermal ? 'thermal' : 'normal',
                             connection: 'System Spooler',
-                            paperWidth: isThermal ? 210 : 210,
+                            paperWidth: isThermal ? 58 : 210,
                             isDefault: p.isDefault
                         });
                     });
@@ -5369,14 +5592,17 @@ function initPOSPrinterDetection(forceRefresh = false) {
 
     Promise.all([probeLocalAgent, probeWebUSB, probeChromiumPrinters]).then(() => {
         if (select) {
-            select.innerHTML = '<option value="system_default">AUTO DETECT (System Default / Browser Print Dialog)</option>';
-            if (posDetectedPrinters.length > 0) {
-                posDetectedPrinters.forEach((p) => {
-                    const opt = document.createElement('option');
-                    opt.value = p.id;
-                    opt.text = p.name + ' [' + p.connection + ']';
-                    select.appendChild(opt);
-                });
+            const detectedGroup = document.getElementById('posDetectedGroup');
+            if (detectedGroup) {
+                detectedGroup.innerHTML = '<option value="system_default">AUTO DETECT (System Default / OS Print Spooler)</option>';
+                if (posDetectedPrinters.length > 0) {
+                    posDetectedPrinters.forEach((p) => {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.text = p.name + ' [' + p.connection + ']';
+                        detectedGroup.appendChild(opt);
+                    });
+                }
             }
             if (posPrinterSettings.printerId) {
                 select.value = posPrinterSettings.printerId;
@@ -5385,9 +5611,9 @@ function initPOSPrinterDetection(forceRefresh = false) {
 
         if (statusBox) {
             if (posDetectedPrinters.length > 0) {
-                statusBox.innerHTML = '<span style="color: #16a34a;"><i class="fa fa-check-circle"></i> ' + posDetectedPrinters.length + ' printer/service(s) detected via direct print bridge.</span>';
+                statusBox.innerHTML = '<span style="color: #16a34a;"><i class="fa fa-check-circle"></i> ' + posDetectedPrinters.length + ' printer/service(s) connected via direct hardware bridge.</span>';
             } else {
-                statusBox.innerHTML = '<span style="color: #0284c7;"><i class="fa fa-info-circle"></i> Auto Detect Active &bull; Ready (Browser / OS Print Dialog).</span>';
+                statusBox.innerHTML = '<span style="color: #0284c7;"><i class="fa fa-info-circle"></i> Auto Detect Active &bull; Ready (JK-5802H / Windows Driver / Browser Print).</span>';
             }
         }
     });
@@ -6316,9 +6542,17 @@ function testPrintA4PDF() {
 }
 
 function printPOSReceipt(format = null) {
+    const s = getPOSPrintSettings();
+    const modalSel = document.getElementById('posReceiptModalPaperSize')?.value;
+    const effectiveFormat = format || modalSel || (s.paperWidthMm ? String(s.paperWidthMm) : '58');
+
+    if (window.posReceiptSuccessData && window.POVoucherRenderer) {
+        window.POVoucherRenderer.printReceiptData(window.posReceiptSuccessData, effectiveFormat);
+        return;
+    }
     const thermalEl = document.getElementById('receipt-printable-thermal-pos');
     if (thermalEl && window.POVoucherRenderer) {
-        window.POVoucherRenderer.print(thermalEl, '58');
+        window.POVoucherRenderer.printReceiptData(thermalEl, effectiveFormat);
         return;
     }
     const printArea = document.getElementById('posPrintReceiptArea');
@@ -6326,8 +6560,6 @@ function printPOSReceipt(format = null) {
         alert('Receipt print area not found.');
         return;
     }
-    const modalSel = document.getElementById('posReceiptModalPaperSize')?.value;
-    const effectiveFormat = format || modalSel || '58';
     const isPdf = (effectiveFormat === 'pdf' || effectiveFormat === 'pdf200' || effectiveFormat === 'pdf500' || effectiveFormat === 'pdfA4');
     const title = isPdf ? 'Purchase Order Receipt (PDF)' : 'Purchase Order Receipt (Thermal)';
     const html = generatePOSPrintHTML(printArea.innerHTML, title, 'receipt', effectiveFormat);

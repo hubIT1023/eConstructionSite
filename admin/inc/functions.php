@@ -788,3 +788,7 @@ if (!function_exists('handle_add_to_cart_submission')) {
         }
     }
 }
+
+if (file_exists(__DIR__ . '/CategoryEngine.php')) {
+    require_once __DIR__ . '/CategoryEngine.php';
+}

@@ -17,6 +17,8 @@ scratch/
 transcript*.jsonl
 local_*.txt
 droplet_*.txt
+*.xlsx
+*.csv
 
 # Archive, Backup & Dump Files
 *.tar.gz
