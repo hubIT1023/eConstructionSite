@@ -387,7 +387,8 @@ if (!empty($_SESSION['pos_po_success'])) {
                 'grand_total' => floatval($po_p_row['paid_amount']),
                 'supplier_name' => !empty($supplier_info['supplier_name']) ? $supplier_info['supplier_name'] : 'eConstruction Supplier Store',
                 'supplier_phone' => !empty($supplier_info['supplier_phone']) ? $supplier_info['supplier_phone'] : '',
-                'supplier_address' => !empty($supplier_info['supplier_address']) ? $supplier_info['supplier_address'] : ''
+                'supplier_address' => !empty($supplier_info['supplier_address']) ? $supplier_info['supplier_address'] : '',
+                'cashier_name' => (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier'))
             ];
         }
     } catch (Exception $e) {}
@@ -729,7 +730,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         'change_amount' => $change_amount,
                         'supplier_name' => $supplier_info['supplier_name'],
                         'supplier_address' => $supplier_info['supplier_address'],
-                        'supplier_phone' => $supplier_info['supplier_phone']
+                        'supplier_phone' => $supplier_info['supplier_phone'],
+                        'cashier_name' => (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier'))
                     );
 
                     // Clear temporary session carts
@@ -1047,7 +1049,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     'change_amount' => $change_amount,
                     'supplier_name' => $supplier_info['supplier_name'],
                     'supplier_address' => $supplier_info['supplier_address'],
-                    'supplier_phone' => $supplier_info['supplier_phone']
+                    'supplier_phone' => $supplier_info['supplier_phone'],
+                    'cashier_name' => (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier'))
                 );
 
                 // Clear session cart on complete sale
@@ -3101,6 +3104,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
 <?php if ($pos_success_receipt): 
     $cashier_name = !empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier');
+    $pos_success_receipt['cashier_name'] = $cashier_name;
     $receipt_id = htmlspecialchars($pos_success_receipt['payment_id']);
 ?>
 <script>
@@ -3360,7 +3364,10 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
 </div>
 <?php endif; ?>
 
-<?php if ($pos_po_success_data): ?>
+<?php if ($pos_po_success_data): 
+    $po_cashier_name = !empty($pos_po_success_data['cashier_name']) ? $pos_po_success_data['cashier_name'] : (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier'));
+    $pos_po_success_data['cashier_name'] = $po_cashier_name;
+?>
 <script>
 window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
 </script>
@@ -3389,6 +3396,10 @@ window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
                         <tr>
                             <td style="width: 28%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">PO NO   :</td>
                             <td style="padding: 1px 0; vertical-align: top; font-weight: bold;"><?php echo htmlspecialchars($pos_po_success_data['po_id']); ?></td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CASHIER :</td>
+                            <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($po_cashier_name); ?></td>
                         </tr>
                         <tr>
                             <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CUSTOMER:</td>

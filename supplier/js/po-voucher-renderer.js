@@ -319,6 +319,9 @@
             // 4. Metadata Table (Left-aligned)
             buffer += ESCPOS.ALIGN_LEFT;
             buffer += this.twoColumnLine('PO NO   :', d.po_number, totalCols);
+            if (d.cashier_name) {
+                buffer += this.twoColumnLine('CASHIER   :', d.cashier_name, totalCols);
+            }
             buffer += this.twoColumnLine('CUSTOMER:', d.customer_name, totalCols);
             buffer += this.twoColumnLine('STATUS  :', 'AWAITING PAYMENT', totalCols);
             buffer += this.twoColumnLine('DATE    :', d.po_date, totalCols);
@@ -652,6 +655,7 @@
                 store_name: (data.supplier && data.supplier.name) || data.store_name || 'SAM & INRI CONSTRUCTION SUPPLY',
                 store_phone: (data.supplier && data.supplier.phone) || data.store_phone || '09612735733',
                 store_address: (data.supplier && data.supplier.address) || data.store_address || '',
+                cashier_name: data.cashier_name || data.cashier || (data.supplier && data.supplier.cashier) || '',
                 items: normalizedItems,
                 gross_subtotal: grossSubtotal,
                 total_discount_savings: discountSavings,
@@ -709,6 +713,11 @@
                         <td style="width: 28%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">PO NO   :</td>
                         <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${POVoucherRenderer.escapeHtml(d.po_number)}</td>
                     </tr>
+                    ${d.cashier_name ? `
+                    <tr>
+                        <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CASHIER :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(d.cashier_name)}</td>
+                    </tr>` : ''}
                     <tr>
                         <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CUSTOMER:</td>
                         <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(d.customer_name)}</td>
@@ -848,7 +857,7 @@
                 payment_id: data.payment_id || data.txnid || 'OR-PAID',
                 payment_date: data.payment_date || data.date || new Date().toLocaleString(),
                 payment_method: data.payment_method || 'Cash',
-                cashier_name: data.cashier_name || data.cashier || '',
+                cashier_name: data.cashier_name || data.cashier || (data.supplier && data.supplier.cashier) || '',
                 customer_name: (data.customer && data.customer.name) || data.customer_name || 'Walk-in Customer',
                 store_name: (data.supplier && data.supplier.name) || data.store_name || 'SAM & INRI CONSTRUCTION SUPPLY',
                 store_phone: (data.supplier && data.supplier.phone) || data.store_phone || '09612735733',
