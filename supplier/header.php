@@ -177,6 +177,32 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 	<link rel="stylesheet" href="style.css">
 	<script src="js/jquery-2.2.4.min.js"></script>
 	<script src="js/po-voucher-renderer.js"></script>
+	<script>
+		// Anti-flicker: instantly apply sidebar-collapse before render if persisted
+		(function() {
+			try {
+				if (localStorage.getItem('supplier_sidebar_collapsed') === 'true') {
+					document.documentElement.className += ' sidebar-collapse-preloaded';
+				}
+			} catch(e) {}
+		})();
+	</script>
+	<style>
+		html.sidebar-collapse-preloaded body.sidebar-mini {
+			/* Fast pre-render collapse */
+		}
+		body.sidebar-collapse .sidebar-collapse-header .sidebar-menu-title {
+			display: none !important;
+		}
+		body.sidebar-collapse .sidebar-collapse-header {
+			justify-content: center !important;
+			padding: 8px 0 !important;
+		}
+		.sidebar-toggle-btn:hover {
+			color: #ffffff !important;
+			background: rgba(255,255,255,0.1);
+		}
+	</style>
 
 </head>
 
@@ -248,6 +274,14 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
   		<aside class="main-sidebar">
     		<section class="sidebar">
       
+				<!-- Sidebar Quick Toggle / Collapse Header -->
+				<div class="sidebar-collapse-header" style="padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.15);">
+					<span class="sidebar-menu-title" style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Navigation</span>
+					<a href="javascript:void(0)" class="sidebar-toggle-btn" onclick="toggleSidebarCollapse()" title="Collapse / Expand Sidebar" style="color: #94a3b8; padding: 2px 6px; border-radius: 4px; transition: all 0.2s ease;">
+						<i class="fa fa-angle-double-left" id="sidebarCollapseIcon" style="font-size: 14px;"></i>
+					</a>
+				</div>
+
       			<ul class="sidebar-menu">
 
                 <?php if ($is_admin): ?>
@@ -752,4 +786,50 @@ function reprintSidebarPOVoucher() {
         window.POVoucherRenderer.print(currentSidebarPOData, '58');
     }
 }
+
+// ================= SIDEBAR COLLAPSE CONTROLLER & PERSISTENCE =================
+function toggleSidebarCollapse() {
+    var $body = $('body');
+    $body.toggleClass('sidebar-collapse');
+    var isNowCollapsed = $body.hasClass('sidebar-collapse');
+    try {
+        localStorage.setItem('supplier_sidebar_collapsed', isNowCollapsed ? 'true' : 'false');
+    } catch(e) {}
+    updateSidebarIcon(isNowCollapsed);
+}
+
+function updateSidebarIcon(isCollapsed) {
+    var $icon = $('#sidebarCollapseIcon');
+    if ($icon.length) {
+        if (isCollapsed) {
+            $icon.removeClass('fa-angle-double-left').addClass('fa-angle-double-right');
+        } else {
+            $icon.removeClass('fa-angle-double-right').addClass('fa-angle-double-left');
+        }
+    }
+}
+
+$(document).ready(function() {
+    // Restore sidebar state from localStorage
+    try {
+        var isPersistedCollapsed = localStorage.getItem('supplier_sidebar_collapsed') === 'true';
+        if (isPersistedCollapsed) {
+            $('body').addClass('sidebar-collapse');
+        } else if (localStorage.getItem('supplier_sidebar_collapsed') === 'false') {
+            $('body').removeClass('sidebar-collapse');
+        }
+        updateSidebarIcon($('body').hasClass('sidebar-collapse'));
+    } catch(e) {}
+
+    // Listen to the top navbar hamburger toggle button
+    $(document).on('click', '.sidebar-toggle, [data-toggle="offcanvas"]', function() {
+        setTimeout(function() {
+            var isCollapsed = $('body').hasClass('sidebar-collapse');
+            try {
+                localStorage.setItem('supplier_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+            } catch(e) {}
+            updateSidebarIcon(isCollapsed);
+        }, 100);
+    });
+});
 </script>
