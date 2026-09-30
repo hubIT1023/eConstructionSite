@@ -3196,7 +3196,7 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                                         <span class="badge" style="background: #e2e8f0; color: #334155; font-size: 11px;"><?php echo htmlspecialchars($item['product_details']); ?></span>
                                     <?php endif; ?>
                                 </td>
-                                <td style="text-align: center; font-weight: 700;"><?php echo $item_qty; ?></td>
+                                <td style="text-align: center; font-weight: 900; font-size: 14px; color: #000000; -webkit-print-color-adjust: exact;"><strong style="font-weight: 900; color: #000000;"><?php echo $item_qty; ?></strong></td>
                                 <td style="text-align: right; color: #475569;">₱<?php echo number_format($item_price, 2); ?></td>
                                 <td style="text-align: right; font-weight: 700; color: #0f172a;">₱<?php echo number_format($item_net, 2); ?></td>
                             </tr>
@@ -3298,7 +3298,7 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                             </tr>
                             <tr>
                                 <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
-                                    <?php echo $item_qty; ?> <?php echo $unit_label; ?> @ <?php echo number_format($item_price, 2); ?>
+                                    <strong style="font-weight: 900; font-size: 11pt; color: #000;"><?php echo $item_qty; ?> <?php echo $unit_label; ?></strong> @ <?php echo number_format($item_price, 2); ?>
                                 </td>
                                 <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
                                     <?php echo number_format($item_net, 2); ?>

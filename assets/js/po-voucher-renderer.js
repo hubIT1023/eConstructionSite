@@ -683,7 +683,7 @@
                 </tr>
                 <tr>
                     <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
-                        ${item.quantity} ${item.quantity > 1 ? 'pcs' : 'pc'} @ ${POVoucherRenderer.formatMoney(item.unit_price)}
+                        <strong style="font-weight: 900; font-size: 11pt; color: #000;">${item.quantity} ${item.quantity > 1 ? 'pcs' : 'pc'}</strong> @ ${POVoucherRenderer.formatMoney(item.unit_price)}
                     </td>
                     <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
                         ${POVoucherRenderer.formatMoney(item.line_net)}
@@ -885,7 +885,7 @@
                 </tr>
                 <tr>
                     <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
-                        ${item.quantity} ${item.quantity > 1 ? 'pcs' : 'pc'} @ ${POVoucherRenderer.formatMoney(item.unit_price)}
+                        <strong style="font-weight: 900; font-size: 11pt; color: #000;">${item.quantity} ${item.quantity > 1 ? 'pcs' : 'pc'}</strong> @ ${POVoucherRenderer.formatMoney(item.unit_price)}
                     </td>
                     <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
                         ${POVoucherRenderer.formatMoney(item.line_net)}
