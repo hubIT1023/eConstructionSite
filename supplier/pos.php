@@ -1433,11 +1433,12 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     border-radius: 4px;
 }
 .pos-variant-chip {
-    height: 48px;
-    min-height: 48px;
-    min-width: 140px;
-    padding: 0 16px;
-    font-size: 14.5px;
+    width: 100%;
+    min-width: 0;
+    min-height: 52px;
+    height: auto;
+    padding: 8px 14px;
+    font-size: 14px;
     font-weight: 700;
     color: #0f172a;
     background: #ffffff;
@@ -1452,6 +1453,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     user-select: none;
     text-decoration: none !important;
+}
+@media (max-width: 640px) {
+    #vModalChipsList {
+        grid-template-columns: 1fr !important;
+    }
 }
 .pos-variant-chip:hover {
     border-color: #0284c7;
@@ -2213,7 +2219,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
 <!-- Interactive Product / Variant Selection Modal -->
 <div class="modal fade" id="posVariantModal" tabindex="-1" role="dialog" aria-labelledby="posVariantModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-md" role="document">
+    <div class="modal-dialog modal-lg" role="document" style="max-width: 760px; width: 95%; margin: 30px auto;">
         <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
             <div class="modal-header" style="background: #1e3a8a; color: #fff; padding: 14px 18px;">
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="color: #fff; opacity: 0.9; font-size: 24px;">
@@ -2263,7 +2269,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <label style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; display: block; text-transform: uppercase;">
                         Quick Variant Selector:
                     </label>
-                    <div id="vModalChipsList" style="display: flex; flex-wrap: wrap; gap: 8px 10px; max-height: 200px; overflow-y: auto; padding: 4px;"></div>
+                    <div id="vModalChipsList" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; max-height: 240px; overflow-y: auto; padding: 4px;"></div>
                 </div>
 
                 <!-- Quantity & Live Subtotal -->
@@ -3887,14 +3893,14 @@ function openVariantModal(group) {
             firstInStockVariant = v;
         }
         
-        // Populate Select Option
+        // Populate Select Option (Full Product Title + Price + Stock)
         const opt = document.createElement('option');
         opt.value = v.id;
         opt.disabled = isOutOfStock;
-        opt.innerText = `${v.spec_label} - ₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${isOutOfStock ? 'Out of stock' : v.stock + ' in stock'})`;
+        opt.innerText = `${v.name} - ₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${isOutOfStock ? 'Out of stock' : v.stock + ' in stock'})`;
         select.appendChild(opt);
         
-        // Populate Quick Variant Chip (Senior-Friendly 48px Touch Pill)
+        // Populate Quick Variant Chip (Two-Line Stacked Chip with Product Name + Spec & Price)
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = `pos-variant-chip ${isOutOfStock ? 'disabled' : ''}`;
@@ -3902,11 +3908,16 @@ function openVariantModal(group) {
         chip.setAttribute('data-id', v.id);
         chip.title = isOutOfStock ? 'Out of stock' : `${v.stock} units available in stock`;
         chip.innerHTML = `
-            <span style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                <i class="fa ${isOutOfStock ? 'fa-ban text-danger' : 'fa-check-circle'}" style="font-size: 15px;"></i>
-                <span style="font-size: 14.5px; font-weight: 800;">${escapeHtml(v.spec_label)}</span>
-            </span>
-            <span class="chip-price-badge">₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: left; overflow: hidden; max-width: calc(100% - 85px);">
+                <div style="font-size: 13.5px; font-weight: 800; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">
+                    ${escapeHtml(v.name)}
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 12.5px; opacity: 0.9;">
+                    <i class="fa ${isOutOfStock ? 'fa-ban text-danger' : 'fa-check-circle'}" style="font-size: 13px;"></i>
+                    <span style="font-weight: 700;">${escapeHtml(v.spec_label)}</span>
+                </div>
+            </div>
+            <span class="chip-price-badge" style="align-self: center; margin-left: 8px; flex-shrink: 0;">₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
         `;
         if (!isOutOfStock) {
             chip.onclick = function() { onVariantSelectChange(v.id); };
