@@ -480,11 +480,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
     $has_pending_discount = false;
     $gross_subtotal = 0.00;
     $total_discount_savings = 0.00;
+    $total_return_credits = 0.00;
     $net_subtotal = 0.00;
 
     foreach ($cart_items as $item) {
-        $item_type = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER') ? 'SPECIAL_ORDER' : 'STANDARD';
+        $item_type = isset($item['item_type']) ? $item['item_type'] : 'STANDARD';
         $p_qty = max(1, intval($item['qty']));
+
+        if ($item_type === 'RETURN_CREDIT') {
+            $p_price = -abs(floatval($item['price']));
+            $credit_val = round(abs($p_price) * $p_qty, 2);
+            $total_return_credits += $credit_val;
+
+            $item['price'] = $p_price;
+            $item['authoritative_unit_price'] = $p_price;
+            $item['line_gross'] = -$credit_val;
+            $item['discount_amount'] = 0.00;
+            $item['discount_percent'] = 0.00;
+            $item['line_net'] = -$credit_val;
+            $item['discount_request_id'] = null;
+            $item['discount_status'] = null;
+            $item['stock'] = 999999;
+            $validated_items[] = $item;
+            continue;
+        }
+
         $p_price = max(0, floatval($item['price']));
 
         if ($item_type === 'STANDARD') {
@@ -570,8 +590,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
         'items' => $validated_items,
         'gross_subtotal' => $gross_subtotal,
         'total_discount_savings' => $total_discount_savings,
+        'total_return_credits' => $total_return_credits,
         'net_subtotal' => $net_subtotal,
-        'grand_total' => $net_subtotal + $delivery_cost
+        'grand_total' => max(0, ($net_subtotal + $delivery_cost) - $total_return_credits)
     ];
 
     echo json_encode(['status' => 'success', 'redirect' => 'checkout.php']);
@@ -814,11 +835,30 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
             $validated_items = [];
             $gross_subtotal = 0.00;
             $total_discount_savings = 0.00;
+            $total_return_credits = 0.00;
             $net_subtotal = 0.00;
 
             foreach ($cart_items as $item) {
-                $item_type = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER') ? 'SPECIAL_ORDER' : 'STANDARD';
+                $item_type = isset($item['item_type']) ? $item['item_type'] : 'STANDARD';
                 $p_qty = max(1, intval($item['qty']));
+
+                if ($item_type === 'RETURN_CREDIT') {
+                    $p_price = -abs(floatval($item['price']));
+                    $credit_val = round(abs($p_price) * $p_qty, 2);
+                    $total_return_credits += $credit_val;
+
+                    $item['price'] = $p_price;
+                    $item['authoritative_unit_price'] = $p_price;
+                    $item['line_gross'] = -$credit_val;
+                    $item['discount_amount'] = 0.00;
+                    $item['discount_percent'] = 0.00;
+                    $item['line_net'] = -$credit_val;
+                    $item['discount_request_id'] = null;
+                    $item['discount_status'] = null;
+                    $validated_items[] = $item;
+                    continue;
+                }
+
                 $p_price = max(0, floatval($item['price']));
 
                 if ($item_type === 'STANDARD') {
@@ -872,7 +912,9 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                 $pos_order_error = "Payment locked: One or more item discount requests are pending approval. Please complete or cancel pending discount requests before completing the sale.";
             } else {
                 $subtotal = $net_subtotal;
-                $grand_total = $subtotal + $delivery_cost;
+                $net_payable = ($subtotal + $delivery_cost) - $total_return_credits;
+                $grand_total = max(0, $net_payable);
+                $refund_due = ($net_payable < 0) ? abs($net_payable) : 0.00;
                 $change_amount = max(0, $amount_tendered - $grand_total);
 
                 $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
@@ -881,6 +923,12 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                 $tx_info = 'POS Terminal - Method: ' . $payment_method . ' | Tendered: ₱' . number_format($amount_tendered, 2) . ' | Change: ₱' . number_format($change_amount, 2);
                 if ($total_discount_savings > 0) {
                     $tx_info .= ' | Total Discounts: -₱' . number_format($total_discount_savings, 2);
+                }
+                if ($total_return_credits > 0) {
+                    $tx_info .= ' | Trade-In Return Credits: -₱' . number_format($total_return_credits, 2);
+                }
+                if ($refund_due > 0) {
+                    $tx_info .= ' | Refund Due to Customer: ₱' . number_format($refund_due, 2);
                 }
 
                 // Insert into tbl_payment
@@ -922,13 +970,173 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     $supplier_id
                 ));
 
-                // Insert items into tbl_order and update stock & link discount requests
+                // Insert items into tbl_order and update stock & link discount requests & returns
                 foreach ($validated_items as $item) {
-                    $item_type = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER') ? 'SPECIAL_ORDER' : 'STANDARD';
+                    $item_type = isset($item['item_type']) ? $item['item_type'] : 'STANDARD';
                     $p_qty = max(1, intval($item['qty']));
-                    $p_orig_unit_price = max(0, floatval($item['authoritative_unit_price']));
+                    $p_orig_unit_price = floatval($item['authoritative_unit_price']);
                     $p_line_net = floatval($item['line_net']);
                     $p_effective_unit_price = ($p_qty > 0) ? round($p_line_net / $p_qty, 2) : $p_orig_unit_price;
+
+                    if ($item_type === 'RETURN_CREDIT') {
+                        $orig_payment_id = !empty($item['original_payment_id']) ? trim($item['original_payment_id']) : (!empty($item['payment_id']) ? trim($item['payment_id']) : '');
+                        $orig_order_id = !empty($item['original_order_id']) ? (int)$item['original_order_id'] : (!empty($item['order_item_id']) ? (int)$item['order_item_id'] : 0);
+                        $orig_p_id = !empty($item['product_id']) ? (int)$item['product_id'] : 0;
+                        $abs_unit_price = abs($p_orig_unit_price);
+                        $credit_amount = round($abs_unit_price * $p_qty, 2);
+                        $condition = !empty($item['condition']) ? trim($item['condition']) : 'Good (Restock)';
+                        $ret_reason = !empty($item['return_reason']) ? trim($item['return_reason']) : 'Store Exchange';
+                        
+                        $mgr_override_name = '';
+                        if (!empty($item['manager_override'])) {
+                            if (is_array($item['manager_override']) && !empty($item['manager_override']['manager_name'])) {
+                                $mgr_override_name = $item['manager_override']['manager_name'];
+                            } elseif (is_string($item['manager_override'])) {
+                                $mgr_override_name = $item['manager_override'];
+                            }
+                        }
+                        if (empty($mgr_override_name) && !empty($item['manager_override_name'])) {
+                            $mgr_override_name = trim($item['manager_override_name']);
+                        }
+
+                        $ret_notes = 'In-Register Trade-In / Exchange on POS Sale ' . $payment_id . ($orig_payment_id ? ' (Original Inv: ' . $orig_payment_id . ')' : '');
+                        if (!empty($mgr_override_name)) {
+                            $ret_notes .= ' | Overridden by Manager: ' . $mgr_override_name;
+                        }
+
+                        ensure_return_schema($pdo);
+                        $return_ref = generate_unique_return_reference($pdo, $supplier_id);
+                        $ret_date = date('Y-m-d H:i:s');
+                        $current_uid = !empty($_SESSION['supplier_user']['id']) ? (int)$_SESSION['supplier_user']['id'] : null;
+                        $current_uname = !empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : 'Supplier Staff';
+                        $current_urole = !empty($_SESSION['supplier_user']['role']) ? normalize_supplier_role($_SESSION['supplier_user']['role']) : 'CASHIER';
+
+                        // 1. Insert into tbl_returns
+                        $stmt_ins_ret = $pdo->prepare("
+                            INSERT INTO tbl_returns (
+                                return_reference, payment_id, order_id, order_item_id, supplier_id,
+                                customer_id, customer_name, customer_email, customer_phone,
+                                return_date, refund_method, refund_amount, status,
+                                requested_by_id, requested_by_name, requested_by_role,
+                                approver_id, approver_name, approver_role, approver_remarks,
+                                approved_at, completed_at, processed_by, notes,
+                                created_at, updated_at
+                            ) VALUES (
+                                ?, ?, ?, ?, ?,
+                                ?, ?, ?, ?,
+                                ?, ?, ?, 'COMPLETED',
+                                ?, ?, ?,
+                                ?, ?, ?, ?,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                            ) RETURNING return_id
+                        ");
+                        $stmt_ins_ret->execute([
+                            $return_ref,
+                            $orig_payment_id ?: $payment_id,
+                            $orig_order_id,
+                            $orig_order_id,
+                            $supplier_id,
+                            $customer_id,
+                            $customer_name,
+                            $customer_email,
+                            $customer_phone,
+                            $ret_date,
+                            'Store Credit / Exchange',
+                            $credit_amount,
+                            $current_uid,
+                            $current_uname,
+                            $current_urole,
+                            $current_uid,
+                            $current_uname,
+                            $current_urole,
+                            $ret_notes,
+                            $current_uname,
+                            $ret_notes
+                        ]);
+                        $new_return_id_row = $stmt_ins_ret->fetch(PDO::FETCH_ASSOC);
+                        $new_return_id = $new_return_id_row ? (int)$new_return_id_row['return_id'] : 0;
+
+                        // 2. Insert into tbl_return_items
+                        if ($new_return_id > 0) {
+                            $stmt_ins_ri = $pdo->prepare("
+                                INSERT INTO tbl_return_items (
+                                    return_id, return_reference, order_item_id, product_id, product_name,
+                                    sku, size, color, item_type, special_order_reference, product_details,
+                                    quantity_returned, unit_price, refund_amount, return_reason,
+                                    condition, restock_status, notes, created_at
+                                ) VALUES (
+                                    ?, ?, ?, ?, ?,
+                                    ?, ?, ?, ?, ?, ?,
+                                    ?, ?, ?, ?,
+                                    ?, ?, ?, CURRENT_TIMESTAMP
+                                )
+                            ");
+                            $stmt_ins_ri->execute([
+                                $new_return_id,
+                                $return_ref,
+                                $orig_order_id,
+                                $orig_p_id,
+                                $item['name'],
+                                !empty($item['sku']) ? $item['sku'] : '',
+                                !empty($item['size']) ? $item['size'] : '',
+                                !empty($item['color']) ? $item['color'] : '',
+                                !empty($item['item_type']) ? $item['item_type'] : 'RETURN_CREDIT',
+                                !empty($item['special_order_reference']) ? $item['special_order_reference'] : '',
+                                !empty($item['product_details']) ? $item['product_details'] : (!empty($item['spec_label']) ? $item['spec_label'] : ''),
+                                $p_qty,
+                                $abs_unit_price,
+                                $credit_amount,
+                                $ret_reason,
+                                $condition,
+                                in_array($condition, ['Good (Restock)', 'Resellable', 'Unopened', 'Good / Resalable']) ? 'RESTOCKED' : 'DEFECTIVE_HELD',
+                                $ret_notes
+                            ]);
+                        }
+
+                        // 3. Restock inventory if condition is Resellable/Good/Unopened
+                        if (in_array($condition, ['Good (Restock)', 'Resellable', 'Unopened', 'Good / Resalable']) && $orig_p_id > 0) {
+                            $stmt_restock = $pdo->prepare("UPDATE tbl_product SET p_qty = p_qty + ? WHERE p_id = ? AND supplier_id = ?");
+                            $stmt_restock->execute([$p_qty, $orig_p_id, $supplier_id]);
+                        }
+
+                        // 4. Insert negative audit credit line into tbl_order
+                        $p_size = 'Exchange Credit';
+                        $p_color = 'Exchange Credit';
+                        $p_details = 'Exchange Return from ' . ($orig_payment_id ?: 'Previous Invoice') . ' (Ref: ' . $return_ref . ')';
+                        if (!empty($ret_reason)) {
+                            $p_details .= ' | Reason: ' . $ret_reason;
+                        }
+
+                        $statement_o = $pdo->prepare("INSERT INTO tbl_order (
+                            product_id,
+                            product_name,
+                            size,
+                            color,
+                            quantity,
+                            unit_price,
+                            payment_id,
+                            supplier_id,
+                            item_type,
+                            special_order_reference,
+                            product_details
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                        $statement_o->execute(array(
+                            $orig_p_id,
+                            $item['name'],
+                            $p_size,
+                            $p_color,
+                            strval($p_qty),
+                            strval(-$abs_unit_price),
+                            $payment_id,
+                            $supplier_id,
+                            'RETURN_CREDIT',
+                            $return_ref,
+                            $p_details
+                        ));
+
+                        continue;
+                    }
 
                     if ($item_type === 'SPECIAL_ORDER') {
                         $p_id = 0;
@@ -1042,6 +1250,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     'items' => $validated_items,
                     'gross_subtotal' => $gross_subtotal,
                     'total_discount_savings' => $total_discount_savings,
+                    'total_return_credits' => $total_return_credits,
+                    'refund_due' => $refund_due,
                     'subtotal' => $subtotal,
                     'delivery_cost' => $delivery_cost,
                     'grand_total' => $grand_total,
@@ -1072,39 +1282,62 @@ if (!empty($_SESSION['pos_cart']) && empty($pos_po_success_data) && empty($pos_s
 // Compute initial cart totals for immediate server-side rendering
 $init_gross_subtotal = 0.0;
 $init_discount_total = 0.0;
+$init_return_credit_total = 0.0;
 $init_net_subtotal = 0.0;
 
 if (!empty($active_pos_cart)) {
     foreach ($active_pos_cart as $ci) {
         $ci_q = max(1, intval($ci['qty'] ?? 1));
-        $ci_p = max(0, floatval($ci['price'] ?? 0));
-        $ci_gross = round($ci_q * $ci_p, 2);
-        $ci_disc = floatval($ci['discount_amount'] ?? 0);
-        if ($ci_disc <= 0 && !empty($ci['discount_percent'])) {
-            $ci_disc = round($ci_gross * (floatval($ci['discount_percent']) / 100), 2);
-        }
-        $ci_net = max(0, $ci_gross - $ci_disc);
+        $ci_item_type = $ci['item_type'] ?? 'STANDARD';
 
-        $init_gross_subtotal += $ci_gross;
-        $init_discount_total += $ci_disc;
-        $init_net_subtotal += $ci_net;
+        if ($ci_item_type === 'RETURN_CREDIT') {
+            $ci_p = abs(floatval($ci['price'] ?? 0));
+            $ci_credit = round($ci_q * $ci_p, 2);
+            $init_return_credit_total += $ci_credit;
+        } else {
+            $ci_p = max(0, floatval($ci['price'] ?? 0));
+            $ci_gross = round($ci_q * $ci_p, 2);
+            $ci_disc = floatval($ci['discount_amount'] ?? 0);
+            if ($ci_disc <= 0 && !empty($ci['discount_percent'])) {
+                $ci_disc = round($ci_gross * (floatval($ci['discount_percent']) / 100), 2);
+            }
+            $ci_net = max(0, $ci_gross - $ci_disc);
+
+            $init_gross_subtotal += $ci_gross;
+            $init_discount_total += $ci_disc;
+            $init_net_subtotal += $ci_net;
+        }
     }
 }
 
 $init_delivery_cost = (!empty($saved_is_location) && !empty($saved_fulfillment['delivery_cost'])) ? floatval($saved_fulfillment['delivery_cost']) : 0.00;
-$init_grand_total = $init_net_subtotal + $init_delivery_cost;
+$init_grand_total = max(0, ($init_net_subtotal + $init_delivery_cost) - $init_return_credit_total);
+$init_refund_due = max(0, $init_return_credit_total - ($init_net_subtotal + $init_delivery_cost));
 
 // Normalize items in active POS cart to ensure all JS/UI fields exist
 if (!empty($active_pos_cart)) {
     foreach ($active_pos_cart as &$pi) {
-        $p_type = (isset($pi['item_type']) && $pi['item_type'] === 'SPECIAL_ORDER') ? 'SPECIAL_ORDER' : 'STANDARD';
+        $p_type = isset($pi['item_type']) ? $pi['item_type'] : 'STANDARD';
         $pi['item_type'] = $p_type;
         $pi['qty'] = max(1, intval($pi['qty']));
-        $pi['price'] = max(0, floatval($pi['price']));
-        if (!isset($pi['base_name']) || empty($pi['base_name'])) {
-            $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Product';
-        }
-        if ($p_type === 'STANDARD') {
+
+        if ($p_type === 'RETURN_CREDIT') {
+            $pi['price'] = -abs(floatval($pi['price']));
+            $pi['stock'] = 999999;
+            if (!isset($pi['base_name']) || empty($pi['base_name'])) {
+                $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Return Credit';
+            }
+        } elseif ($p_type === 'SPECIAL_ORDER') {
+            $pi['price'] = max(0, floatval($pi['price']));
+            $pi['stock'] = 999999;
+            if (!isset($pi['base_name']) || empty($pi['base_name'])) {
+                $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Product';
+            }
+        } else {
+            $pi['price'] = max(0, floatval($pi['price']));
+            if (!isset($pi['base_name']) || empty($pi['base_name'])) {
+                $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Product';
+            }
             $p_id = intval($pi['id']);
             $stmt_pk = $pdo->prepare("SELECT p_name, p_qty, p_current_price FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
             $stmt_pk->execute(array($p_id, $supplier_id));
@@ -1114,8 +1347,6 @@ if (!empty($active_pos_cart)) {
             } elseif (!isset($pi['stock'])) {
                 $pi['stock'] = 0;
             }
-        } else {
-            $pi['stock'] = 999999;
         }
     }
     unset($pi);
@@ -1588,18 +1819,77 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 .pos-category-accordion-wrapper.collapsed .pos-cat-toggle-bar {
     border-bottom: none;
 }
+.pos-dept-carousel-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    width: 100%;
+}
+.pos-dept-nav-btn {
+    width: 32px;
+    height: 38px;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    color: #475569;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    z-index: 2;
+}
+.pos-dept-nav-btn:hover:not(:disabled) {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #0284c7;
+    box-shadow: 0 2px 6px rgba(2,132,199,0.3);
+}
+.pos-dept-nav-btn:disabled,
+.pos-dept-nav-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: #f1f5f9;
+    color: #94a3b8;
+    border-color: #e2e8f0;
+    box-shadow: none;
+}
 .pos-dept-tabs-bar {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
     gap: 6px;
-    margin-bottom: 8px;
-    overflow-x: hidden;
+    padding: 2px 6px;
+    margin: 0;
+    flex-grow: 1;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+.pos-dept-tabs-bar::-webkit-scrollbar {
+    height: 4px;
+}
+.pos-dept-tabs-bar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.pos-dept-tabs-bar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+.pos-dept-tabs-bar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 .pos-dept-tab {
-    height: 40px;
-    min-height: 40px;
+    height: 38px;
+    min-height: 38px;
     padding: 0 14px;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
     color: #475569;
     background: #ffffff;
@@ -1613,6 +1903,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     transition: all 0.15s ease;
     box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     white-space: nowrap;
+    flex-shrink: 0;
     text-decoration: none !important;
 }
 .pos-dept-tab:hover {
@@ -1697,22 +1988,79 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 .pos-cat-pill.active i {
     color: #bae6fd;
 }
+
+/* Compact POS Content Header & Content Area */
+.content-header {
+    padding: 6px 15px 2px 15px !important;
+}
+.content {
+    padding-top: 6px !important;
+}
+.pos-compact-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 30px;
+}
+.pos-header-title {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 7px;
+}
+.pos-header-subtitle {
+    font-size: 11.5px !important;
+    color: #64748b !important;
+    font-weight: 500 !important;
+    border-left: 1.5px solid #cbd5e1;
+    padding-left: 8px;
+    margin-left: 4px;
+    display: inline-block;
+}
+.pos-hdr-btn {
+    height: 28px !important;
+    padding: 3px 10px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    line-height: 1.2 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
 </style>
 
 <section class="content-header">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-        <h1>
-            <i class="fa fa-calculator" style="color: #2563eb;"></i> Point of Sale (POS)
-            <small>Over-the-Counter Sales & Direct Billing</small>
-        </h1>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <a href="user-manual.php" target="_blank" class="btn btn-info btn-sm" style="font-weight: 700;"><i class="fa fa-book"></i> User Manual & SOP</a>
+    <div class="pos-compact-header">
+        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+            <h1 class="pos-header-title">
+                <i class="fa fa-calculator" style="color: #2563eb; font-size: 15px;"></i> Point of Sale (POS)
+            </h1>
+            <span class="pos-header-subtitle hidden-xs">Over-the-Counter Sales &amp; Direct Billing</span>
+        </div>
+        <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
+            <a href="user-manual.php" target="_blank" class="btn btn-info btn-xs pos-hdr-btn" style="background-color: #0284c7; border-color: #0369a1; font-weight: 700;">
+                <i class="fa fa-book"></i> User Manual &amp; SOP
+            </a>
             <?php if (is_admin_or_manager_role($pos_user_role) || is_supervisor_role($pos_user_role) || $pos_user_role === 'CASHIER'): ?>
-                <a href="returns.php" class="btn btn-default btn-sm"><i class="fa fa-undo"></i> Return History</a>
-                <a href="order.php" class="btn btn-default btn-sm"><i class="fa fa-list"></i> Order History</a>
+                <a href="returns.php" class="btn btn-default btn-xs pos-hdr-btn">
+                    <i class="fa fa-undo"></i> Return History
+                </a>
+                <a href="order.php" class="btn btn-default btn-xs pos-hdr-btn">
+                    <i class="fa fa-list"></i> Order History
+                </a>
             <?php endif; ?>
             <?php if (is_admin_or_manager_role($pos_user_role)): ?>
-                <a href="index.php" class="btn btn-default btn-sm"><i class="fa fa-dashboard"></i> Dashboard</a>
+                <a href="index.php" class="btn btn-default btn-xs pos-hdr-btn">
+                    <i class="fa fa-dashboard"></i> Dashboard
+                </a>
             <?php endif; ?>
         </div>
     </div>
@@ -1738,7 +2086,19 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <div class="col-sm-5 col-xs-12" style="margin-bottom: 6px;">
                             <div class="input-group">
                                 <span class="input-group-addon" style="font-size: 16px;"><i class="fa fa-search"></i></span>
-                                <input type="text" id="posSearchInput" class="form-control input-lg" style="height: 42px; font-size: 15px;" placeholder="Search product by name, brand, spec, or SKU..." onkeyup="filterPOSProducts()">
+                                <input type="search" 
+                                       id="posSearchInput" 
+                                       name="pos_catalog_search_term" 
+                                       class="form-control input-lg" 
+                                       style="height: 42px; font-size: 15px;" 
+                                       placeholder="Search product by name, brand, spec, or SKU..." 
+                                       autocomplete="off" 
+                                       autocorrect="off" 
+                                       autocapitalize="off" 
+                                       spellcheck="false" 
+                                       data-lpignore="true" 
+                                       data-form-type="other"
+                                       onkeyup="filterPOSProducts()">
                                 <span class="input-group-btn">
                                     <button class="btn btn-default input-lg" type="button" onclick="clearPOSSearch()" style="height: 42px;"><i class="fa fa-times"></i></button>
                                 </span>
@@ -1782,16 +2142,24 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                         <!-- Collapsible Body (Tier 1 + Tier 2) -->
                         <div class="pos-cat-collapsible-body" id="posCatCollapsibleBody">
-                            <!-- Tier 1: Main Department Tabs -->
-                            <div class="pos-dept-tabs-bar">
-                                <button type="button" class="pos-dept-tab active" data-dept="all" onclick="filterDepartment('all', this)">
-                                    <i class="fa fa-th-large"></i> Top Categories (<?php echo count($grouped_products); ?>)
+                            <!-- Tier 1: Main Department Tabs (Single-Row Horizontal Carousel with Left/Right Nav Chevrons) -->
+                            <div class="pos-dept-carousel-wrapper">
+                                <button type="button" class="pos-dept-nav-btn" id="posDeptNavPrev" onclick="scrollDeptCarousel(-260)" title="Scroll Left" aria-label="Scroll Left" style="margin-right: 4px;">
+                                    <i class="fa fa-chevron-left"></i>
                                 </button>
-                                <?php foreach ($parent_departments as $dept_name => $dept_cats): ?>
-                                    <button type="button" class="pos-dept-tab" data-dept="<?php echo htmlspecialchars($dept_name); ?>" onclick="filterDepartment('<?php echo htmlspecialchars(addslashes($dept_name)); ?>', this)">
-                                        <i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($dept_name); ?> <span class="badge" style="background:#e2e8f0; color:#334155; margin-left:3px;"><?php echo count($dept_cats); ?></span>
+                                <div class="pos-dept-tabs-bar" id="posDeptTabsBar" onscroll="updateDeptNavState()">
+                                    <button type="button" class="pos-dept-tab active" data-dept="all" onclick="filterDepartment('all', this)">
+                                        <i class="fa fa-th-large"></i> Top Categories (<?php echo count($grouped_products); ?>)
                                     </button>
-                                <?php endforeach; ?>
+                                    <?php foreach ($parent_departments as $dept_name => $dept_cats): ?>
+                                        <button type="button" class="pos-dept-tab" data-dept="<?php echo htmlspecialchars($dept_name); ?>" onclick="filterDepartment('<?php echo htmlspecialchars(addslashes($dept_name)); ?>', this)">
+                                            <i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($dept_name); ?> <span class="badge" style="background:#e2e8f0; color:#334155; margin-left:3px;"><?php echo count($dept_cats); ?></span>
+                                        </button>
+                                    <?php endforeach; ?>
+                                </div>
+                                <button type="button" class="pos-dept-nav-btn" id="posDeptNavNext" onclick="scrollDeptCarousel(260)" title="Scroll Right" aria-label="Scroll Right" style="margin-left: 4px;">
+                                    <i class="fa fa-chevron-right"></i>
+                                </button>
                             </div>
 
                             <!-- Tier 2: Sub-Category Pills (Clean 2-3 Rows, Zero Horizontal Scroll) -->
@@ -2036,6 +2404,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <?php else: ?>
                                     <?php foreach ($active_pos_cart as $item): 
                                         $isSpecialOrder = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER');
+                                        $isReturnCredit = (isset($item['item_type']) && $item['item_type'] === 'RETURN_CREDIT');
                                         $grossLineTotal = floatval($item['price']) * intval($item['qty']);
                                         $itemId = $item['id'];
                                         $itemIdEsc = htmlspecialchars(json_encode($itemId));
@@ -2057,16 +2426,25 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                             if (!empty($item['diameter'])) $specsArr[] = '<span style="color: #047857; font-weight: 700; font-size: 11px;">' . htmlspecialchars($item['diameter']) . '</span>';
                                             if (!empty($item['color'])) $specsArr[] = '<span class="pos-color-badge pos-color-' . strtolower(htmlspecialchars($item['color'])) . '">' . htmlspecialchars($item['color']) . '</span>';
                                         }
-                                        if (empty($specsArr) && !empty($item['product_details']) && !$isSpecialOrder) {
+                                        if (empty($specsArr) && !empty($item['product_details']) && !$isSpecialOrder && !$isReturnCredit) {
                                             $specsArr[] = '<span style="color: #64748b; font-size: 11px;">' . htmlspecialchars($item['product_details']) . '</span>';
                                         }
                                         $refOrSku = $isSpecialOrder
                                             ? (!empty($item['special_order_reference']) ? 'Ref: ' . htmlspecialchars($item['special_order_reference']) . ' | ' : '')
                                             : (!empty($item['sku']) ? 'SKU: ' . htmlspecialchars($item['sku']) . ' | ' : '');
                                     ?>
-                                        <tr <?php echo $isSpecialOrder ? 'style="background-color: #fffbeb;"' : ''; ?>>
+                                        <tr <?php echo $isReturnCredit ? 'style="background-color: #fef2f2;"' : ($isSpecialOrder ? 'style="background-color: #fffbeb;"' : ''); ?>>
                                             <td style="padding: 8px 4px;">
-                                                <?php if ($isSpecialOrder): ?>
+                                                <?php if ($isReturnCredit): ?>
+                                                    <span class="label label-danger" style="background-color: #dc2626; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;">
+                                                        <i class="fa fa-undo"></i> RETURN CREDIT
+                                                    </span>
+                                                    <?php if (!empty($item['product_details'])): ?>
+                                                        <div style="font-size: 11px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">
+                                                            <?php echo htmlspecialchars($item['product_details']); ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                <?php elseif ($isSpecialOrder): ?>
                                                     <span class="label label-warning" style="background-color: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;">
                                                         <i class="fa fa-star"></i> SPECIAL ORDER
                                                     </span>
@@ -2083,7 +2461,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                                     </div>
                                                 <?php endif; ?>
                                                 <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-top: 2px;">
-                                                    <?php echo $refOrSku; ?>&#8369;<?php echo number_format($item['price'], 2); ?> each
+                                                    <?php echo $refOrSku; ?>&#8369;<?php echo number_format(abs($item['price']), 2); ?> each
                                                 </div>
                                                 <?php if ($dStatus === 'APPROVED' || $dStatus === 'APPROVED_MODIFIED' || $dAmt > 0): ?>
                                                     <div style="margin-top: 4px;">
@@ -2101,7 +2479,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                                 </div>
                                             </td>
                                             <td style="padding: 8px 4px; text-align: right;">
-                                                <?php if ($dAmt > 0): ?>
+                                                <?php if ($isReturnCredit): ?>
+                                                    <span style="font-weight: 800; font-size: 15px; color: #dc2626;">-&#8369;<?php echo number_format(abs($grossLineTotal), 2); ?></span>
+                                                <?php elseif ($dAmt > 0): ?>
                                                     <span style="text-decoration: line-through; color: #94a3b8; font-size: 11px; display: block;">&#8369;<?php echo number_format($grossLineTotal, 2); ?></span>
                                                     <span style="font-weight: 800; font-size: 15px; color: #047857;">&#8369;<?php echo number_format($netLine, 2); ?></span>
                                                 <?php else: ?>
@@ -2122,8 +2502,24 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </table>
                     </div>
 
+                    <!-- Down-Trade Exchange Notification Banner (shown when replacement item is cheaper than returned item) -->
+                    <div id="posDownTradeAlert" style="<?php echo ($init_refund_due > 0) ? 'display: block;' : 'display: none;'; ?> background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; color: #92400e;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                            <span class="label label-warning" style="background: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase;">
+                                <i class="fa fa-info-circle"></i> DOWN-TRADE EXCHANGE
+                            </span>
+                            <strong style="font-size: 13px; color: #b45309;" id="posDownTradeBadgeAmt">Refund Due: &#8369;<?php echo number_format($init_refund_due, 2); ?></strong>
+                        </div>
+                        <div style="font-size: 12.5px; font-weight: 700; line-height: 1.35; margin-top: 4px;">
+                            Replacement item(s) cost less than the returned item(s).
+                        </div>
+                        <div style="font-size: 11.5px; color: #78350f; margin-top: 3px;" id="posDownTradeFormula">
+                            Return credit (&#8369;<?php echo number_format($init_return_credit_total, 2); ?>) exceeds new items (&#8369;<?php echo number_format($init_net_subtotal + $init_delivery_cost, 2); ?>). <strong>Pay out &#8369;<?php echo number_format($init_refund_due, 2); ?></strong> from cash drawer to customer.
+                        </div>
+                    </div>
+
                     <!-- Pricing & Fulfillment Summary -->
-                    <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 15px;">
+                    <div id="posPricingSummaryBox" style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 15px;">
                         <input type="hidden" name="delivery_type" id="posDeliveryType" value="pickup">
                         <input type="hidden" name="delivery_cost" id="posDeliveryCost" value="0.00">
 
@@ -2135,6 +2531,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <div id="posDiscountSavingsRow" style="<?php echo ($init_discount_total > 0) ? 'display: flex;' : 'display: none;'; ?> justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
                             <span class="text-muted" style="font-weight: 600;">Total Discounts:</span>
                             <span style="font-weight: 800; color: #16a34a;">-&#8369;<span id="posDiscountSavingsDisplay"><?php echo number_format($init_discount_total, 2); ?></span></span>
+                        </div>
+
+                        <div id="posReturnCreditRow" style="<?php echo ($init_return_credit_total > 0) ? 'display: flex;' : 'display: none;'; ?> justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
+                            <span class="text-muted" style="font-weight: 600;"><i class="fa fa-undo text-danger"></i> Return Credit:</span>
+                            <span style="font-weight: 800; color: #dc2626;">-&#8369;<span id="posReturnCreditDisplay"><?php echo number_format($init_return_credit_total, 2); ?></span></span>
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px;">
@@ -2150,8 +2551,22 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </div>
 
                         <div style="background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 18px; font-weight: 800; color: #1e3a8a;">Grand Total:</span>
+                            <div>
+                                <span style="font-size: 18px; font-weight: 800; color: #1e3a8a;">Grand Total:</span>
+                                <div id="posGrandTotalSubtext" style="font-size: 11px; color: #0284c7; font-weight: 700;"><?php echo ($init_refund_due > 0) ? '(No Payment Required)' : ''; ?></div>
+                            </div>
                             <span style="font-size: 24px; font-weight: 900; color: #1d4ed8;">&#8369;<span id="posGrandTotal"><?php echo number_format($init_grand_total, 2); ?></span></span>
+                        </div>
+
+                        <!-- Dedicated Refund Due Row in Summary Box -->
+                        <div id="posRefundDueRow" style="<?php echo ($init_refund_due > 0) ? 'display: flex;' : 'display: none;'; ?> background: #ecfdf5; border: 2px solid #10b981; border-radius: 8px; padding: 10px 14px; margin-top: 8px; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 14px; font-weight: 800; color: #065f46; text-transform: uppercase;">
+                                    <i class="fa fa-hand-holding-usd"></i> Refund Due:
+                                </div>
+                                <div style="font-size: 11px; color: #047857;">(Store pays out to customer)</div>
+                            </div>
+                            <span style="font-size: 22px; font-weight: 900; color: #059669;">&#8369;<span id="posRefundDueDisplay"><?php echo number_format($init_refund_due, 2); ?></span></span>
                         </div>
                     </div>
 
@@ -2205,7 +2620,11 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </a>
                     <?php else: ?>
                         <button type="submit" id="posCompleteBtn" class="btn btn-success btn-block btn-lg" style="font-size: 18px; font-weight: 800; border-radius: 8px; padding: 14px 20px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);" <?php echo empty($active_pos_cart) ? 'disabled' : ''; ?>>
-                            <i class="fa fa-check-circle"></i> Complete Sale & Print Receipt
+                            <?php if ($init_refund_due > 0): ?>
+                                <i class="fa fa-hand-holding-usd"></i> Complete Exchange &amp; Pay Out &#8369;<?php echo number_format($init_refund_due, 2); ?>
+                            <?php else: ?>
+                                <i class="fa fa-check-circle"></i> Complete Sale &amp; Print Receipt
+                            <?php endif; ?>
                         </button>
                     <?php endif; ?>
 
@@ -2483,6 +2902,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         </button>
                     </div>
 
+                    <!-- 7-Day Return Policy Dynamic Status Banner -->
+                    <div id="ret7DayStatusAlert" style="margin-bottom: 14px;"></div>
+
                     <!-- Order Header Info Card -->
                     <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                         <div>
@@ -2645,17 +3067,22 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                         <!-- Approval Notice Alert -->
                         <div class="alert alert-warning" style="margin-bottom: 16px; font-size: 12.5px; border-radius: 6px; padding: 10px 14px;">
-                            <i class="fa fa-info-circle"></i> <strong>Audit Policy:</strong> Submitting this return will create a <strong>PENDING APPROVAL</strong> request. A Manager or Administrator must review and approve it in the Return Approval portal before the refund is finalized and inventory adjusted. Cashiers cannot self-approve returns.
+                            <i class="fa fa-info-circle"></i> <strong>Audit Policy:</strong> Direct Refund will create a <strong>PENDING APPROVAL</strong> request for manager review. <strong>Exchange (Apply to Cart)</strong> adds instant return credit directly to your active sale.
                         </div>
 
                         <!-- Confirmation / Action Buttons -->
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 15px; flex-wrap: wrap; gap: 8px;">
                             <button type="button" class="btn btn-default" onclick="backToReturnOrdersList()" style="font-weight: 600;">
-                                Cancel
+                                <i class="fa fa-arrow-left"></i> Cancel / Back
                             </button>
-                            <button type="submit" id="retProcessSubmitBtn" class="btn btn-danger btn-lg" style="background: #dc2626; border-color: #b91c1c; font-weight: 800; padding: 10px 24px; font-size: 16px; border-radius: 6px; box-shadow: 0 4px 10px rgba(220,38,38,0.3);">
-                                <i class="fa fa-paper-plane"></i> Submit Return Request
-                            </button>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" id="retExchangeCartBtn" class="btn btn-warning btn-lg" onclick="applyCurrentReturnToCart()" style="background: #d97706; border-color: #b45309; color: #fff; font-weight: 800; padding: 10px 18px; font-size: 15px; border-radius: 6px; box-shadow: 0 4px 10px rgba(217,119,6,0.3);" title="Apply this return item as negative store credit to current sale">
+                                    <i class="fa fa-cart-arrow-down"></i> Exchange (Apply to Cart)
+                                </button>
+                                <button type="submit" id="retProcessSubmitBtn" class="btn btn-danger btn-lg" style="background: #dc2626; border-color: #b91c1c; font-weight: 800; padding: 10px 20px; font-size: 15px; border-radius: 6px; box-shadow: 0 4px 10px rgba(220,38,38,0.3);" title="Submit return for direct customer refund approval">
+                                    <i class="fa fa-paper-plane"></i> Direct Refund
+                                </button>
+                            </div>
                         </div>
 
                     </form>
@@ -2706,6 +3133,51 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 </button>
             </div>
 
+        </div>
+    </div>
+</div>
+
+<!-- Manager PIN Authorization Modal for 7-Day Return Policy Override -->
+<div class="modal fade" id="posManagerPinModal" tabindex="-1" role="dialog" aria-labelledby="posManagerPinModalLabel" aria-hidden="true" style="z-index: 10090;">
+    <div class="modal-dialog modal-sm" role="document" style="max-width: 420px; margin: 60px auto;">
+        <div class="modal-content" style="border-radius: 8px; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.4);">
+            <div class="modal-header" style="background: #b91c1c; color: #fff; padding: 14px 18px;">
+                <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.9; font-size: 22px;">&times;</button>
+                <h4 class="modal-title" id="posManagerPinModalLabel" style="font-weight: 800; font-size: 16px; margin: 0; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa fa-shield"></i> Manager PIN Required
+                </h4>
+            </div>
+            <div class="modal-body" style="padding: 18px 20px; background: #fff;">
+                <div class="alert alert-danger" style="font-size: 12px; margin-bottom: 14px; padding: 8px 10px; border-radius: 6px;">
+                    <i class="fa fa-exclamation-circle"></i> <strong>7-Day Return Policy Expired:</strong> This purchase exceeds the 7-day return window. Authorization by an Admin or Store Manager is required.
+                </div>
+                <form autocomplete="off" onsubmit="executeManagerPinVerify(); return false;" data-lpignore="true" style="margin: 0;">
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">
+                            Manager PIN / Password:
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-addon"><i class="fa fa-key text-danger"></i></span>
+                            <input type="password" 
+                                   id="posManagerPinInput" 
+                                   name="pos_mgr_pin_code"
+                                   class="form-control input-lg" 
+                                   placeholder="Enter PIN (e.g. 1234)..." 
+                                   style="font-size: 16px; font-weight: 700;" 
+                                   autocomplete="one-time-code" 
+                                   data-lpignore="true"
+                                   onkeyup="if(event.key === 'Enter') executeManagerPinVerify();">
+                        </div>
+                    </div>
+                </form>
+                <div id="posManagerPinAlert" class="alert alert-danger" style="display: none; font-size: 12px; padding: 6px 10px; margin-bottom: 0;"></div>
+            </div>
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 10px 18px; display: flex; justify-content: space-between;">
+                <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 600;">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="executeManagerPinVerify()" id="posManagerPinSubmitBtn" style="font-weight: 800; background: #dc2626; border-color: #b91c1c; padding: 6px 16px;">
+                    <i class="fa fa-unlock-alt"></i> Authorize Override
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -3192,23 +3664,29 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         </thead>
                         <tbody>
                             <?php foreach ($pos_success_receipt['items'] as $idx => $item): 
+                                $is_ret_credit = (($item['item_type'] ?? '') === 'RETURN_CREDIT');
                                 $item_qty = intval($item['qty']);
                                 $item_price = floatval($item['price']);
                                 $item_gross = $item_price * $item_qty;
                                 $item_disc = floatval($item['discount_amount'] ?? 0);
                                 $item_net = floatval($item['line_net'] ?? ($item_gross - $item_disc));
                             ?>
-                            <tr>
+                            <tr <?php echo $is_ret_credit ? 'style="background-color: #fef2f2;"' : ''; ?>>
                                 <td style="text-align: center; color: #64748b;"><?php echo ($idx + 1); ?></td>
                                 <td>
-                                    <div style="font-weight: 700; color: #0f172a;"><?php echo htmlspecialchars($item['name']); ?></div>
+                                    <?php if ($is_ret_credit): ?>
+                                        <span class="label label-danger" style="background-color: #dc2626; font-size: 10px; font-weight: 800; padding: 1px 5px; margin-right: 4px;"><i class="fa fa-undo"></i> RETURN CREDIT</span>
+                                    <?php endif; ?>
+                                    <span style="font-weight: 700; color: #0f172a;"><?php echo htmlspecialchars($item['name']); ?></span>
                                     <?php if (!empty($item['product_details'])): ?>
-                                        <span class="badge" style="background: #e2e8f0; color: #334155; font-size: 11px;"><?php echo htmlspecialchars($item['product_details']); ?></span>
+                                        <div class="badge" style="background: <?php echo $is_ret_credit ? '#fee2e2; color: #991b1b' : '#e2e8f0; color: #334155'; ?>; font-size: 11px; margin-top: 2px; white-space: normal; text-align: left;"><?php echo htmlspecialchars($item['product_details']); ?></div>
                                     <?php endif; ?>
                                 </td>
                                 <td style="text-align: center; font-weight: 900; font-size: 14px; color: #000000; -webkit-print-color-adjust: exact;"><strong style="font-weight: 900; color: #000000;"><?php echo $item_qty; ?></strong></td>
-                                <td style="text-align: right; color: #475569;">₱<?php echo number_format($item_price, 2); ?></td>
-                                <td style="text-align: right; font-weight: 700; color: #0f172a;">₱<?php echo number_format($item_net, 2); ?></td>
+                                <td style="text-align: right; color: #475569;">₱<?php echo number_format(abs($item_price), 2); ?></td>
+                                <td style="text-align: right; font-weight: 700; color: <?php echo $is_ret_credit ? '#dc2626' : '#0f172a'; ?>;">
+                                    <?php echo $is_ret_credit ? '-₱' . number_format(abs($item_net), 2) : '₱' . number_format($item_net, 2); ?>
+                                </td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -3230,10 +3708,22 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                                 <span style="font-weight: 600;">-₱<?php echo number_format($pos_success_receipt['total_discount_savings'], 2); ?></span>
                             </div>
                             <?php endif; ?>
+                            <?php if (!empty($pos_success_receipt['total_return_credits']) && $pos_success_receipt['total_return_credits'] > 0): ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #dc2626;">
+                                <span><i class="fa fa-undo"></i> Return Credit:</span>
+                                <span style="font-weight: 700;">-₱<?php echo number_format($pos_success_receipt['total_return_credits'], 2); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #0f172a; border-top: 2px dashed #cbd5e1; padding-top: 8px; margin-top: 6px;">
                                 <span>TOTAL PAID:</span>
                                 <span style="color: #059669; font-size: 18px;">₱<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></span>
                             </div>
+                            <?php if (!empty($pos_success_receipt['refund_due']) && $pos_success_receipt['refund_due'] > 0): ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; color: #d97706; font-weight: 700;">
+                                <span>Refund Paid Out:</span>
+                                <span style="font-weight: 800; color: #d97706;">₱<?php echo number_format($pos_success_receipt['refund_due'], 2); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <?php if (isset($pos_success_receipt['amount_tendered']) && $pos_success_receipt['amount_tendered'] > 0): ?>
                             <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-top: 6px; color: #64748b;">
                                 <span>Amount Tendered:</span>
@@ -3294,6 +3784,7 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         </thead>
                         <tbody>
                             <?php foreach ($pos_success_receipt['items'] as $item): 
+                                $is_ret_credit = (($item['item_type'] ?? '') === 'RETURN_CREDIT');
                                 $item_qty = intval($item['qty']);
                                 $item_price = floatval($item['price']);
                                 $item_gross = $item_price * $item_qty;
@@ -3303,15 +3794,15 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                             ?>
                             <tr>
                                 <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">
-                                    <?php echo htmlspecialchars($item['name']); ?>
+                                    <?php echo $is_ret_credit ? '[RETURN CREDIT] ' : ''; ?><?php echo htmlspecialchars($item['name']); ?>
                                 </td>
                             </tr>
                             <tr>
                                 <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
-                                    <strong style="font-weight: 900; font-size: 11pt; color: #000;"><?php echo $item_qty; ?> <?php echo $unit_label; ?></strong> @ <?php echo number_format($item_price, 2); ?>
+                                    <strong style="font-weight: 900; font-size: 11pt; color: #000;"><?php echo $item_qty; ?> <?php echo $unit_label; ?></strong> @ <?php echo number_format(abs($item_price), 2); ?>
                                 </td>
-                                <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
-                                    <?php echo number_format($item_net, 2); ?>
+                                <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom; font-weight: <?php echo $is_ret_credit ? 'bold' : 'normal'; ?>;">
+                                    <?php echo $is_ret_credit ? '-' . number_format(abs($item_net), 2) : number_format($item_net, 2); ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -3330,10 +3821,22 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                             <td style="text-align: right; padding: 1px 0; white-space: nowrap;">-<?php echo number_format($pos_success_receipt['total_discount_savings'], 2); ?></td>
                         </tr>
                         <?php endif; ?>
+                        <?php if (!empty($pos_success_receipt['total_return_credits']) && $pos_success_receipt['total_return_credits'] > 0): ?>
+                        <tr>
+                            <td style="text-align: left; padding: 1px 0;">Return Credit:</td>
+                            <td style="text-align: right; padding: 1px 0; white-space: nowrap;">-<?php echo number_format($pos_success_receipt['total_return_credits'], 2); ?></td>
+                        </tr>
+                        <?php endif; ?>
                         <tr style="font-weight: bold;">
                             <td style="text-align: left; padding: 2px 0; font-size: 1.08em;">TOTAL PAID:</td>
                             <td style="text-align: right; padding: 2px 0; font-size: 1.08em; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
                         </tr>
+                        <?php if (!empty($pos_success_receipt['refund_due']) && $pos_success_receipt['refund_due'] > 0): ?>
+                        <tr style="font-weight: bold;">
+                            <td style="text-align: left; padding: 1px 0;">Refund Due:</td>
+                            <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['refund_due'], 2); ?></td>
+                        </tr>
+                        <?php endif; ?>
                         <?php if (isset($pos_success_receipt['amount_tendered']) && $pos_success_receipt['amount_tendered'] > 0): ?>
                         <tr>
                             <td style="text-align: left; padding: 1px 0;">Tendered:</td>
@@ -4098,7 +4601,15 @@ function updateCartQty(itemId, newQty) {
             removeFromCart(itemId);
             return;
         }
-        if (item.item_type !== 'SPECIAL_ORDER' && newQty > item.stock) {
+        if (item.item_type === 'RETURN_CREDIT') {
+            const maxRet = item.max_return_qty || 999;
+            if (newQty > maxRet) {
+                alert('Maximum returnable quantity for this item is ' + maxRet);
+                item.qty = maxRet;
+            } else {
+                item.qty = newQty;
+            }
+        } else if (item.item_type !== 'SPECIAL_ORDER' && newQty > item.stock) {
             alert('Maximum available inventory is ' + item.stock);
             item.qty = item.stock;
         } else {
@@ -4163,13 +4674,19 @@ function renderCart() {
         let html = '';
         cart.forEach(item => {
             const isSpecialOrder = (item.item_type === 'SPECIAL_ORDER');
+            const isReturnCredit = (item.item_type === 'RETURN_CREDIT');
             const grossLineTotal = item.price * item.qty;
             const itemIdStr = typeof item.id === 'string' ? `'${item.id}'` : item.id;
             
             let itemBadge = '';
             let detailsHtml = '';
             
-            if (isSpecialOrder) {
+            if (isReturnCredit) {
+                itemBadge = `<span class="label label-danger" style="background-color: #dc2626; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;"><i class="fa fa-undo"></i> RETURN CREDIT</span>`;
+                if (item.product_details) {
+                    detailsHtml = `<div style="font-size: 11px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.product_details)}</div>`;
+                }
+            } else if (isSpecialOrder) {
                 itemBadge = `<span class="label label-warning" style="background-color: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;"><i class="fa fa-star"></i> SPECIAL ORDER</span>`;
                 if (item.product_details) {
                     detailsHtml = `<div style="font-size: 11px; color: #475569; background: #fef3c7; border: 1px solid #fde68a; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.product_details)}</div>`;
@@ -4199,7 +4716,9 @@ function renderCart() {
             const dAmt = item.discount_amount || 0;
             const dPct = item.discount_percent || 0;
 
-            if (dStatus === 'PENDING') {
+            if (isReturnCredit) {
+                linePriceHtml = `<span style="font-weight: 800; font-size: 15px; color: #dc2626;">-&#8369;${Math.abs(grossLineTotal).toFixed(2)}</span>`;
+            } else if (dStatus === 'PENDING') {
                 discountSectionHtml = `
                     <div style="margin-top: 4px;">
                         <span class="label label-warning" style="background: #f59e0b; font-size: 10px; font-weight: 700; padding: 2px 6px;">
@@ -4264,13 +4783,13 @@ function renderCart() {
             }
 
             html += `
-                <tr ${isSpecialOrder ? 'style="background-color: #fffbeb;"' : ''}>
+                <tr ${isReturnCredit ? 'style="background-color: #fef2f2;"' : (isSpecialOrder ? 'style="background-color: #fffbeb;"' : '')}>
                     <td style="padding: 8px 4px;">
                         ${itemBadge}
                         <strong style="color: #0f172a; font-size: 13px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
                         ${detailsHtml}
                         <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-top: 2px;">
-                            ${refOrSku}&#8369;${item.price.toFixed(2)} each
+                            ${refOrSku}&#8369;${Math.abs(item.price).toFixed(2)} each
                         </div>
                         ${discountSectionHtml}
                     </td>
@@ -4305,9 +4824,14 @@ function renderCart() {
 function updatePOSCalculations() {
     let grossSubtotal = 0;
     let totalDiscountSavings = 0;
+    let totalReturnCredits = 0;
     let hasPendingDiscounts = false;
 
     cart.forEach(item => {
+        if (item.item_type === 'RETURN_CREDIT') {
+            totalReturnCredits += Math.abs(item.price) * item.qty;
+            return;
+        }
         const itemGross = item.price * item.qty;
         grossSubtotal += itemGross;
 
@@ -4355,7 +4879,9 @@ function updatePOSCalculations() {
     }
 
     const netSubtotal = Math.max(0, grossSubtotal - totalDiscountSavings);
-    const grandTotal = netSubtotal + deliveryCost;
+    const netPayable = (netSubtotal + deliveryCost) - totalReturnCredits;
+    const grandTotal = Math.max(0, netPayable);
+    const refundDue = (netPayable < 0) ? Math.abs(netPayable) : 0;
 
     document.getElementById('posSubtotal').innerText = grossSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     
@@ -4368,11 +4894,47 @@ function updatePOSCalculations() {
         discRow.style.display = 'none';
     }
 
+    const retRow = document.getElementById('posReturnCreditRow');
+    const retDisplay = document.getElementById('posReturnCreditDisplay');
+    if (retRow && retDisplay) {
+        if (totalReturnCredits > 0) {
+            retDisplay.innerText = totalReturnCredits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            retRow.style.display = 'flex';
+        } else {
+            retRow.style.display = 'none';
+        }
+    }
+
+    // Down-Trade Alert Banner & Refund Due Breakdown Row
+    const downTradeAlert = document.getElementById('posDownTradeAlert');
+    const downTradeBadgeAmt = document.getElementById('posDownTradeBadgeAmt');
+    const downTradeFormula = document.getElementById('posDownTradeFormula');
+    const refundDueRow = document.getElementById('posRefundDueRow');
+    const refundDueDisplay = document.getElementById('posRefundDueDisplay');
+    const grandTotalSubtext = document.getElementById('posGrandTotalSubtext');
+
+    if (refundDue > 0) {
+        if (downTradeAlert) downTradeAlert.style.display = 'block';
+        if (downTradeBadgeAmt) downTradeBadgeAmt.innerText = `Refund Due: ₱${refundDue.toFixed(2)}`;
+        if (downTradeFormula) {
+            downTradeFormula.innerHTML = `Return credit (₱${totalReturnCredits.toFixed(2)}) exceeds new items (₱${(netSubtotal + deliveryCost).toFixed(2)}). <strong>Pay out ₱${refundDue.toFixed(2)}</strong> from cash drawer to customer.`;
+        }
+        if (refundDueRow) {
+            refundDueRow.style.display = 'flex';
+            if (refundDueDisplay) refundDueDisplay.innerText = refundDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        if (grandTotalSubtext) grandTotalSubtext.innerText = '(No Payment Required)';
+    } else {
+        if (downTradeAlert) downTradeAlert.style.display = 'none';
+        if (refundDueRow) refundDueRow.style.display = 'none';
+        if (grandTotalSubtext) grandTotalSubtext.innerText = '';
+    }
+
     document.getElementById('posGrandTotal').innerText = grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     // Update Change
     const tendered = parseFloat(document.getElementById('posAmountTendered').value) || 0;
-    const change = Math.max(0, tendered - grandTotal);
+    const change = (grandTotal === 0 && refundDue > 0) ? (tendered + refundDue) : Math.max(0, tendered - grandTotal);
     document.getElementById('posChangeAmount').innerText = change.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     // Payment Locking Logic
@@ -4399,7 +4961,11 @@ function updatePOSCalculations() {
         if (completeBtn) {
             completeBtn.disabled = (cart.length === 0);
             completeBtn.className = 'btn btn-success btn-block btn-lg';
-            completeBtn.innerHTML = '<i class="fa fa-check-circle"></i> Complete Sale & Print Receipt';
+            if (refundDue > 0 && grandTotal === 0) {
+                completeBtn.innerHTML = `<i class="fa fa-hand-holding-usd"></i> Complete Exchange &amp; Pay Out ₱${refundDue.toFixed(2)}`;
+            } else {
+                completeBtn.innerHTML = '<i class="fa fa-check-circle"></i> Complete Sale &amp; Print Receipt';
+            }
         }
         if (proceedBtn) {
             if (cart.length === 0) {
@@ -5005,11 +5571,26 @@ setInterval(pollDiscountStatuses, 3000);
 setTimeout(pollDiscountStatuses, 500);
 
 function setExactAmount() {
-    let subtotal = 0;
-    cart.forEach(item => subtotal += item.price * item.qty);
+    let grossSubtotal = 0;
+    let totalDiscountSavings = 0;
+    let totalReturnCredits = 0;
+    cart.forEach(item => {
+        if (item.item_type === 'RETURN_CREDIT') {
+            totalReturnCredits += Math.abs(item.price) * item.qty;
+            return;
+        }
+        const itemGross = item.price * item.qty;
+        grossSubtotal += itemGross;
+        if (item.discount_status === 'APPROVED' || item.discount_status === 'APPROVED_MODIFIED') {
+            const discAmt = item.discount_amount !== undefined ? item.discount_amount : (itemGross * (item.discount_percent / 100));
+            totalDiscountSavings += discAmt;
+        }
+    });
     const isLocationActive = document.getElementById('locationRadio').checked;
     const deliveryCost = isLocationActive ? (parseFloat(document.getElementById('posDeliveryCost').value) || 0) : 0;
-    const grandTotal = subtotal + deliveryCost;
+    const netSubtotal = Math.max(0, grossSubtotal - totalDiscountSavings);
+    const netPayable = (netSubtotal + deliveryCost) - totalReturnCredits;
+    const grandTotal = Math.max(0, netPayable);
     document.getElementById('posAmountTendered').value = grandTotal.toFixed(2);
     updatePOSCalculations();
 }
@@ -5108,13 +5689,37 @@ function updateCategoryBreadcrumb() {
     badge.innerHTML = `${escapeHtml(deptText)} &bull; ${escapeHtml(catText)}`;
 }
 
+function scrollDeptCarousel(offset) {
+    const bar = document.getElementById('posDeptTabsBar');
+    if (bar) {
+        bar.scrollBy({ left: offset, behavior: 'smooth' });
+        setTimeout(updateDeptNavState, 280);
+    }
+}
+
+function updateDeptNavState() {
+    const bar = document.getElementById('posDeptTabsBar');
+    const prevBtn = document.getElementById('posDeptNavPrev');
+    const nextBtn = document.getElementById('posDeptNavNext');
+    if (!bar || !prevBtn || !nextBtn) return;
+
+    const maxScrollLeft = bar.scrollWidth - bar.clientWidth;
+    prevBtn.disabled = (bar.scrollLeft <= 2);
+    nextBtn.disabled = (bar.scrollLeft >= maxScrollLeft - 2);
+}
+
 function filterDepartment(deptName, btn) {
     currentActiveDept = deptName || 'all';
     currentActiveCat = 'all';
 
     // Update active state on Department Tabs
     document.querySelectorAll('.pos-dept-tab').forEach(t => t.classList.remove('active'));
-    if (btn) btn.classList.add('active');
+    if (btn) {
+        btn.classList.add('active');
+        try {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } catch(e) {}
+    }
 
     // Show/Hide sub-category pills in Tier 2
     document.querySelectorAll('.pos-cat-pill').forEach(pill => {
@@ -5135,6 +5740,7 @@ function filterDepartment(deptName, btn) {
 
     updateCategoryBreadcrumb();
     filterPOSProducts();
+    setTimeout(updateDeptNavState, 350);
 }
 
 function filterCategory(catName, btn) {
@@ -5147,6 +5753,7 @@ function filterCategory(catName, btn) {
 
 function filterPOSProducts() {
     const query = document.getElementById('posSearchInput')?.value.toLowerCase().trim() || '';
+    const rawQuery = document.getElementById('posSearchInput')?.value.trim() || '';
     const items = document.querySelectorAll('.pos-product-item');
     let visibleCount = 0;
 
@@ -5169,6 +5776,34 @@ function filterPOSProducts() {
 
     const productCountEl = document.getElementById('productCount');
     if (productCountEl) productCountEl.innerText = visibleCount;
+
+    // Show friendly zero-match guidance with 1-click Return search if cashier typed an invoice/email/order search
+    let emptyMsg = document.getElementById('posProductGridEmptyMsg');
+    if (visibleCount === 0 && query !== '') {
+        if (!emptyMsg) {
+            emptyMsg = document.createElement('div');
+            emptyMsg.id = 'posProductGridEmptyMsg';
+            emptyMsg.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 35px 20px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; margin: 10px 0;';
+            const grid = document.getElementById('posProductGrid');
+            if (grid) grid.appendChild(emptyMsg);
+        }
+        emptyMsg.innerHTML = `
+            <div style="font-size: 26px; color: #94a3b8; margin-bottom: 6px;"><i class="fa fa-search"></i></div>
+            <div style="font-size: 14px; font-weight: 700; color: #334155;">No catalog products match "<em>${escapeHtml(rawQuery)}</em>"</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Looking for a customer order, invoice, or return?</div>
+            <div style="margin-top: 14px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-danger btn-sm" onclick="openReturnModal('${escapeHtml(rawQuery).replace(/'/g, "\\'")}')" style="font-weight: 700; background-color: #dc2626; border-color: #b91c1c;">
+                    <i class="fa fa-undo"></i> Search in Returns &amp; Refunds
+                </button>
+                <button type="button" class="btn btn-default btn-sm" onclick="clearPOSSearch()" style="font-weight: 700;">
+                    <i class="fa fa-times"></i> Clear Search (Show All Products)
+                </button>
+            </div>
+        `;
+        emptyMsg.style.display = 'block';
+    } else if (emptyMsg) {
+        emptyMsg.style.display = 'none';
+    }
 }
 
 function clearPOSSearch() {
@@ -5198,17 +5833,47 @@ function validatePOSForm() {
             return false;
         }
     }
+
+    // Check if down-trade refund due or payment validation
+    let grossSubtotal = 0;
+    let totalDiscountSavings = 0;
+    let totalReturnCredits = 0;
+    cart.forEach(item => {
+        if (item.item_type === 'RETURN_CREDIT') {
+            totalReturnCredits += Math.abs(item.price) * item.qty;
+            return;
+        }
+        const itemGross = item.price * item.qty;
+        grossSubtotal += itemGross;
+        if (item.discount_status === 'APPROVED' || item.discount_status === 'APPROVED_MODIFIED') {
+            const discAmt = item.discount_amount !== undefined ? item.discount_amount : (itemGross * (item.discount_percent / 100));
+            totalDiscountSavings += discAmt;
+        }
+    });
+    const isLocationActive = document.getElementById('locationRadio')?.checked;
+    const deliveryCost = isLocationActive ? (parseFloat(document.getElementById('posDeliveryCost')?.value) || 0) : 0;
+    const netSubtotal = Math.max(0, grossSubtotal - totalDiscountSavings);
+    const netPayable = (netSubtotal + deliveryCost) - totalReturnCredits;
+    const grandTotal = Math.max(0, netPayable);
+    const refundDue = (netPayable < 0) ? Math.abs(netPayable) : 0;
+
     const payMethod = document.getElementById('posPaymentMethod')?.value || 'Cash (OTC)';
     if (payMethod.toLowerCase().includes('cash')) {
-        const grandTotalText = document.getElementById('posGrandTotal')?.innerText?.replace(/,/g, '') || '0';
-        const grandTotal = parseFloat(grandTotalText) || 0;
         const tendered = parseFloat(document.getElementById('posAmountTendered')?.value) || 0;
-        if (tendered < grandTotal) {
+        if (grandTotal > 0 && tendered < grandTotal) {
             alert('Amount tendered (₱' + tendered.toFixed(2) + ') is less than the Grand Total (₱' + grandTotal.toFixed(2) + '). Please enter sufficient cash.');
             document.getElementById('posAmountTendered')?.focus();
             return false;
         }
     }
+
+    if (refundDue > 0) {
+        const confirmMsg = `Down-Trade Exchange Confirmation:\n\nReturn credit (₱${totalReturnCredits.toFixed(2)}) exceeds new purchases (₱${(netSubtotal + deliveryCost).toFixed(2)}).\n\nExcess Refund Due: ₱${refundDue.toFixed(2)}\n\nPlease ensure ₱${refundDue.toFixed(2)} is paid out to the customer from the cash drawer.\n\nProceed with completing this exchange?`;
+        if (!confirm(confirmMsg)) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -6459,31 +7124,92 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
 
     const items = orderData.items || [];
     let itemsRows = '';
-    items.forEach(function(item) {
-        const rawName = item.name || 'Item';
-        const formattedName = escapeHtml(rawName).replace(/\n/g, '<br>');
-        const itemQty = parseInt(item.qty, 10) || 1;
-        const itemPrice = parseFloat(item.price || 0).toFixed(2);
-        const itemAmount = parseFloat(item.amount || (parseFloat(item.price || 0) * itemQty)).toFixed(2);
-        const unitLabel = itemQty > 1 ? 'pcs' : 'pc';
-        
+
+    const purchaseItems = items.filter(it => it.item_type !== 'RETURN_CREDIT' && (parseFloat(it.price || 0) >= 0));
+    const returnItems = items.filter(it => it.item_type === 'RETURN_CREDIT' || (parseFloat(it.price || 0) < 0));
+
+    if (purchaseItems.length > 0) {
+        if (returnItems.length > 0) {
+            itemsRows += `
+                <tr>
+                    <td colspan="2" style="text-align: left; padding: 2px 0; font-weight: bold; font-size: ${fontSizePt}pt; border-bottom: 1px dashed #000;">[PURCHASED ITEMS]</td>
+                </tr>
+            `;
+        }
+        purchaseItems.forEach(function(item) {
+            const rawName = item.name || 'Item';
+            const formattedName = escapeHtml(rawName).replace(/\n/g, '<br>');
+            const itemQty = parseInt(item.qty, 10) || 1;
+            const itemPrice = parseFloat(item.price || 0).toFixed(2);
+            const itemAmount = parseFloat(item.amount || (parseFloat(item.price || 0) * itemQty)).toFixed(2);
+            const unitLabel = itemQty > 1 ? 'pcs' : 'pc';
+            
+            itemsRows += `
+                <tr>
+                    <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">${formattedName}</td>
+                </tr>
+                <tr>
+                    <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">${itemQty} ${unitLabel} @ ${itemPrice}</td>
+                    <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">${itemAmount}</td>
+                </tr>
+            `;
+        });
+    }
+
+    if (returnItems.length > 0) {
         itemsRows += `
             <tr>
-                <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">${formattedName}</td>
-            </tr>
-            <tr>
-                <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">${itemQty} ${unitLabel} @ ${itemPrice}</td>
-                <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">${itemAmount}</td>
+                <td colspan="2" style="text-align: left; padding-top: 6px; padding-bottom: 2px; font-weight: bold; font-size: ${fontSizePt}pt; border-bottom: 1px dashed #000;">[RETURN / EXCHANGE CREDIT]</td>
             </tr>
         `;
-    });
+        returnItems.forEach(function(item) {
+            const rawName = (item.name || 'Return Credit').replace(/^\[RETURN CREDIT\]\s*/i, '');
+            const formattedName = escapeHtml(rawName).replace(/\n/g, '<br>');
+            const itemQty = parseInt(item.qty, 10) || 1;
+            const unitPrice = Math.abs(parseFloat(item.price || 0)).toFixed(2);
+            const itemAmount = '-' + Math.abs(parseFloat(item.amount || (parseFloat(item.price || 0) * itemQty))).toFixed(2);
+            const unitLabel = itemQty > 1 ? 'pcs' : 'pc';
+            
+            itemsRows += `
+                <tr>
+                    <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">[RETURN] ${formattedName}</td>
+                </tr>
+                <tr>
+                    <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">${itemQty} ${unitLabel} @ -${unitPrice}</td>
+                    <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">${itemAmount}</td>
+                </tr>
+            `;
+        });
+    }
 
     const subtotal = parseFloat(orderData.subtotal || 0).toFixed(2);
     const delivery = parseFloat(orderData.delivery || 0).toFixed(2);
     const discount = parseFloat(orderData.discount || 0).toFixed(2);
+    const returnCredits = parseFloat(orderData.return_credits || orderData.total_return_credits || 0).toFixed(2);
     const total = parseFloat(orderData.total || 0).toFixed(2);
+    const refundDue = parseFloat(orderData.refund_due || 0);
     const tendered = (orderData.tendered !== undefined && orderData.tendered !== null) ? parseFloat(orderData.tendered).toFixed(2) : (orderData.amount_tendered ? parseFloat(orderData.amount_tendered).toFixed(2) : null);
     const change = (orderData.change !== undefined && orderData.change !== null) ? parseFloat(orderData.change).toFixed(2) : (orderData.change_amount ? parseFloat(orderData.change_amount).toFixed(2) : null);
+
+    let returnCreditRow = '';
+    if (parseFloat(returnCredits) > 0) {
+        returnCreditRow = `
+            <tr style="color: #000;">
+                <td style="text-align: left;">Return Credit:</td>
+                <td style="text-align: right; white-space: nowrap;">-${returnCredits}</td>
+            </tr>
+        `;
+    }
+
+    let refundDueRow = '';
+    if (refundDue > 0) {
+        refundDueRow = `
+            <tr style="font-weight: bold;">
+                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">REFUND DUE:</td>
+                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${refundDue.toFixed(2)}</td>
+            </tr>
+        `;
+    }
 
     let tenderedRows = '';
     if (tendered !== null && parseFloat(tendered) > 0) {
@@ -6694,10 +7420,12 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
                 <td style="text-align: left;">Delivery:</td>
                 <td style="text-align: right; white-space: nowrap;">${delivery}</td>
             </tr>
+            ${returnCreditRow}
             <tr style="font-weight: bold;">
                 <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL:</td>
                 <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${total}</td>
             </tr>
+            ${refundDueRow}
             ${tenderedRows}
         </table>
 
@@ -6951,15 +7679,39 @@ function previewPOSPurchaseOrderPDF() {
 let currentReturnOrders = [];
 let selectedReturnItem = null;
 let selectedReturnOrder = null;
+let pendingReturnAction = null; // 'exchange' or 'refund'
+let managerOverrideAuthorized = false;
+let managerOverrideDetails = null;
 
-function openReturnModal() {
-    $('#retOrderSearchInput').val('');
+function cleanupModalBackdrops() {
+    if ($('.modal.in').length === 0) {
+        $('.modal-backdrop').remove();
+        $('body').removeClass('modal-open').css('padding-right', '');
+    }
+}
+$(document).on('hidden.bs.modal', '.modal', function() {
+    cleanupModalBackdrops();
+});
+
+function openReturnModal(initialQuery = null) {
+    const mainPosSearchVal = document.getElementById('posSearchInput')?.value.trim() || '';
+    let queryToSearch = (initialQuery !== null) ? initialQuery : (mainPosSearchVal ? mainPosSearchVal : '');
+
+    // If cashier typed an invoice/email/order search into the main search box,
+    // transfer it into the Return modal and reset main search so catalog grid is 100% visible!
+    if (mainPosSearchVal) {
+        clearPOSSearch();
+    }
+
+    $('#retOrderSearchInput').val(queryToSearch);
     $('#retModalAlert').hide();
     $('#retSearchSection').show();
     $('#retItemConfigSection').hide();
     $('#retModalFooterView1').show();
+    managerOverrideAuthorized = false;
+    managerOverrideDetails = null;
     $('#posReturnModal').modal('show');
-    executeOrderReturnSearch('');
+    executeOrderReturnSearch(queryToSearch);
 }
 
 function executeOrderReturnSearch(keyword) {
@@ -6990,25 +7742,57 @@ function resetOrderReturnSearch() {
 }
 
 function renderReturnOrdersList(orders, query) {
-    $('#retOrdersCountBadge').text(orders.length + (orders.length === 1 ? ' order' : ' orders'));
-    $('#retOrdersListTitle').text(query ? `Search Results for "${query}"` : 'Recent Completed Orders');
+    $('#retOrdersListTitle').text(query ? `Search Results for "${query}"` : 'Recent Completed Orders (Within 7 Days)');
 
     if (!orders || orders.length === 0) {
+        $('#retOrdersCountBadge').text('0 orders');
         $('#retOrdersContainer').html(`
             <div class="text-center text-muted" style="padding: 40px 15px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px;">
                 <i class="fa fa-inbox fa-3x" style="color: #cbd5e1;"></i>
-                <div style="margin-top: 10px; font-size: 14px; font-weight: bold; color: #64748b;">No matching paid/completed orders found</div>
-                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Try searching with a different invoice ID, customer name, phone, or product SKU.</div>
+                <div style="margin-top: 10px; font-size: 14px; font-weight: bold; color: #64748b;">No eligible returnable items found within the 7-day policy window</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Only paid orders from the last 7 days with remaining returnable items are displayed.</div>
             </div>
         `);
         return;
     }
 
     let html = '';
+    let visibleOrdersCount = 0;
+
     orders.forEach((ord) => {
         let itemsHtml = '';
+        let visibleItemsCount = 0;
+        const isWithin7Days = ord.is_within_7_days;
+        const daysElapsed = ord.days_elapsed || 0;
+        const daysRemaining = ord.days_remaining !== undefined ? ord.days_remaining : Math.max(0, 7 - daysElapsed);
+
+        let policyBadge = isWithin7Days
+            ? `<span class="label label-success" style="font-size: 11px; padding: 2px 7px; background-color: #10b981;"><i class="fa fa-calendar-check-o"></i> ${daysElapsed}d ago (${daysRemaining}d left)</span>`
+            : `<span class="label label-danger" style="font-size: 11px; padding: 2px 7px; background-color: #ef4444;"><i class="fa fa-exclamation-circle"></i> Policy Expired (${daysElapsed}d ago - PIN Req)</span>`;
+
         ord.items.forEach((it) => {
-            const isReturnable = it.available_to_return > 0;
+            // Check active POS cart for already staged return credit
+            let inCartQty = 0;
+            if (typeof cart !== 'undefined' && Array.isArray(cart)) {
+                cart.forEach(cItem => {
+                    if (cItem.item_type === 'RETURN_CREDIT' && (String(cItem.order_item_id) === String(it.order_item_id) || String(cItem.id) === 'RET_' + it.order_item_id)) {
+                        inCartQty += parseInt(cItem.qty) || 0;
+                    }
+                });
+            }
+
+            const effectiveAvailable = Math.max(0, (parseInt(it.available_to_return) || 0) - inCartQty);
+            
+            // If item has no remaining available quantity to return, completely omit/remove from modal
+            if (effectiveAvailable <= 0) {
+                return;
+            }
+
+            visibleItemsCount++;
+            
+            // Clone item with effective available quantity
+            const itemForSelect = Object.assign({}, it, { available_to_return: effectiveAvailable });
+
             const specialBadge = (it.item_type === 'SPECIAL_ORDER') ? '<span class="label label-warning" style="background-color: #d97706; font-size: 9px; padding: 1px 4px;">SPECIAL ORDER</span> ' : '';
             
             itemsHtml += `
@@ -7023,40 +7807,55 @@ function renderReturnOrdersList(orders, query) {
                             ₱${parseFloat(it.unit_price).toFixed(2)} × ${it.purchased_qty} unit(s)
                             ${it.previously_returned > 0 ? `<span style="color: #991b1b; font-weight: bold;"> (${it.previously_returned} returned)</span>` : ''}
                             ${it.pending_returned > 0 ? `<span style="color: #d97706; font-weight: bold;"> (${it.pending_returned} pending)</span>` : ''}
+                            ${inCartQty > 0 ? `<span style="color: #0284c7; font-weight: bold;"> (${inCartQty} in active cart)</span>` : ''}
                         </div>
                     </div>
                     <div style="text-align: right; min-width: 140px;">
-                        ${isReturnable ? `
-                            <button type="button" class="btn btn-danger btn-xs" onclick='selectReturnItem(${JSON.stringify(ord).replace(/'/g, "&apos;")}, ${JSON.stringify(it).replace(/'/g, "&apos;")})' style="font-weight: 700; background: #dc2626; border-color: #b91c1c; padding: 4px 10px; border-radius: 4px;">
-                                <i class="fa fa-undo"></i> Return (${it.available_to_return} left)
-                            </button>
-                        ` : `
-                            <span class="label label-default" style="font-size: 11px; padding: 3px 8px; background: #e2e8f0; color: #64748b;">Fully Returned</span>
-                        `}
+                        <button type="button" class="btn btn-danger btn-xs" onclick='selectReturnItem(${JSON.stringify(ord).replace(/'/g, "&apos;")}, ${JSON.stringify(itemForSelect).replace(/'/g, "&apos;")})' style="font-weight: 700; background: #dc2626; border-color: #b91c1c; padding: 4px 10px; border-radius: 4px;">
+                            <i class="fa fa-undo"></i> Return (${effectiveAvailable} left)
+                        </button>
                     </div>
                 </div>
             `;
         });
 
-        html += `
-            <div style="border: 1.5px solid #e2e8f0; border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 8px;">
-                <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        // Only render the order container if there is at least 1 returnable item visible
+        if (visibleItemsCount > 0) {
+            visibleOrdersCount++;
+            html += `
+                <div style="border: 1.5px solid #e2e8f0; border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 8px;">
+                    <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Invoice:</span>
+                            <strong style="font-family: monospace; color: #0284c7; font-size: 13px;">${escapeHtml(ord.payment_id)}</strong>
+                            <span style="font-size: 11.5px; color: #64748b;">${new Date(ord.payment_date).toLocaleDateString()} ${new Date(ord.payment_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            ${policyBadge}
+                        </div>
+                        <div style="font-size: 12px; color: #334155;">
+                            <i class="fa fa-user"></i> <strong>${escapeHtml(ord.customer_name)}</strong>
+                            ${ord.customer_phone && ord.customer_phone !== 'N/A' ? `<span style="color: #64748b; margin-left: 4px;">(${escapeHtml(ord.customer_phone)})</span>` : ''}
+                        </div>
+                    </div>
                     <div>
-                        <span style="font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Invoice:</span>
-                        <strong style="font-family: monospace; color: #0284c7; font-size: 13px; margin-left: 4px;">${escapeHtml(ord.payment_id)}</strong>
-                        <span style="font-size: 11.5px; color: #64748b; margin-left: 8px;">${new Date(ord.payment_date).toLocaleDateString()} ${new Date(ord.payment_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                    </div>
-                    <div style="font-size: 12px; color: #334155;">
-                        <i class="fa fa-user"></i> <strong>${escapeHtml(ord.customer_name)}</strong>
-                        ${ord.customer_phone && ord.customer_phone !== 'N/A' ? `<span style="color: #64748b; margin-left: 4px;">(${escapeHtml(ord.customer_phone)})</span>` : ''}
+                        ${itemsHtml}
                     </div>
                 </div>
-                <div>
-                    ${itemsHtml}
-                </div>
-            </div>
-        `;
+            `;
+        }
     });
+
+    $('#retOrdersCountBadge').text(visibleOrdersCount + (visibleOrdersCount === 1 ? ' order' : ' orders'));
+
+    if (visibleOrdersCount === 0) {
+        $('#retOrdersContainer').html(`
+            <div class="text-center text-muted" style="padding: 40px 15px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px;">
+                <i class="fa fa-inbox fa-3x" style="color: #cbd5e1;"></i>
+                <div style="margin-top: 10px; font-size: 14px; font-weight: bold; color: #64748b;">No eligible returnable items found within the 7-day policy window</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">All items from recent matching orders have already been fully returned or staged in your active cart.</div>
+            </div>
+        `);
+        return;
+    }
 
     $('#retOrdersContainer').html(html);
 }
@@ -7064,6 +7863,8 @@ function renderReturnOrdersList(orders, query) {
 function selectReturnItem(order, item) {
     selectedReturnOrder = order;
     selectedReturnItem = item;
+    managerOverrideAuthorized = false;
+    managerOverrideDetails = null;
 
     $('#retSubmitOrderItemId').val(item.order_item_id);
     $('#retSubmitPaymentId').val(order.payment_id);
@@ -7109,12 +7910,86 @@ function selectReturnItem(order, item) {
     $('#retRefundMethod').val('Cash');
     $('#retGeneralNotes').val('');
 
+    render7DayPolicyBanner();
     updateRestockBadge();
     calculateReturnTotal();
 
     $('#retSearchSection').hide();
     $('#retItemConfigSection').show();
     $('#retModalFooterView1').hide();
+}
+
+function render7DayPolicyBanner() {
+    if (!selectedReturnOrder) return;
+    const isWithin = selectedReturnOrder.is_within_7_days;
+    const daysElapsed = selectedReturnOrder.days_elapsed || 0;
+    const daysRemaining = selectedReturnOrder.days_remaining !== undefined ? selectedReturnOrder.days_remaining : Math.max(0, 7 - daysElapsed);
+    const banner = $('#ret7DayStatusAlert');
+
+    if (isWithin) {
+        banner.html(`
+            <div class="alert alert-success" style="margin-bottom: 14px; font-size: 12.5px; padding: 9px 13px; border-left: 4px solid #10b981; background: #f0fdf4; color: #166534;">
+                <i class="fa fa-check-circle"></i> <strong>7-Day Return Policy Compliant:</strong> Purchased ${daysElapsed} day(s) ago (${daysRemaining} day(s) remaining). Eligible for immediate in-store exchange or refund request.
+            </div>
+        `).show();
+    } else {
+        banner.html(`
+            <div class="alert alert-warning" style="margin-bottom: 14px; font-size: 12.5px; padding: 9px 13px; border-left: 4px solid #f59e0b; background: #fffbeb; color: #92400e;">
+                <i class="fa fa-exclamation-triangle"></i> <strong>7-Day Policy Expired (${daysElapsed} days ago):</strong> Standard return window has closed. Proceeding requires <strong>Manager PIN Authorization Override</strong>.
+            </div>
+        `).show();
+    }
+}
+
+function promptManagerOverrideForReturn(actionType) {
+    pendingReturnAction = actionType;
+    $('#posManagerPinInput').val('');
+    $('#posManagerPinAlert').hide().text('');
+    $('#posManagerPinSubmitBtn').prop('disabled', false).html('<i class="fa fa-unlock-alt"></i> Authorize Override');
+    $('#posManagerPinModal').modal('show');
+    setTimeout(() => {
+        $('#posManagerPinInput').focus();
+    }, 400);
+}
+
+function executeManagerPinVerify() {
+    const pin = $('#posManagerPinInput').val().trim();
+    if (!pin) {
+        $('#posManagerPinAlert').text('Please enter Manager PIN or Password.').show();
+        return;
+    }
+
+    $('#posManagerPinSubmitBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Verifying...');
+    $('#posManagerPinAlert').hide();
+
+    $.post('pos-return-api.php', {
+        action: 'verify_manager_pin',
+        pin: pin
+    }, function(res) {
+        $('#posManagerPinSubmitBtn').prop('disabled', false).html('<i class="fa fa-unlock-alt"></i> Authorize Override');
+        if (res.status === 'success') {
+            managerOverrideAuthorized = true;
+            managerOverrideDetails = {
+                manager_id: res.manager_id,
+                manager_name: res.manager_name,
+                timestamp: new Date().toISOString()
+            };
+            $('#posManagerPinModal').modal('hide');
+            cleanupModalBackdrops();
+
+            if (pendingReturnAction === 'exchange') {
+                proceedApplyReturnToCart();
+            } else if (pendingReturnAction === 'refund') {
+                proceedSubmitReturnRequest();
+            }
+        } else {
+            $('#posManagerPinAlert').text(res.message || 'Invalid Manager PIN. Access denied.').show();
+            $('#posManagerPinInput').select().focus();
+        }
+    }, 'json').fail(function() {
+        $('#posManagerPinSubmitBtn').prop('disabled', false).html('<i class="fa fa-unlock-alt"></i> Authorize Override');
+        $('#posManagerPinAlert').text('Connection error verifying Manager PIN.').show();
+    });
 }
 
 function backToReturnOrdersList() {
@@ -7177,21 +8052,98 @@ function updateRestockBadge() {
     }
 }
 
+function applyCurrentReturnToCart() {
+    if (!selectedReturnItem || !selectedReturnOrder) {
+        alert('No item selected for return.');
+        return;
+    }
+
+    const qty = parseInt($('#retQuantityInput').val()) || 1;
+    if (qty < 1 || qty > selectedReturnItem.available_to_return) {
+        alert('Invalid return quantity.');
+        return;
+    }
+
+    // 7-day policy check
+    if (!selectedReturnOrder.is_within_7_days && !managerOverrideAuthorized) {
+        promptManagerOverrideForReturn('exchange');
+        return;
+    }
+
+    proceedApplyReturnToCart();
+}
+
+function proceedApplyReturnToCart() {
+    if (!selectedReturnItem || !selectedReturnOrder) return;
+
+    const qty = parseInt($('#retQuantityInput').val()) || 1;
+    const unitPrice = parseFloat(selectedReturnItem.unit_price) || 0;
+    const reason = $('#retReasonSelect').val();
+    const reasonNotes = $('#retReasonNotes').val().trim();
+    const condition = $('#retConditionSelect').val();
+    const generalNotes = $('#retGeneralNotes').val().trim();
+
+    // Push or update negative RETURN_CREDIT item in cart
+    const returnCreditItemId = 'RET_' + selectedReturnItem.order_item_id;
+    const existingIndex = cart.findIndex(it => it.id === returnCreditItemId || (it.item_type === 'RETURN_CREDIT' && it.order_item_id === selectedReturnItem.order_item_id));
+
+    const returnItemPayload = {
+        id: returnCreditItemId,
+        original_order_id: selectedReturnItem.order_item_id,
+        order_item_id: selectedReturnItem.order_item_id,
+        original_payment_id: selectedReturnOrder.payment_id,
+        payment_id: selectedReturnOrder.payment_id,
+        product_id: selectedReturnItem.product_id || 0,
+        item_type: 'RETURN_CREDIT',
+        sku: selectedReturnItem.sku || '',
+        name: selectedReturnItem.product_name,
+        base_name: selectedReturnItem.product_name,
+        spec_label: selectedReturnItem.product_details || '',
+        product_details: selectedReturnItem.product_details || '',
+        price: -Math.abs(unitPrice),
+        unit_price: unitPrice,
+        qty: qty,
+        max_return_qty: selectedReturnItem.available_to_return,
+        return_reason: reason,
+        reason_notes: reasonNotes,
+        condition: condition,
+        general_notes: generalNotes,
+        manager_override: managerOverrideAuthorized ? managerOverrideDetails : null
+    };
+
+    if (existingIndex > -1) {
+        cart[existingIndex] = returnItemPayload;
+    } else {
+        cart.push(returnItemPayload);
+    }
+
+    // Close Return Modal cleanly without affecting page layout or freezing
+    $('#posReturnModal').modal('hide');
+    cleanupModalBackdrops();
+
+    // Clear any temporary catalog search filter so products are immediately visible
+    clearPOSSearch();
+
+    // Render cart and update calculations
+    renderCart();
+    updatePOSCalculations();
+
+    // Reset return selections
+    selectedReturnItem = null;
+    selectedReturnOrder = null;
+    managerOverrideAuthorized = false;
+    managerOverrideDetails = null;
+}
+
 function confirmAndSubmitReturn() {
     if (!selectedReturnItem || !selectedReturnOrder) {
         alert('No item selected for return.');
         return;
     }
 
-    const orderItemId = $('#retSubmitOrderItemId').val();
-    const paymentId = $('#retSubmitPaymentId').val();
     const qty = parseInt($('#retQuantityInput').val()) || 1;
     const reason = $('#retReasonSelect').val();
     const reasonNotes = $('#retReasonNotes').val().trim();
-    const condition = $('#retConditionSelect').val();
-    const refundMethod = $('#retRefundMethod').val();
-    const generalNotes = $('#retGeneralNotes').val().trim();
-    const refundTotal = (qty * parseFloat(selectedReturnItem.unit_price)).toFixed(2);
 
     if (qty < 1 || qty > selectedReturnItem.available_to_return) {
         alert('Invalid return quantity.');
@@ -7203,6 +8155,26 @@ function confirmAndSubmitReturn() {
         $('#retReasonNotes').focus();
         return;
     }
+
+    // 7-day policy check
+    if (!selectedReturnOrder.is_within_7_days && !managerOverrideAuthorized) {
+        promptManagerOverrideForReturn('refund');
+        return;
+    }
+
+    proceedSubmitReturnRequest();
+}
+
+function proceedSubmitReturnRequest() {
+    const orderItemId = $('#retSubmitOrderItemId').val();
+    const paymentId = $('#retSubmitPaymentId').val();
+    const qty = parseInt($('#retQuantityInput').val()) || 1;
+    const reason = $('#retReasonSelect').val();
+    const reasonNotes = $('#retReasonNotes').val().trim();
+    const condition = $('#retConditionSelect').val();
+    const refundMethod = $('#retRefundMethod').val();
+    const generalNotes = $('#retGeneralNotes').val().trim();
+    const refundTotal = (qty * parseFloat(selectedReturnItem.unit_price)).toFixed(2);
 
     if (!confirm(`Submit return request for ${qty} unit(s) of "${selectedReturnItem.product_name}" (Refund: ₱${refundTotal}) for Manager / Admin Approval?`)) {
         return;
@@ -7219,18 +8191,21 @@ function confirmAndSubmitReturn() {
         reason_notes: reasonNotes,
         condition: condition,
         refund_method: refundMethod,
-        general_notes: generalNotes
+        general_notes: generalNotes,
+        manager_override: managerOverrideAuthorized ? 1 : 0,
+        manager_id: managerOverrideDetails ? managerOverrideDetails.manager_id : ''
     }, function(res) {
-        $('#retProcessSubmitBtn').prop('disabled', false).html('<i class="fa fa-paper-plane"></i> Submit Return Request');
+        $('#retProcessSubmitBtn').prop('disabled', false).html('<i class="fa fa-paper-plane"></i> Direct Refund');
 
         if (res.status === 'success') {
             $('#posReturnModal').modal('hide');
+            cleanupModalBackdrops();
             renderReturnSubmissionSuccessModal(res);
         } else {
             alert('Error: ' + res.message);
         }
     }, 'json').fail(function() {
-        $('#retProcessSubmitBtn').prop('disabled', false).html('<i class="fa fa-paper-plane"></i> Submit Return Request');
+        $('#retProcessSubmitBtn').prop('disabled', false).html('<i class="fa fa-paper-plane"></i> Direct Refund');
         alert('Server error while submitting return request.');
     });
 }
@@ -7303,8 +8278,12 @@ function renderReturnSubmissionSuccessModal(res) {
 
 function closeReturnSuccessModal() {
     $('#posReturnSuccessModal').modal('hide');
+    cleanupModalBackdrops();
+    clearPOSSearch();
     selectedReturnItem = null;
     selectedReturnOrder = null;
+    managerOverrideAuthorized = false;
+    managerOverrideDetails = null;
 }
 
 $(document).ready(function() {
@@ -7328,6 +8307,30 @@ $(document).ready(function() {
             if (text) text.innerText = 'Expand';
         }
     } catch (e) {}
+
+    // Category Carousel Mousewheel & Resize Listeners
+    const deptBar = document.getElementById('posDeptTabsBar');
+    if (deptBar) {
+        deptBar.addEventListener('wheel', function(e) {
+            if (e.deltaY !== 0) {
+                e.preventDefault();
+                deptBar.scrollLeft += (e.deltaY * 1.5);
+                updateDeptNavState();
+            }
+        }, { passive: false });
+        window.addEventListener('resize', updateDeptNavState);
+        setTimeout(updateDeptNavState, 150);
+    }
+
+    // Sanitize search bar from stray browser email autofill
+    const posSearchBox = document.getElementById('posSearchInput');
+    if (posSearchBox) {
+        if (posSearchBox.value.includes('@') || posSearchBox.value.includes('.com') || posSearchBox.value.includes('.ph')) {
+            posSearchBox.value = '';
+        }
+    }
+    filterPOSProducts();
+
     <?php if ($pos_po_success_data): ?>
     $('#posPOSuccessModal').modal({ backdrop: 'static', keyboard: false });
     if (typeof updatePOVoucherModalPreview === 'function') {
