@@ -1382,6 +1382,7 @@ $raw_products = $statement_prod->fetchAll(PDO::FETCH_ASSOC);
 $grouped_products = array();
 $categories = array();
 $parent_departments = array();
+$mid_categories_list = array();
 $categories_with_parent = array();
 $total_inventory_items = count($raw_products);
 
@@ -1389,6 +1390,7 @@ foreach ($raw_products as $prod) {
     $has_ecat = (!empty($prod['ecat_id']) && intval($prod['ecat_id']) > 0 && !empty($prod['ecat_name']));
     $ecat_name = $has_ecat ? trim($prod['ecat_name']) : 'Uncategorized';
     $parent_dept = !empty($prod['tcat_name']) ? trim($prod['tcat_name']) : (!empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Hardware');
+    $mcat_name = !empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Sub-System';
     
     // Grouping key: Relational End Level Category ID (ecat_id) creates 1 single card per category
     if ($has_ecat) {
@@ -1405,12 +1407,26 @@ foreach ($raw_products as $prod) {
         $categories[] = $ecat_name;
     }
     
+    // Parent departments tracking
     if (!isset($parent_departments[$parent_dept])) {
-        $parent_departments[$parent_dept] = array();
+        $parent_departments[$parent_dept] = array(
+            'count' => 0,
+            'mid_cats' => array()
+        );
     }
-    if (!in_array($ecat_name, $parent_departments[$parent_dept])) {
-        $parent_departments[$parent_dept][] = $ecat_name;
-        $categories_with_parent[] = array('name' => $ecat_name, 'dept' => $parent_dept);
+    
+    // Mid categories tracking
+    $mid_key = $parent_dept . '___' . $mcat_name;
+    if (!isset($mid_categories_list[$mid_key])) {
+        $mid_categories_list[$mid_key] = array(
+            'name' => $mcat_name,
+            'dept' => $parent_dept,
+            'count' => 0
+        );
+    }
+
+    if (!in_array($ecat_name, $categories_with_parent)) {
+        $categories_with_parent[] = array('name' => $ecat_name, 'dept' => $parent_dept, 'mcat' => $mcat_name);
     }
 
     $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
@@ -1451,13 +1467,17 @@ foreach ($raw_products as $prod) {
     );
 
     if (!isset($grouped_products[$group_key])) {
+        $parent_departments[$parent_dept]['count']++;
+        $mid_categories_list[$mid_key]['count']++;
+        $parent_departments[$parent_dept]['mid_cats'][$mcat_name] = true;
+
         $grouped_products[$group_key] = array(
             'group_key' => $group_key,
             'base_name' => $card_title,
             'ecat_id' => $prod['ecat_id'],
             'ecat_name' => $ecat_name,
-            'mcat_name' => $prod['mcat_name'] ?: '',
-            'tcat_name' => $prod['tcat_name'] ?: '',
+            'mcat_name' => $mcat_name,
+            'tcat_name' => $parent_dept,
             'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic',
             'brands' => array(!empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic'),
             'photo' => $img_src,
@@ -2035,6 +2055,70 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     line-height: 1.2 !important;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
+
+/* POS Product Dual-View & List Mode */
+.pos-product-list-container {
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    margin-bottom: 14px;
+}
+.pos-product-list-table th {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #475569;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border-bottom: 2px solid #cbd5e1 !important;
+}
+.pos-product-list-table td {
+    vertical-align: middle !important;
+    padding: 7px 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.pos-list-row {
+    transition: background-color 0.15s ease;
+    cursor: pointer;
+}
+.pos-list-row:hover {
+    background-color: #f0f9ff !important;
+}
+.pos-list-row.out-of-stock {
+    opacity: 0.6;
+    background-color: #f8fafc;
+}
+.pos-view-btn-group .btn {
+    height: 38px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.pos-view-btn-group .btn.active {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+    border-color: #0f172a !important;
+}
+.pos-search-kbd-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    background: #e2e8f0;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid #cbd5e1;
+    margin-left: 4px;
+}
+.pos-search-hl {
+    background-color: #fef08a !important;
+    color: #0f172a !important;
+    padding: 0 2px !important;
+    border-radius: 2px !important;
+    font-weight: 800 !important;
+    text-decoration: none !important;
+}
 </style>
 
 <section class="content-header">
@@ -2081,42 +2165,58 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
             <div class="box box-primary" style="border-radius: 8px;">
                 <div class="box-body">
                     
-                    <!-- Search and Filters -->
+                    <!-- Search and Filters Toolbar -->
                     <div class="row" style="margin-bottom: 12px;">
-                        <div class="col-sm-5 col-xs-12" style="margin-bottom: 6px;">
+                        <div class="col-md-5 col-sm-6 col-xs-12" style="margin-bottom: 6px;">
                             <div class="input-group">
-                                <span class="input-group-addon" style="font-size: 16px;"><i class="fa fa-search"></i></span>
+                                <span class="input-group-addon" style="font-size: 15px; background-color: #f8fafc; border-color: #cbd5e1;"><i class="fa fa-search text-primary"></i></span>
                                 <input type="search" 
                                        id="posSearchInput" 
                                        name="pos_catalog_search_term" 
                                        class="form-control input-lg" 
-                                       style="height: 42px; font-size: 15px;" 
-                                       placeholder="Search product by name, brand, spec, or SKU..." 
+                                       style="height: 42px; font-size: 14px; font-weight: 500;" 
+                                       placeholder="Search product by name, brand, spec, or SKU... (F2)" 
                                        autocomplete="off" 
                                        autocorrect="off" 
                                        autocapitalize="off" 
                                        spellcheck="false" 
                                        data-lpignore="true" 
                                        data-form-type="other"
-                                       onkeyup="filterPOSProducts()">
+                                       oninput="filterPOSProducts()"
+                                       onkeyup="filterPOSProducts()"
+                                       onkeydown="if(event.key === 'Enter') handlePOSSearchEnter(event);">
                                 <span class="input-group-btn">
-                                    <button class="btn btn-default input-lg" type="button" onclick="clearPOSSearch()" style="height: 42px;"><i class="fa fa-times"></i></button>
+                                    <button class="btn btn-default input-lg" type="button" onclick="clearPOSSearch()" style="height: 42px;" title="Clear Search (Esc)"><i class="fa fa-times text-muted"></i></button>
                                 </span>
                             </div>
                         </div>
-                        <div class="col-sm-7 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 6px;" title="Printer Setup (Auto Detect / Any Connected Printer • Default: 58mm Thermal)">
-                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer Setup</span>
+                        <div class="col-md-7 col-sm-6 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <!-- In-Stock Filter Toggle -->
+                            <label style="margin: 0; font-size: 12px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; padding: 4px 9px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 4px; height: 38px; user-select: none;" title="Filter: Show only products with active available inventory">
+                                <input type="checkbox" id="posInStockToggle" onchange="filterPOSProducts()" style="margin: 0; cursor: pointer;"> In-Stock
+                            </label>
+
+                            <!-- Dual View Mode Switcher (Grid vs List) -->
+                            <div class="btn-group pos-view-btn-group" role="group" aria-label="View Switcher">
+                                <button type="button" class="btn btn-default active" id="posViewGridBtn" onclick="setPOSViewMode('grid')" title="Visual Grid Cards View" style="height: 38px; padding: 6px 11px;">
+                                    <i class="fa fa-th-large"></i>
+                                </button>
+                                <button type="button" class="btn btn-default" id="posViewListBtn" onclick="setPOSViewMode('list')" title="Compact High-Density List View" style="height: 38px; padding: 6px 11px;">
+                                    <i class="fa fa-list"></i>
+                                </button>
+                            </div>
+
+                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Printer Setup (Auto Detect / Any Connected Printer • Default: 58mm Thermal)">
+                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer</span>
                             </button>
-                            <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 2px 5px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Create custom/manual order item not in catalogue">
-                                <i class="fa fa-plus-circle"></i> + Special Order
+                            <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 11px; border-radius: 4px; box-shadow: 0 1px 3px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 4px;" title="Create custom/manual order item not in catalogue">
+                                <i class="fa fa-plus-circle"></i> + Custom
                             </button>
-                            <button type="button" class="btn btn-danger input-lg" onclick="openReturnModal()" style="height: 42px; font-size: 13px; font-weight: 800; background-color: #dc2626; border-color: #b91c1c; color: #fff; padding: 6px 14px; border-radius: 4px; box-shadow: 0 2px 5px rgba(220,38,38,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Search completed orders and process item returns & refunds">
+                            <button type="button" class="btn btn-danger input-lg" onclick="openReturnModal()" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #dc2626; border-color: #b91c1c; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(220,38,38,0.25); display: inline-flex; align-items: center; gap: 4px;" title="Search completed orders and process item returns & refunds">
                                 <i class="fa fa-undo"></i> RETURN
                             </button>
-                            <span class="text-muted" style="line-height: 42px; font-size: 12.5px;">
-                                Products: <strong id="productCount"><?php echo count($grouped_products); ?></strong>
-                                <span style="font-size: 11px; color: #64748b;">(<?php echo $total_inventory_items; ?> items)</span>
+                            <span class="text-muted" style="font-size: 12px; font-weight: 700; white-space: nowrap;">
+                                <strong id="productCount" style="color: #0f172a; font-size: 13px;"><?php echo count($grouped_products); ?></strong> items
                             </span>
                         </div>
                     </div>
@@ -2151,9 +2251,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     <button type="button" class="pos-dept-tab active" data-dept="all" onclick="filterDepartment('all', this)">
                                         <i class="fa fa-th-large"></i> Top Categories (<?php echo count($grouped_products); ?>)
                                     </button>
-                                    <?php foreach ($parent_departments as $dept_name => $dept_cats): ?>
+                                    <?php foreach ($parent_departments as $dept_name => $dept_info): ?>
                                         <button type="button" class="pos-dept-tab" data-dept="<?php echo htmlspecialchars($dept_name); ?>" onclick="filterDepartment('<?php echo htmlspecialchars(addslashes($dept_name)); ?>', this)">
-                                            <i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($dept_name); ?> <span class="badge" style="background:#e2e8f0; color:#334155; margin-left:3px;"><?php echo count($dept_cats); ?></span>
+                                            <i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($dept_name); ?> <span class="badge" style="background:#e2e8f0; color:#334155; margin-left:3px;"><?php echo is_array($dept_info) ? $dept_info['count'] : count($dept_info); ?></span>
                                         </button>
                                     <?php endforeach; ?>
                                 </div>
@@ -2162,17 +2262,18 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 </button>
                             </div>
 
-                            <!-- Tier 2: Sub-Category Pills (Clean 2-3 Rows, Zero Horizontal Scroll) -->
+                            <!-- Tier 2: Sub-Category Pills (Mid Categories: 2-3 Clean Rows/Single Row) -->
                             <div class="pos-category-filter-box" id="posCategoryFilterBox">
                                 <button type="button" class="pos-cat-pill active" data-dept="all" data-cat="all" onclick="filterCategory('all', this)">
-                                    <i class="fa fa-th-list"></i> All in Selected
+                                    <i class="fa fa-th-list"></i> <span class="pos-all-label">All in Selected</span>
                                 </button>
-                                <?php foreach ($categories_with_parent as $item): ?>
+                                <?php foreach ($mid_categories_list as $item): ?>
                                     <button type="button" class="pos-cat-pill" 
                                             data-dept="<?php echo htmlspecialchars($item['dept']); ?>" 
                                             data-cat="<?php echo htmlspecialchars($item['name']); ?>" 
+                                            data-mcat="<?php echo htmlspecialchars($item['name']); ?>" 
                                             onclick="filterCategory('<?php echo htmlspecialchars(addslashes($item['name'])); ?>', this)">
-                                        <?php echo htmlspecialchars($item['name']); ?>
+                                        <?php echo htmlspecialchars($item['name']); ?> <span class="badge" style="background:#f1f5f9; color:#475569; font-size:10.5px; margin-left:3px; font-weight:700;"><?php echo $item['count']; ?></span>
                                     </button>
                                 <?php endforeach; ?>
                             </div>
@@ -2180,50 +2281,120 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     </div>
                     <?php endif; ?>
 
-                    <!-- Products Grid (Grouped by End Level Category & Parent Product) -->
+                    <!-- VIEW 1: Products Grid (Visual Cards) -->
                     <div id="posProductGrid">
                         <?php if (count($grouped_products) > 0): ?>
+                            <?php 
+                            if (!function_exists('get_pos_product_search_index')) {
+                                function get_pos_product_search_index($group) {
+                                    $search_terms = array(
+                                        $group['base_name'],
+                                        $group['brand'],
+                                        $group['ecat_name'],
+                                        $group['mcat_name'],
+                                        $group['tcat_name']
+                                    );
+                                    foreach ($group['variants'] as $v) {
+                                        $search_terms[] = $v['name'];
+                                        $search_terms[] = $v['sku'];
+                                        $search_terms[] = $v['spec_label'];
+                                        if (!empty($v['size'])) $search_terms[] = $v['size'];
+                                        if (!empty($v['thickness'])) $search_terms[] = $v['thickness'];
+                                        if (!empty($v['diameter'])) $search_terms[] = $v['diameter'];
+                                        if (!empty($v['color'])) $search_terms[] = $v['color'];
+                                        if (!empty($v['material'])) $search_terms[] = $v['material'];
+                                        if (!empty($v['weight_pack'])) $search_terms[] = $v['weight_pack'];
+                                        if (!empty($v['voltage'])) $search_terms[] = $v['voltage'];
+                                        if (!empty($v['power'])) $search_terms[] = $v['power'];
+                                    }
+                                    
+                                    $combined = strtolower(implode(' ', array_filter($search_terms)));
+                                    
+                                    // Dimension variations: 2x3 -> 2 x 3, 2 x 3 -> 2x3
+                                    if (preg_match_all('/\b(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\b/i', $combined, $matches, PREG_SET_ORDER)) {
+                                        foreach ($matches as $m) {
+                                            $search_terms[] = $m[1] . 'x' . $m[2];
+                                            $search_terms[] = $m[1] . ' x ' . $m[2];
+                                            $search_terms[] = $m[1] . '" x ' . $m[2] . '"';
+                                            $search_terms[] = $m[1] . 'in x ' . $m[2] . 'in';
+                                        }
+                                    }
+                                    
+                                    // Units: 40kg -> 40 kg, 10mm -> 10 mm
+                                    if (preg_match_all('/\b(\d+(?:\.\d+)?)\s*(kg|mm|cm|m|in|pcs|pc|ft|gal|ltr|l|w|v|hp)\b/i', $combined, $matches, PREG_SET_ORDER)) {
+                                        foreach ($matches as $m) {
+                                            $search_terms[] = $m[1] . $m[2];
+                                            $search_terms[] = $m[1] . ' ' . $m[2];
+                                        }
+                                    }
+                                    
+                                    // Fractions
+                                    if (strpos($combined, '1/2') !== false) { $search_terms[] = '0.5'; $search_terms[] = '1/2"'; $search_terms[] = '1/2 in'; }
+                                    if (strpos($combined, '1/4') !== false) { $search_terms[] = '0.25'; $search_terms[] = '1/4"'; $search_terms[] = '1/4 in'; }
+                                    if (strpos($combined, '3/4') !== false) { $search_terms[] = '0.75'; $search_terms[] = '3/4"'; $search_terms[] = '3/4 in'; }
+                                    if (strpos($combined, '3/8') !== false) { $search_terms[] = '0.375'; $search_terms[] = '3/8"'; $search_terms[] = '3/8 in'; }
+                                    if (strpos($combined, '5/16') !== false) { $search_terms[] = '0.3125'; $search_terms[] = '5/16"'; $search_terms[] = '5/16 in'; }
+                                    
+                                    // Construction Trade Synonyms & Aliases
+                                    if (strpos($combined, 'galvanized') !== false || strpos($combined, 'corrugated') !== false) {
+                                        $search_terms[] = 'gi'; $search_terms[] = 'g.i.'; $search_terms[] = 'yero';
+                                    }
+                                    if (strpos($combined, 'hollow block') !== false) {
+                                        $search_terms[] = 'chb'; $search_terms[] = 'block';
+                                    }
+                                    if (strpos($combined, 'deformed') !== false || strpos($combined, 'steel bar') !== false || strpos($combined, 'rebar') !== false) {
+                                        $search_terms[] = 'rsb'; $search_terms[] = 'deformed'; $search_terms[] = 'rebar'; $search_terms[] = 'bakal';
+                                    }
+                                    if (strpos($combined, 'wire nail') !== false || strpos($combined, 'common nail') !== false) {
+                                        $search_terms[] = 'cwn'; $search_terms[] = 'pako'; $search_terms[] = 'nail';
+                                    }
+                                    if (strpos($combined, 'pvc') !== false) {
+                                        $search_terms[] = 'tubo'; $search_terms[] = 'sanitary'; $search_terms[] = 'neltex'; $search_terms[] = 'polyvinyl';
+                                    }
+                                    if (strpos($combined, 'ppr') !== false) {
+                                        $search_terms[] = 'green pipe'; $search_terms[] = 'polypropylene';
+                                    }
+                                    if (strpos($combined, 'purlin') !== false) {
+                                        $search_terms[] = 'c-purlin'; $search_terms[] = 'c channel'; $search_terms[] = 'c-channel';
+                                    }
+                                    if (strpos($combined, 'plywood') !== false) {
+                                        $search_terms[] = 'ply'; $search_terms[] = 'marine'; $search_terms[] = 'kahoy';
+                                    }
+                                    if (strpos($combined, 'wire') !== false || strpos($combined, 'cable') !== false) {
+                                        $search_terms[] = 'thhn'; $search_terms[] = 'thwn'; $search_terms[] = 'kuryente';
+                                    }
+                                    if (strpos($combined, 'cement') !== false) {
+                                        $search_terms[] = 'semento'; $search_terms[] = 'portland'; $search_terms[] = 'pozolan';
+                                    }
+                                    if (strpos($combined, 'paint') !== false) {
+                                        $search_terms[] = 'pintura'; $search_terms[] = 'boysen'; $search_terms[] = 'davies';
+                                    }
+                                    if (strpos($combined, 'sandpaper') !== false || strpos($combined, 'sand paper') !== false || strpos($combined, 'abrasive') !== false || strpos($combined, 'lija') !== false) {
+                                        $search_terms[] = 'lija'; $search_terms[] = 'sandpaper'; $search_terms[] = 'sand paper'; $search_terms[] = 'abrasive'; $search_terms[] = 'waterproof';
+                                    }
+
+                                    return strtolower(implode(' ', array_unique($search_terms)));
+                                }
+                            }
+                            ?>
                             <?php foreach ($grouped_products as $group_key => $group): 
                                 $is_out_of_stock = ($group['total_stock'] <= 0);
                                 $variant_count = count($group['variants']);
                                 $group_dept = !empty($group['tcat_name']) ? $group['tcat_name'] : (!empty($group['mcat_name']) ? $group['mcat_name'] : 'General Hardware');
-                                
-                                // Build thorough search index for this parent group
-                                $search_terms = array(
-                                    $group['base_name'],
-                                    $group['brand'],
-                                    $group['ecat_name'],
-                                    $group['mcat_name'],
-                                    $group['tcat_name']
-                                );
-                                foreach ($group['variants'] as $v) {
-                                    $search_terms[] = $v['name'];
-                                    $search_terms[] = $v['sku'];
-                                    $search_terms[] = $v['spec_label'];
-                                    if (!empty($v['size'])) $search_terms[] = $v['size'];
-                                    if (!empty($v['thickness'])) $search_terms[] = $v['thickness'];
-                                    if (!empty($v['diameter'])) $search_terms[] = $v['diameter'];
-                                    if (!empty($v['color'])) $search_terms[] = $v['color'];
-                                    if (!empty($v['material'])) $search_terms[] = $v['material'];
-                                    if (!empty($v['weight_pack'])) $search_terms[] = $v['weight_pack'];
-                                    if (!empty($v['voltage'])) $search_terms[] = $v['voltage'];
-                                    if (!empty($v['power'])) $search_terms[] = $v['power'];
-                                }
-                                $search_index = strtolower(implode(' ', array_unique($search_terms)));
+                                $search_index = get_pos_product_search_index($group);
                             ?>
                             <div class="pos-product-item" 
                                  data-name="<?php echo htmlspecialchars($search_index, ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-base-name="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-brand="<?php echo htmlspecialchars($group['brand'], ENT_QUOTES, 'UTF-8'); ?>"
                                  data-category="<?php echo htmlspecialchars($group['ecat_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-mcat="<?php echo htmlspecialchars($group['mcat_name'], ENT_QUOTES, 'UTF-8'); ?>"
                                  data-dept="<?php echo htmlspecialchars($group_dept, ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-stock="<?php echo (int)$group['total_stock']; ?>"
                                  data-group='<?php echo htmlspecialchars(json_encode($group), ENT_QUOTES, 'UTF-8'); ?>'
                                  onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
                                 
                                 <div class="pos-product-card <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>">
-                                    <!-- Category Hierarchy Badge -->
-                                    <span class="pos-cat-badge" title="<?php echo htmlspecialchars(!empty($group['mcat_name']) ? ($group['mcat_name'] . ' • ' . $group['ecat_name']) : $group['ecat_name']); ?>">
-                                        <?php echo htmlspecialchars(!empty($group['mcat_name']) ? $group['mcat_name'] : $group['ecat_name']); ?>
-                                    </span>
-
                                     <!-- Stock Badge -->
                                     <span class="label pos-stock-badge <?php echo $is_out_of_stock ? 'label-danger' : ($group['total_stock'] < 10 ? 'label-warning' : 'label-success'); ?>">
                                         <?php echo $is_out_of_stock ? 'Out of Stock' : $group['total_stock'] . ' in stock'; ?>
@@ -2234,11 +2405,8 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     
                                     <!-- Parent Product Info -->
                                     <div class="pos-parent-info">
-                                        <div class="pos-parent-name" title="<?php echo htmlspecialchars($group['base_name']); ?>">
+                                        <div class="pos-parent-name" data-orig-title="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>" title="<?php echo htmlspecialchars($group['base_name']); ?>">
                                             <?php echo htmlspecialchars($group['base_name']); ?>
-                                        </div>
-                                        <div class="pos-parent-meta">
-                                            <span class="text-muted"><i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($group['ecat_name']); ?> &bull; <i class="fa fa-tag"></i> <?php echo htmlspecialchars($group['brand']); ?></span>
                                         </div>
                                         
                                         <!-- Variant Indicator Badge -->
@@ -2275,6 +2443,84 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <p class="text-muted" style="margin-top: 10px;">No active products found in your inventory. <a href="product-add.php">Add products</a></p>
                             </div>
                         <?php endif; ?>
+                    </div>
+
+                    <!-- VIEW 2: High-Density Cashier List / Table View -->
+                    <div id="posProductListContainer" class="pos-product-list-container" style="display: none;">
+                        <div class="table-responsive" style="max-height: 560px; overflow-y: auto; margin-bottom: 0;">
+                            <table class="table table-hover pos-product-list-table" style="margin-bottom: 0;">
+                                <thead style="background: #f8fafc; border-bottom: 2px solid #cbd5e1; position: sticky; top: 0; z-index: 5;">
+                                    <tr>
+                                        <th style="width: 48px; text-align: center;">Photo</th>
+                                        <th>Product Name &amp; Specifications</th>
+                                        <th style="width: 140px;">Category</th>
+                                        <th style="width: 110px;">SKU / Brand</th>
+                                        <th style="width: 90px; text-align: center;">Stock</th>
+                                        <th style="width: 115px; text-align: right;">Unit Price</th>
+                                        <th style="width: 90px; text-align: center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (count($grouped_products) > 0): ?>
+                                        <?php foreach ($grouped_products as $group_key => $group): 
+                                            $is_out_of_stock = ($group['total_stock'] <= 0);
+                                            $variant_count = count($group['variants']);
+                                            $group_dept = !empty($group['tcat_name']) ? $group['tcat_name'] : (!empty($group['mcat_name']) ? $group['mcat_name'] : 'General Hardware');
+                                            $search_index = get_pos_product_search_index($group);
+                                        ?>
+                                        <tr class="pos-product-item pos-list-row <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>"
+                                            data-name="<?php echo htmlspecialchars($search_index, ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-base-name="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-brand="<?php echo htmlspecialchars($group['brand'], ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-category="<?php echo htmlspecialchars($group['ecat_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-mcat="<?php echo htmlspecialchars($group['mcat_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-dept="<?php echo htmlspecialchars($group_dept, ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-stock="<?php echo (int)$group['total_stock']; ?>"
+                                            data-group='<?php echo htmlspecialchars(json_encode($group), ENT_QUOTES, 'UTF-8'); ?>'
+                                            onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
+                                            <td style="text-align: center; vertical-align: middle; padding: 6px;">
+                                                <div style="width: 36px; height: 36px; background-image: url('<?php echo htmlspecialchars($group['photo']); ?>'); background-size: contain; background-repeat: no-repeat; background-position: center; border-radius: 4px; border: 1px solid #e2e8f0; background-color: #fff; margin: 0 auto;"></div>
+                                            </td>
+                                            <td style="vertical-align: middle; padding: 6px 8px;">
+                                                <strong class="pos-list-row-title" data-orig-title="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>" style="color: #0f172a; font-size: 13px; display: block;"><?php echo htmlspecialchars($group['base_name']); ?></strong>
+                                                <?php if ($variant_count > 1): ?>
+                                                    <span class="pos-variant-count-badge" style="font-size: 10px; margin-top: 2px;">
+                                                        <i class="fa fa-th-list"></i> <?php echo $variant_count; ?> Variants / Sizes
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span style="font-size: 11.5px; color: #64748b;"><?php echo htmlspecialchars($group['variants'][0]['spec_label']); ?></span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td style="vertical-align: middle; padding: 6px 8px; font-size: 11.5px; color: #475569;">
+                                                <span class="label label-default" style="background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; font-size: 10.5px;"><?php echo htmlspecialchars($group['ecat_name']); ?></span>
+                                            </td>
+                                            <td style="vertical-align: middle; padding: 6px 8px; font-size: 11.5px; color: #64748b; font-family: monospace;">
+                                                <div><strong><?php echo htmlspecialchars($group['brand']); ?></strong></div>
+                                                <div style="font-size: 10.5px; color: #94a3b8;"><?php echo htmlspecialchars($group['variants'][0]['sku'] ?? ''); ?></div>
+                                            </td>
+                                            <td style="vertical-align: middle; padding: 6px 8px; text-align: center;">
+                                                <span class="label <?php echo $is_out_of_stock ? 'label-danger' : ($group['total_stock'] < 10 ? 'label-warning' : 'label-success'); ?>" style="font-size: 11px; padding: 3px 6px;">
+                                                    <?php echo $is_out_of_stock ? 'Out of Stock' : $group['total_stock']; ?>
+                                                </span>
+                                            </td>
+                                            <td style="vertical-align: middle; padding: 6px 8px; text-align: right; font-weight: 800; font-size: 13.5px; color: #1d4ed8;">
+                                                <?php if ($group['min_price'] == $group['max_price']): ?>
+                                                    &#8369;<?php echo number_format($group['min_price'], 2); ?>
+                                                <?php else: ?>
+                                                    &#8369;<?php echo number_format($group['min_price'], 2); ?>+
+                                                <?php endif; ?>
+                                            </td>
+                                            <td style="vertical-align: middle; padding: 6px 8px; text-align: center;">
+                                                <button type="button" class="btn btn-primary btn-xs" style="font-weight: 700; border-radius: 4px; padding: 3px 8px; font-size: 11px;">
+                                                    <i class="fa fa-plus-circle"></i> <?php echo ($variant_count > 1) ? 'Select' : '+ Add'; ?>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                 </div>
@@ -5684,8 +5930,8 @@ function togglePOSCategories() {
 function updateCategoryBreadcrumb() {
     const badge = document.getElementById('posActiveFilterBreadcrumb');
     if (!badge) return;
-    const deptText = (currentActiveDept === 'all') ? 'Top Categories' : currentActiveDept;
-    const catText = (currentActiveCat === 'all') ? 'All in Selected' : currentActiveCat;
+    const deptText = (currentActiveDept === 'all') ? 'All Departments' : currentActiveDept;
+    const catText = (currentActiveCat === 'all') ? 'All Sub-Systems' : currentActiveCat;
     badge.innerHTML = `${escapeHtml(deptText)} &bull; ${escapeHtml(catText)}`;
 }
 
@@ -5721,7 +5967,7 @@ function filterDepartment(deptName, btn) {
         } catch(e) {}
     }
 
-    // Show/Hide sub-category pills in Tier 2
+    // Show/Hide Mid-Category pills in Tier 2
     document.querySelectorAll('.pos-cat-pill').forEach(pill => {
         const pDept = pill.getAttribute('data-dept');
         const pCat = pill.getAttribute('data-cat');
@@ -5729,6 +5975,10 @@ function filterDepartment(deptName, btn) {
         if (pCat === 'all') {
             pill.style.display = '';
             pill.classList.add('active');
+            const allLabel = pill.querySelector('.pos-all-label');
+            if (allLabel) {
+                allLabel.innerText = (currentActiveDept === 'all') ? 'All in Selected' : ('All in ' + currentActiveDept);
+            }
         } else if (currentActiveDept === 'all' || pDept === currentActiveDept) {
             pill.style.display = '';
             pill.classList.remove('active');
@@ -5751,58 +6001,395 @@ function filterCategory(catName, btn) {
     filterPOSProducts();
 }
 
-function filterPOSProducts() {
-    const query = document.getElementById('posSearchInput')?.value.toLowerCase().trim() || '';
-    const rawQuery = document.getElementById('posSearchInput')?.value.trim() || '';
-    const items = document.querySelectorAll('.pos-product-item');
-    let visibleCount = 0;
+function setPOSViewMode(mode) {
+    const gridView = document.getElementById('posProductGrid');
+    const listView = document.getElementById('posProductListContainer');
+    const gridBtn = document.getElementById('posViewGridBtn');
+    const listBtn = document.getElementById('posViewListBtn');
+    const emptyMsg = document.getElementById('posProductGridEmptyMsg');
 
-    items.forEach(item => {
-        const searchData = item.getAttribute('data-name') || '';
-        const itemCat = item.getAttribute('data-category') || '';
-        const itemDept = item.getAttribute('data-dept') || '';
+    if (mode === 'list') {
+        if (listBtn) listBtn.classList.add('active');
+        if (gridBtn) gridBtn.classList.remove('active');
+        if (!emptyMsg || emptyMsg.style.display === 'none') {
+            if (gridView) gridView.style.display = 'none';
+            if (listView) listView.style.display = 'block';
+        }
+    } else {
+        if (gridBtn) gridBtn.classList.add('active');
+        if (listBtn) listBtn.classList.remove('active');
+        if (!emptyMsg || emptyMsg.style.display === 'none') {
+            if (listView) listView.style.display = 'none';
+            if (gridView) gridView.style.display = 'grid';
+        }
+    }
+    try {
+        localStorage.setItem('pos_product_view_mode', mode);
+    } catch(e) {}
+}
 
-        const matchesQuery = (query === '' || searchData.indexOf(query) > -1);
-        const matchesDept = (currentActiveDept === 'all' || itemDept === currentActiveDept);
-        const matchesCat = (currentActiveCat === 'all' || itemCat === currentActiveCat);
+function openSpecialOrderWithPrefill(namePrefill) {
+    openSpecialOrderModal();
+    const nameInput = document.getElementById('soProductName');
+    if (nameInput && namePrefill) {
+        nameInput.value = namePrefill;
+        setTimeout(() => {
+            const priceInput = document.getElementById('soUnitPrice');
+            if (priceInput) priceInput.focus();
+        }, 360);
+    }
+}
 
-        if (matchesQuery && matchesDept && matchesCat) {
-            item.style.display = '';
-            visibleCount++;
+function escapeRegex(string) {
+    return (string || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const POS_HARDWARE_SYNONYMS = {
+    'gi': ['galvanized', 'corrugated', 'yero', 'gi sheet', 'gi pipe', 'gi wire'],
+    'g.i.': ['galvanized', 'corrugated', 'yero', 'gi sheet'],
+    'chb': ['hollow block', 'concrete hollow block', 'masonry block'],
+    'rsb': ['deformed', 'steel bar', 'rebar', 'bakal'],
+    'cwn': ['wire nail', 'common wire nail', 'pako', 'nail'],
+    'pvc': ['polyvinyl', 'tubo', 'neltex', 'emerald', 'sanitary pipe', 'blue pipe', 'orange pipe'],
+    'ppr': ['polypropylene', 'green pipe', 'fusion'],
+    'purlin': ['c channel', 'c-channel', 'c purlin', 'c-purlin', 'purlins'],
+    'c-purlin': ['c channel', 'c-channel', 'purlin', 'purlins'],
+    'ply': ['plywood', 'marine plywood', 'marine ply', 'ordinary plywood', 'kahoy'],
+    'thhn': ['electrical wire', 'stranded wire', 'building wire', 'kuryente'],
+    'thwn': ['electrical wire', 'stranded wire', 'building wire', 'kuryente'],
+    'cement': ['semento', 'portland', 'pozolan'],
+    'paint': ['pintura', 'boysen', 'davies'],
+    'sandpaper': ['lija', 'abrasive', 'silicon carbide', 'sand paper'],
+    'sand paper': ['lija', 'abrasive', 'sandpaper'],
+    'lija': ['sandpaper', 'abrasive', 'sand paper', 'waterproof']
+};
+
+function normalizeSearchString(str) {
+    if (!str) return '';
+    let s = str.toLowerCase();
+    s = s.replace(/(\d+(?:\.\d+)?)\s*["']?\s*x\s*["']?\s*(\d+(?:\.\d+)?)/gi, '$1x$2 $1 x $2');
+    s = s.replace(/(\d+(?:\.\d+)?)\s+(kg|mm|cm|m|in|pcs|pc|ft|gal|ltr|l|w|v|hp)\b/gi, '$1$2 $1 $2');
+    s = s.replace(/["']/g, '');
+    return s;
+}
+
+function isFuzzyMatch(token, word) {
+    if (!token || !word || token.length < 4 || word.length < 4) return false;
+    if (Math.abs(token.length - word.length) > 1) return false;
+    
+    let i = 0, j = 0, diffCount = 0;
+    while (i < token.length && j < word.length) {
+        if (token[i] !== word[j]) {
+            diffCount++;
+            if (diffCount > 1) return false;
+            if (token.length > word.length) i++;
+            else if (word.length > token.length) j++;
+            else { i++; j++; }
         } else {
-            item.style.display = 'none';
+            i++; j++;
+        }
+    }
+    return true;
+}
+
+function calculatePOSMatchScore(tokens, baseName, brand, ecat, searchData) {
+    let totalScore = 0;
+    const baseNameLower = (baseName || '').toLowerCase();
+    const brandLower = (brand || '').toLowerCase();
+    const ecatLower = (ecat || '').toLowerCase();
+    const searchDataLower = (searchData || '').toLowerCase();
+    const searchDataNormalized = normalizeSearchString(searchDataLower);
+    const searchDataWords = searchDataLower.split(/[\s,;|\-]+/).filter(w => w.length > 0);
+
+    for (let i = 0; i < tokens.length; i++) {
+        const rawToken = tokens[i];
+        const token = rawToken.toLowerCase();
+        const tokenEscaped = escapeRegex(token);
+        const wordBoundaryRegex = new RegExp('\\b' + tokenEscaped, 'i');
+
+        let tokenScore = 0;
+
+        // 1. Direct Prefix: Product Title starts with token (e.g. "cem" -> "Cement...")
+        if (baseNameLower.startsWith(token)) {
+            tokenScore = Math.max(tokenScore, 100);
+        }
+        // 2. Word Boundary in Product Title: Any word in Title starts with token (e.g. "cem" -> "Holcim Cement")
+        else if (wordBoundaryRegex.test(baseNameLower)) {
+            tokenScore = Math.max(tokenScore, 85);
+        }
+        // 3. Brand starts with token or word in Brand starts with token (e.g. "cem" -> "CEMEX")
+        else if (brandLower.startsWith(token) || wordBoundaryRegex.test(brandLower)) {
+            tokenScore = Math.max(tokenScore, 75);
+        }
+        // 4. Category starts with token (e.g. "plu" -> "Plumbing")
+        else if (ecatLower.startsWith(token) || wordBoundaryRegex.test(ecatLower)) {
+            tokenScore = Math.max(tokenScore, 65);
+        }
+        // 5. SKU, size, or spec word-boundary prefix match anywhere in searchData
+        else if (wordBoundaryRegex.test(searchDataLower) || wordBoundaryRegex.test(searchDataNormalized)) {
+            tokenScore = Math.max(tokenScore, 50);
+        }
+        // 6. Substring match fallback anywhere in searchData or normalized dimensions
+        else if (searchDataLower.indexOf(token) !== -1 || searchDataNormalized.indexOf(token) !== -1) {
+            tokenScore = Math.max(tokenScore, 30);
+        }
+        // 7. Hardware Acronym / Trade Synonym match (e.g. "gi", "chb", "rsb", "cwn", "pvc", "ply")
+        else if (POS_HARDWARE_SYNONYMS[token]) {
+            const synList = POS_HARDWARE_SYNONYMS[token];
+            for (let s = 0; s < synList.length; s++) {
+                if (searchDataLower.indexOf(synList[s]) !== -1 || searchDataNormalized.indexOf(synList[s]) !== -1) {
+                    tokenScore = Math.max(tokenScore, 45);
+                    break;
+                }
+            }
+        }
+
+        // 8. 1-Character Typo / Fuzzy tolerance (if token >= 4 chars and no match yet)
+        if (tokenScore === 0 && token.length >= 4) {
+            for (let w = 0; w < searchDataWords.length; w++) {
+                if (isFuzzyMatch(token, searchDataWords[w])) {
+                    tokenScore = Math.max(tokenScore, 25);
+                    break;
+                }
+            }
+        }
+
+        // If after all checks this token still has 0 score -> reject this item
+        if (tokenScore === 0) {
+            return { matches: false, score: 0 };
+        }
+
+        totalScore += tokenScore;
+    }
+
+    return { matches: true, score: totalScore };
+}
+
+function highlightSearchTokens(element, origText, tokens) {
+    if (!tokens || tokens.length === 0) {
+        element.textContent = origText;
+        return;
+    }
+    const safeOrig = escapeHtml(origText);
+    const pattern = tokens.map(t => escapeRegex(escapeHtml(t))).filter(t => t.length > 0).join('|');
+    if (!pattern) {
+        element.textContent = origText;
+        return;
+    }
+    const regex = new RegExp('(' + pattern + ')', 'gi');
+    element.innerHTML = safeOrig.replace(regex, '<mark class="pos-search-hl">$1</mark>');
+}
+
+function initializePOSSearchIndices() {
+    document.querySelectorAll('#posProductGrid .pos-product-item').forEach((item, idx) => {
+        if (!item.hasAttribute('data-orig-index')) {
+            item.setAttribute('data-orig-index', idx);
+        }
+        const titleEl = item.querySelector('.pos-parent-name');
+        if (titleEl && !titleEl.hasAttribute('data-orig-title')) {
+            titleEl.setAttribute('data-orig-title', titleEl.innerText.trim());
         }
     });
 
+    document.querySelectorAll('#posProductListContainer tbody .pos-product-item').forEach((item, idx) => {
+        if (!item.hasAttribute('data-orig-index')) {
+            item.setAttribute('data-orig-index', idx);
+        }
+        const titleEl = item.querySelector('.pos-list-row-title');
+        if (titleEl && !titleEl.hasAttribute('data-orig-title')) {
+            titleEl.setAttribute('data-orig-title', titleEl.innerText.trim());
+        }
+    });
+}
+
+function handlePOSSearchEnter(event) {
+    if (event) event.preventDefault();
+    const savedViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('pos_product_view_mode')) || 'grid';
+    const containerSelector = (savedViewMode === 'list') ? '#posProductListContainer' : '#posProductGrid';
+    const visibleItems = Array.from(document.querySelectorAll(containerSelector + ' .pos-product-item')).filter(el => el.style.display !== 'none');
+    if (visibleItems.length === 1) {
+        // Trigger click on the single matched item (fast-add / open variant modal)
+        visibleItems[0].click();
+    } else if (visibleItems.length > 1) {
+        const topScore = parseInt(visibleItems[0].getAttribute('data-search-score') || '0', 10);
+        if (topScore >= 100) {
+            visibleItems[0].click();
+        }
+    }
+}
+
+function filterPOSProducts() {
+    initializePOSSearchIndices();
+
+    const rawQuery = document.getElementById('posSearchInput')?.value.trim() || '';
+    const query = rawQuery.toLowerCase();
+    const tokens = query.length > 0 ? query.split(/\s+/).filter(t => t.length > 0) : [];
+    const isSearching = tokens.length > 0;
+    const inStockOnly = document.getElementById('posInStockToggle')?.checked || false;
+
+    const gridItems = Array.from(document.querySelectorAll('#posProductGrid .pos-product-item'));
+    const listItems = Array.from(document.querySelectorAll('#posProductListContainer tbody .pos-product-item'));
+
+    let matchingItemIds = new Set();
+    let visibleGridItems = [];
+    let visibleListItems = [];
+
+    // Helper for matching, scoring, and highlighting
+    function processItemList(items, isList) {
+        items.forEach(item => {
+            const searchData = (item.getAttribute('data-name') || '').toLowerCase();
+            const baseName = item.getAttribute('data-base-name') || '';
+            const brand = item.getAttribute('data-brand') || '';
+            const itemCat = item.getAttribute('data-category') || '';
+            const itemMcat = item.getAttribute('data-mcat') || '';
+            const itemDept = item.getAttribute('data-dept') || '';
+            const rawStock = parseInt(item.getAttribute('data-stock'), 10);
+            const stock = isNaN(rawStock) ? 999 : rawStock;
+
+            // In-stock check
+            if (inStockOnly && stock <= 0) {
+                item.style.display = 'none';
+                return;
+            }
+
+            // Category & Department filter check
+            let matchesDept = (currentActiveDept === 'all' || itemDept === currentActiveDept);
+            let matchesCat = (currentActiveCat === 'all' || itemMcat === currentActiveCat || itemCat === currentActiveCat);
+            if (!matchesDept || !matchesCat) {
+                item.style.display = 'none';
+                return;
+            }
+
+            // 3-to-5 char prefix & token scoring check
+            let score = 100;
+            if (isSearching) {
+                const matchResult = calculatePOSMatchScore(tokens, baseName, brand, itemCat, searchData);
+                if (!matchResult.matches) {
+                    item.style.display = 'none';
+                    return;
+                }
+                score = matchResult.score;
+            }
+
+            item.style.display = '';
+            item.setAttribute('data-search-score', score);
+
+            // Title Highlighting
+            const titleEl = isList ? item.querySelector('.pos-list-row-title') : item.querySelector('.pos-parent-name');
+            if (titleEl) {
+                const origTitle = titleEl.getAttribute('data-orig-title') || titleEl.innerText.trim();
+                if (isSearching && query.length >= 2) {
+                    highlightSearchTokens(titleEl, origTitle, tokens);
+                } else {
+                    titleEl.textContent = origTitle;
+                }
+            }
+
+            // Unique counting
+            const rawGroup = item.getAttribute('data-group');
+            if (rawGroup) {
+                try {
+                    const g = JSON.parse(rawGroup);
+                    matchingItemIds.add(g.base_name + '_' + (g.ecat_id || ''));
+                } catch(e) {
+                    matchingItemIds.add(item);
+                }
+            } else {
+                matchingItemIds.add(item);
+            }
+
+            const itemPayload = { 
+                el: item, 
+                score: score, 
+                origIndex: parseInt(item.getAttribute('data-orig-index') || '0', 10) 
+            };
+            if (isList) {
+                visibleListItems.push(itemPayload);
+            } else {
+                visibleGridItems.push(itemPayload);
+            }
+        });
+    }
+
+    processItemList(gridItems, false);
+    processItemList(listItems, true);
+
+    // Re-order DOM elements by score descending (or original index if not searching)
+    if (isSearching) {
+        const gridContainer = document.getElementById('posProductGrid');
+        if (gridContainer) {
+            visibleGridItems.sort((a, b) => (b.score - a.score) || (a.origIndex - b.origIndex));
+            visibleGridItems.forEach(itemObj => gridContainer.appendChild(itemObj.el));
+        }
+        const listTbody = document.querySelector('#posProductListContainer tbody');
+        if (listTbody) {
+            visibleListItems.sort((a, b) => (b.score - a.score) || (a.origIndex - b.origIndex));
+            visibleListItems.forEach(itemObj => listTbody.appendChild(itemObj.el));
+        }
+    } else {
+        // Restore original order
+        const gridContainer = document.getElementById('posProductGrid');
+        if (gridContainer) {
+            gridItems.sort((a, b) => parseInt(a.getAttribute('data-orig-index') || '0', 10) - parseInt(b.getAttribute('data-orig-index') || '0', 10));
+            gridItems.forEach(item => gridContainer.appendChild(item));
+        }
+        const listTbody = document.querySelector('#posProductListContainer tbody');
+        if (listTbody) {
+            listItems.sort((a, b) => parseInt(a.getAttribute('data-orig-index') || '0', 10) - parseInt(b.getAttribute('data-orig-index') || '0', 10));
+            listItems.forEach(item => listTbody.appendChild(item));
+        }
+    }
+
+    const visibleCount = matchingItemIds.size;
     const productCountEl = document.getElementById('productCount');
     if (productCountEl) productCountEl.innerText = visibleCount;
 
-    // Show friendly zero-match guidance with 1-click Return search if cashier typed an invoice/email/order search
+    // Show friendly zero-match guidance
     let emptyMsg = document.getElementById('posProductGridEmptyMsg');
-    if (visibleCount === 0 && query !== '') {
+    const gridView = document.getElementById('posProductGrid');
+    const listView = document.getElementById('posProductListContainer');
+
+    if (visibleCount === 0) {
         if (!emptyMsg) {
             emptyMsg = document.createElement('div');
             emptyMsg.id = 'posProductGridEmptyMsg';
-            emptyMsg.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 35px 20px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; margin: 10px 0;';
-            const grid = document.getElementById('posProductGrid');
-            if (grid) grid.appendChild(emptyMsg);
+            emptyMsg.style.cssText = 'text-align: center; padding: 35px 20px; background: #ffffff; border: 1.5px dashed #cbd5e1; border-radius: 8px; margin: 10px 0; width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
+            const productBody = document.querySelector('.pos-product-body');
+            if (productBody) productBody.appendChild(emptyMsg);
         }
         emptyMsg.innerHTML = `
             <div style="font-size: 26px; color: #94a3b8; margin-bottom: 6px;"><i class="fa fa-search"></i></div>
-            <div style="font-size: 14px; font-weight: 700; color: #334155;">No catalog products match "<em>${escapeHtml(rawQuery)}</em>"</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Looking for a customer order, invoice, or return?</div>
+            <div style="font-size: 14px; font-weight: 700; color: #334155;">No products found matching "<em>${escapeHtml(rawQuery)}</em>"</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Looking for a custom product, invoice, or return?</div>
             <div style="margin-top: 14px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;">
-                <button type="button" class="btn btn-danger btn-sm" onclick="openReturnModal('${escapeHtml(rawQuery).replace(/'/g, "\\'")}')" style="font-weight: 700; background-color: #dc2626; border-color: #b91c1c;">
-                    <i class="fa fa-undo"></i> Search in Returns &amp; Refunds
-                </button>
+                ${rawQuery ? `
+                    <button type="button" class="btn btn-warning btn-sm" onclick="openSpecialOrderWithPrefill('${escapeHtml(rawQuery).replace(/'/g, "\\'")}')" style="font-weight: 700; background-color: #d97706; border-color: #b45309; color: #fff;">
+                        <i class="fa fa-plus-circle"></i> + Custom Order "${escapeHtml(rawQuery.length > 20 ? rawQuery.substring(0, 20) + '...' : rawQuery)}"
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="openReturnModal('${escapeHtml(rawQuery).replace(/'/g, "\\'")}')" style="font-weight: 700; background-color: #dc2626; border-color: #b91c1c;">
+                        <i class="fa fa-undo"></i> Search in Returns &amp; Refunds
+                    </button>
+                ` : ''}
                 <button type="button" class="btn btn-default btn-sm" onclick="clearPOSSearch()" style="font-weight: 700;">
-                    <i class="fa fa-times"></i> Clear Search (Show All Products)
+                    <i class="fa fa-times"></i> Reset Filters
                 </button>
             </div>
         `;
         emptyMsg.style.display = 'block';
-    } else if (emptyMsg) {
-        emptyMsg.style.display = 'none';
+        if (gridView) gridView.style.display = 'none';
+        if (listView) listView.style.display = 'none';
+    } else {
+        if (emptyMsg) {
+            emptyMsg.style.display = 'none';
+        }
+        const savedViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('pos_product_view_mode')) || 'grid';
+        if (savedViewMode === 'list') {
+            if (gridView) gridView.style.display = 'none';
+            if (listView) listView.style.display = 'block';
+        } else {
+            if (listView) listView.style.display = 'none';
+            if (gridView) gridView.style.display = 'grid';
+        }
     }
 }
 
@@ -8329,6 +8916,30 @@ $(document).ready(function() {
             posSearchBox.value = '';
         }
     }
+
+    // Restore saved product view mode (grid vs list)
+    try {
+        const savedViewMode = localStorage.getItem('pos_product_view_mode') || 'grid';
+        setPOSViewMode(savedViewMode);
+    } catch (e) {}
+
+    // Global Keyboard Shortcuts (F2 / Ctrl+K focus search, Esc clears search)
+    $(document).on('keydown', function(e) {
+        if (e.key === 'F2' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+            if ($('.modal.in').length > 0) return; // Don't interrupt open modal
+            e.preventDefault();
+            const input = document.getElementById('posSearchInput');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+        if (e.key === 'Escape' && document.activeElement && document.activeElement.id === 'posSearchInput') {
+            clearPOSSearch();
+        }
+    });
+
+    initializePOSSearchIndices();
     filterPOSProducts();
 
     <?php if ($pos_po_success_data): ?>

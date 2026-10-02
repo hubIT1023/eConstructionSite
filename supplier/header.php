@@ -176,7 +176,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 	<link rel="stylesheet" href="css/summernote.css">
 	<link rel="stylesheet" href="style.css">
 	<script src="js/jquery-2.2.4.min.js"></script>
-	<script src="js/po-voucher-renderer.js"></script>
+	<script src="js/po-voucher-renderer.js?v=<?php echo file_exists(__DIR__ . '/js/po-voucher-renderer.js') ? filemtime(__DIR__ . '/js/po-voucher-renderer.js') : time(); ?>"></script>
 	<script>
 		// Anti-flicker: instantly apply sidebar-collapse before render if persisted
 		(function() {

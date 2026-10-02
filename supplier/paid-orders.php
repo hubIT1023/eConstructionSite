@@ -1314,7 +1314,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                              </table>
                                                              <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                                              <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
-                                                                 <div style="font-weight: bold;">*** OFFICIAL RECEIPT ***</div>
+                                                                 <div style="font-weight: bold;">*** SALES INVOICE ***</div>
                                                                  <div style="margin-top: 3px;">THANK YOU FOR YOUR PURCHASE!</div>
                                                                  <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
                                                              </div>

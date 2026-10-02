@@ -257,7 +257,7 @@
             // 9. Footer (Centered)
             buffer += ESCPOS.ALIGN_CENTER;
             buffer += ESCPOS.BOLD_ON;
-            buffer += '*** OFFICIAL RECEIPT ***\n';
+            buffer += '*** SALES INVOICE ***\n';
             buffer += ESCPOS.BOLD_OFF;
             buffer += 'THANK YOU FOR YOUR PURCHASE!\n';
             buffer += 'eConstruction Supply POS\n';
@@ -987,7 +987,7 @@
 
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
                 <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
-                    <div style="font-weight: bold;">*** OFFICIAL RECEIPT ***</div>
+                    <div style="font-weight: bold;">*** SALES INVOICE ***</div>
                     <div style="margin-top: 3px;">THANK YOU FOR YOUR PURCHASE!</div>
                     <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
                 </div>
