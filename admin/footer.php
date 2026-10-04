@@ -345,8 +345,29 @@
 			}
 		};
 
-
-
+		// Session Keep-Alive Heartbeat (every 5 mins and upon tab focus)
+		(function() {
+			function pingAdminSession() {
+				if (typeof $ === 'undefined') return;
+				var clientTz = '';
+				try { clientTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch(e) {}
+				$.ajax({
+					url: 'session-heartbeat.php',
+					type: 'GET',
+					data: { tz: clientTz },
+					dataType: 'json',
+					cache: false,
+					success: function(res) {},
+					error: function() {}
+				});
+			}
+			setInterval(pingAdminSession, 300000);
+			document.addEventListener('visibilitychange', function() {
+				if (document.visibilityState === 'visible') {
+					pingAdminSession();
+				}
+			});
+		})();
         
     </script>
 

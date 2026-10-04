@@ -2,6 +2,14 @@
 // Error Reporting Turn On
 ini_set('error_reporting', E_ALL);
 
+// Session Lifetime Configuration (Only apply if session is not active and headers not sent)
+if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+    ini_set('session.gc_maxlifetime', 604800);
+    ini_set('session.cookie_lifetime', 604800);
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.cookie_samesite', 'Lax');
+}
+
 // Load environment variables from .env file if it exists
 $env_file = dirname(__DIR__, 2) . '/.env';
 if (file_exists($env_file)) {
@@ -34,8 +42,14 @@ if (file_exists($env_file)) {
     }
 }
 
-// Setting up the time zone
-date_default_timezone_set('America/Los_Angeles');
+// Setting up the time zone (Automatic client PC detection with Asia/Manila fallback)
+$detected_tz = !empty($_COOKIE['client_timezone']) ? trim($_COOKIE['client_timezone']) : (!empty($_SESSION['client_timezone']) ? trim($_SESSION['client_timezone']) : null);
+if ($detected_tz && @date_default_timezone_set($detected_tz)) {
+    // Successfully adopted client PC timezone
+} else {
+    $fallback_tz = getenv('APP_TIMEZONE') ?: 'Asia/Manila';
+    @date_default_timezone_set($fallback_tz);
+}
 
 // Host Name
 $dbhost = getenv('DB_HOST') ?: 'db';

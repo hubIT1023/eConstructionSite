@@ -1,6 +1,13 @@
 <?php
 ob_start();
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start([
+        'cookie_lifetime' => 604800,
+        'gc_maxlifetime' => 604800,
+        'cookie_httponly' => true,
+        'cookie_samesite' => 'Lax'
+    ]);
+}
 include("inc/config.php");
 include("inc/functions.php");
 ensure_supplier_user_schema($pdo);
@@ -178,6 +185,16 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 	<script src="js/jquery-2.2.4.min.js"></script>
 	<script src="js/po-voucher-renderer.js?v=<?php echo file_exists(__DIR__ . '/js/po-voucher-renderer.js') ? filemtime(__DIR__ . '/js/po-voucher-renderer.js') : time(); ?>"></script>
 	<script>
+		// Automatic Client PC Timezone Detection
+		(function() {
+			try {
+				var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+				if (tz && document.cookie.indexOf('client_timezone=' + encodeURIComponent(tz)) === -1) {
+					document.cookie = 'client_timezone=' + encodeURIComponent(tz) + '; path=/; max-age=31536000; SameSite=Lax';
+				}
+			} catch(e) {}
+		})();
+
 		// Anti-flicker: instantly apply sidebar-collapse before render if persisted
 		(function() {
 			try {
@@ -831,5 +848,33 @@ $(document).ready(function() {
             updateSidebarIcon(isCollapsed);
         }, 100);
     });
+
+    // Session Keep-Alive Heartbeat (every 5 mins and upon tab focus)
+    (function() {
+        function pingSupplierSession() {
+            if (typeof $ === 'undefined') return;
+            var clientTz = '';
+            try { clientTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch(e) {}
+            $.ajax({
+                url: 'session-heartbeat.php',
+                type: 'GET',
+                data: { tz: clientTz },
+                dataType: 'json',
+                cache: false,
+                success: function(res) {
+                    // Session timestamp touched successfully
+                },
+                error: function() {
+                    // Fail silently on transient network glitches
+                }
+            });
+        }
+        setInterval(pingSupplierSession, 300000);
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                pingSupplierSession();
+            }
+        });
+    })();
 });
 </script>

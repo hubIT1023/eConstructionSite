@@ -1,6 +1,13 @@
 <?php
 ob_start();
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start([
+        'cookie_lifetime' => 604800,
+        'gc_maxlifetime' => 604800,
+        'cookie_httponly' => true,
+        'cookie_samesite' => 'Lax'
+    ]);
+}
 include("inc/config.php");
 include("inc/functions.php");
 include("inc/CSRF_Protect.php");
@@ -60,6 +67,17 @@ if(isset($_POST['form1'])) {
 	<link rel="stylesheet" href="css/_all-skins.min.css">
 
 	<link rel="stylesheet" href="style.css">
+	<script>
+		// Automatic Client PC Timezone Detection
+		(function() {
+			try {
+				var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+				if (tz && document.cookie.indexOf('client_timezone=' + encodeURIComponent(tz)) === -1) {
+					document.cookie = 'client_timezone=' + encodeURIComponent(tz) + '; path=/; max-age=31536000; SameSite=Lax';
+				}
+			} catch(e) {}
+		})();
+	</script>
 </head>
 
 <body class="hold-transition login-page sidebar-mini">

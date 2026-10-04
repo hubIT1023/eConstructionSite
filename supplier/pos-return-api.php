@@ -1,6 +1,11 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    session_start([
+        'cookie_lifetime' => 604800,
+        'gc_maxlifetime' => 604800,
+        'cookie_httponly' => true,
+        'cookie_samesite' => 'Lax'
+    ]);
 }
 require_once('inc/config.php');
 require_once('inc/functions.php');

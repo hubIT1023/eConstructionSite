@@ -1,6 +1,13 @@
 <?php
 ob_start();
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start([
+        'cookie_lifetime' => 604800,
+        'gc_maxlifetime' => 604800,
+        'cookie_httponly' => true,
+        'cookie_samesite' => 'Lax'
+    ]);
+}
 // This is main configuration File
 include("admin/inc/config.php");
 include("admin/inc/functions.php");
@@ -82,6 +89,18 @@ foreach ($result as $row) {
 	<!-- Meta Tags -->
 	<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 	<meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
+
+	<script>
+		// Automatic Client PC Timezone Detection
+		(function() {
+			try {
+				var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+				if (tz && document.cookie.indexOf('client_timezone=' + encodeURIComponent(tz)) === -1) {
+					document.cookie = 'client_timezone=' + encodeURIComponent(tz) + '; path=/; max-age=31536000; SameSite=Lax';
+				}
+			} catch(e) {}
+		})();
+	</script>
 
 	<!-- Favicon -->
 	<link rel="icon" type="image/png" href="assets/uploads/<?php echo $favicon; ?>">

@@ -1,6 +1,13 @@
 <?php
 ob_start();
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start([
+        'cookie_lifetime' => 604800,
+        'gc_maxlifetime' => 604800,
+        'cookie_httponly' => true,
+        'cookie_samesite' => 'Lax'
+    ]);
+}
 include("inc/config.php");
 include("inc/functions.php");
 include("inc/CSRF_Protect.php");
@@ -40,6 +47,17 @@ if(!isset($_SESSION['user'])) {
 	<link rel="stylesheet" href="css/summernote.css">
 	<link rel="stylesheet" href="style.css">
 	<script src="js/jquery-2.2.4.min.js"></script>
+	<script>
+		// Automatic Client PC Timezone Detection
+		(function() {
+			try {
+				var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+				if (tz && document.cookie.indexOf('client_timezone=' + encodeURIComponent(tz)) === -1) {
+					document.cookie = 'client_timezone=' + encodeURIComponent(tz) + '; path=/; max-age=31536000; SameSite=Lax';
+				}
+			} catch(e) {}
+		})();
+	</script>
 
 </head>
 
