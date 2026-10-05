@@ -268,6 +268,54 @@ try {
     $period_returns = [];
 }
 
+// Load all supplier staff / cashiers for mapping
+$supplier_staff_members = [];
+try {
+    $stmt_staff = $pdo->prepare("SELECT id, full_name, email, role, COALESCE(employee_id, '') as employee_id FROM tbl_supplier_user WHERE supplier_id = ? ORDER BY id ASC");
+    $stmt_staff->execute(array($supplier_id));
+    $supplier_staff_members = $stmt_staff->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $supplier_staff_members = [];
+}
+
+// Helper: Resolve cashier / staff member responsible for order
+if (!function_exists('resolve_order_cashier')) {
+    function resolve_order_cashier($ord, &$staff_members = []) {
+        $info = !empty($ord['bank_transaction_info']) ? $ord['bank_transaction_info'] : '';
+        
+        // 1. Check "Sent by <Role>: <Staff Name>"
+        if (preg_match('/Sent by\s+([^:]+):\s*([A-Za-z0-9\.\s\-_]+?)(?:\)|\||\n|\r|$)/i', $info, $m)) {
+            $name = trim($m[2]);
+            if (!empty($name)) return $name;
+        }
+
+        // 2. Check "Staff: <Staff Name>" or "Cashier: <Staff Name>"
+        if (preg_match('/(?:Staff|Cashier|User|Handled by|Processed by):\s*([A-Za-z0-9\.\s\-_]+?)(?:\||\(|\n|\r|$)/i', $info, $m)) {
+            $name = trim($m[1]);
+            if (!empty($name)) return $name;
+        }
+
+        // 3. Match known staff full names in transaction text
+        foreach ($staff_members as $sm) {
+            if (!empty($sm['full_name']) && stripos($info, $sm['full_name']) !== false) {
+                return $sm['full_name'];
+            }
+        }
+
+        // 4. Default to assigned counter staff or primary supplier user
+        if (!empty($staff_members)) {
+            foreach ($staff_members as $sm) {
+                if (in_array(strtoupper(trim($sm['role'])), ['CASHIER', 'EMPLOYEE', 'OPERATOR'])) {
+                    return $sm['full_name'];
+                }
+            }
+            return $staff_members[0]['full_name'];
+        }
+
+        return 'Counter Staff / Cashier';
+    }
+}
+
 // Period detailed metrics
 $total_gross_revenue = 0;
 $total_orders_count = count($sales_orders);
@@ -277,6 +325,8 @@ $total_gross_profit = 0;
 $total_delivery_collected = 0;
 $payment_methods_breakdown = [];
 $top_products = [];
+$top_products_monthly = [];
+$cashier_metrics = [];
 $trend_data = [];
 
 // Pre-process each order with line-item profitability
@@ -291,6 +341,9 @@ foreach ($sales_orders as $ord) {
         $payment_methods_breakdown[$pm] = 0;
     }
     $payment_methods_breakdown[$pm] += $paid_amt;
+
+    // Month index (1 to 12)
+    $order_month_num = (int)date('n', strtotime($ord['payment_date']));
 
     // Fetch order items
     $stmt_items = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id = ?");
@@ -326,6 +379,25 @@ foreach ($sales_orders as $ord) {
         $top_products[$p_name]['revenue'] += $fin['subtotal'];
         $top_products[$p_name]['cost'] += $fin['total_capital'];
         $top_products[$p_name]['profit'] += $fin['profit'];
+
+        // Aggregate monthly metrics for top products timeline
+        if (!isset($top_products_monthly[$p_name])) {
+            $top_products_monthly[$p_name] = [
+                'name' => $p_name,
+                'months' => array_fill(1, 12, ['orders' => 0, 'units' => 0, 'revenue' => 0]),
+                'total_orders' => 0,
+                'total_units' => 0,
+                'total_revenue' => 0,
+                'total_profit' => 0
+            ];
+        }
+        $top_products_monthly[$p_name]['months'][$order_month_num]['orders'] += 1;
+        $top_products_monthly[$p_name]['months'][$order_month_num]['units']  += $fin['qty'];
+        $top_products_monthly[$p_name]['months'][$order_month_num]['revenue']+= $fin['subtotal'];
+        $top_products_monthly[$p_name]['total_orders'] += 1;
+        $top_products_monthly[$p_name]['total_units']  += $fin['qty'];
+        $top_products_monthly[$p_name]['total_revenue']+= $fin['subtotal'];
+        $top_products_monthly[$p_name]['total_profit'] += $fin['profit'];
     }
 
     $total_gross_cost += $order_cost;
@@ -357,7 +429,50 @@ foreach ($sales_orders as $ord) {
     $trend_data[$p_date_key]['revenue'] += $paid_amt;
     $trend_data[$p_date_key]['profit'] += $order_profit;
     $trend_data[$p_date_key]['orders'] += 1;
+
+    // Cashier performance metrics aggregation
+    $cashier_name = resolve_order_cashier($ord, $supplier_staff_members);
+    if (!isset($cashier_metrics[$cashier_name])) {
+        $cashier_metrics[$cashier_name] = [
+            'name' => $cashier_name,
+            'orders' => 0,
+            'units' => 0,
+            'revenue' => 0,
+            'profit' => 0,
+            'avg_ticket' => 0,
+            'share_percent' => 0,
+            'monthly_revenue' => array_fill(1, 12, 0),
+            'monthly_orders' => array_fill(1, 12, 0),
+            'first_sale' => $ord['payment_date'],
+            'last_sale' => $ord['payment_date'],
+        ];
+    }
+    $cashier_metrics[$cashier_name]['orders'] += 1;
+    $cashier_metrics[$cashier_name]['units']  += count($processed_items);
+    $cashier_metrics[$cashier_name]['revenue']+= $paid_amt;
+    $cashier_metrics[$cashier_name]['profit'] += $order_profit;
+    $cashier_metrics[$cashier_name]['monthly_revenue'][$order_month_num] += $paid_amt;
+    $cashier_metrics[$cashier_name]['monthly_orders'][$order_month_num]  += 1;
+
+    if (strtotime($ord['payment_date']) < strtotime($cashier_metrics[$cashier_name]['first_sale'])) {
+        $cashier_metrics[$cashier_name]['first_sale'] = $ord['payment_date'];
+    }
+    if (strtotime($ord['payment_date']) > strtotime($cashier_metrics[$cashier_name]['last_sale'])) {
+        $cashier_metrics[$cashier_name]['last_sale'] = $ord['payment_date'];
+    }
 }
+
+// Calculate cashier metrics averages and share percentages
+foreach ($cashier_metrics as &$cm) {
+    $cm['avg_ticket'] = ($cm['orders'] > 0) ? ($cm['revenue'] / $cm['orders']) : 0;
+    $cm['share_percent'] = ($total_gross_revenue > 0) ? ($cm['revenue'] / $total_gross_revenue) * 100 : 0;
+}
+unset($cm);
+
+// Sort cashiers by total revenue descending
+uasort($cashier_metrics, function($a, $b) {
+    return $b['revenue'] <=> $a['revenue'];
+});
 
 // Returns Calculations
 $total_refunds_amount = 0;
@@ -391,6 +506,59 @@ $trend_labels = array_keys($trend_data);
 $trend_revenues = array_column($trend_data, 'revenue');
 $trend_profits = array_column($trend_data, 'profit');
 $trend_orders_counts = array_column($trend_data, 'orders');
+
+// Prepare Top 5 Products Monthly Timeline Datasets
+uasort($top_products_monthly, function($a, $b) {
+    return $b['total_profit'] <=> $a['total_profit'];
+});
+$top_5_products_monthly = array_slice($top_products_monthly, 0, 5);
+
+$palette_colors = [
+    ['border' => '#0284c7', 'bg' => 'rgba(2, 132, 199, 0.85)', 'light' => 'rgba(2, 132, 199, 0.15)'],
+    ['border' => '#10b981', 'bg' => 'rgba(16, 185, 129, 0.85)', 'light' => 'rgba(16, 185, 129, 0.15)'],
+    ['border' => '#f59e0b', 'bg' => 'rgba(245, 158, 11, 0.85)', 'light' => 'rgba(245, 158, 11, 0.15)'],
+    ['border' => '#8b5cf6', 'bg' => 'rgba(139, 92, 246, 0.85)', 'light' => 'rgba(139, 92, 246, 0.15)'],
+    ['border' => '#ec4899', 'bg' => 'rgba(236, 72, 153, 0.85)', 'light' => 'rgba(236, 72, 153, 0.15)'],
+    ['border' => '#06b6d4', 'bg' => 'rgba(6, 182, 212, 0.85)', 'light' => 'rgba(6, 182, 212, 0.15)']
+];
+
+$month_names_12 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+$top_prod_monthly_datasets_orders = [];
+$top_prod_monthly_datasets_units = [];
+$p_idx = 0;
+foreach ($top_5_products_monthly as $p_name => $p_data) {
+    $c = $palette_colors[$p_idx % count($palette_colors)];
+    $orders_arr = [];
+    $units_arr = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $orders_arr[] = $p_data['months'][$m]['orders'];
+        $units_arr[]  = $p_data['months'][$m]['units'];
+    }
+    $top_prod_monthly_datasets_orders[] = [
+        'label' => $p_name,
+        'data' => $orders_arr,
+        'backgroundColor' => $c['bg'],
+        'borderColor' => $c['border'],
+        'borderWidth' => 1.5,
+        'borderRadius' => 4
+    ];
+    $top_prod_monthly_datasets_units[] = [
+        'label' => $p_name,
+        'data' => $units_arr,
+        'backgroundColor' => $c['bg'],
+        'borderColor' => $c['border'],
+        'borderWidth' => 1.5,
+        'borderRadius' => 4
+    ];
+    $p_idx++;
+}
+
+// Prepare Cashier Chart Datasets
+$cashier_names = array_column($cashier_metrics, 'name');
+$cashier_revenues = array_column($cashier_metrics, 'revenue');
+$cashier_orders = array_column($cashier_metrics, 'orders');
+$cashier_avg_tickets = array_column($cashier_metrics, 'avg_ticket');
 ?>
 
 <!-- Load Chart.js -->
@@ -917,15 +1085,184 @@ $trend_orders_counts = array_column($trend_data, 'orders');
         </div>
     </div>
 
-    <!-- Top Products Ranking by Profit -->
+    <!-- ========================================================= -->
+    <!-- Top Products Analytics: Profit Contribution & Monthly Counts / Volume Timeline -->
+    <!-- ========================================================= -->
     <div class="row">
-        <div class="col-md-12">
+        <!-- 1. Top Performing Products by Profit Contribution -->
+        <div class="col-md-6">
             <div class="chart-box">
                 <div class="chart-header">
-                    <span><i class="fa fa-trophy text-warning"></i> Top Performing Products by Profit Contribution</span>
+                    <span><i class="fa fa-trophy text-warning"></i> Top Products by Profit Contribution</span>
+                    <span style="font-size: 12px; font-weight: normal; color: #64748b;">Top 8 Items</span>
                 </div>
-                <div style="position: relative; height: 260px;">
+                <div style="position: relative; height: 320px;">
                     <canvas id="topProductsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Top Products Monthly Order Counts & Volume Timeline (Gantt / Multi-Month Velocity) -->
+        <div class="col-md-6">
+            <div class="chart-box">
+                <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span><i class="fa fa-calendar-check-o text-primary"></i> Monthly Velocity of Top Products</span>
+                    </div>
+                    <div class="btn-group btn-group-xs no-print" role="group">
+                        <button type="button" class="btn btn-primary active" id="btnShowMonthlyOrders" onclick="switchMonthlyProductMetric('orders')">
+                            <i class="fa fa-list-ol"></i> Order Counts
+                        </button>
+                        <button type="button" class="btn btn-default" id="btnShowMonthlyUnits" onclick="switchMonthlyProductMetric('units')">
+                            <i class="fa fa-cubes"></i> Units Sold
+                        </button>
+                    </div>
+                </div>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="topProductsMonthlyTimelineChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collapsible Monthly Product Distribution Matrix Grid -->
+    <?php if (!empty($top_5_products_monthly)): ?>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="box box-solid" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.05);">
+                <div class="box-header with-border" style="background-color: #f8fafc; padding: 12px 16px; cursor: pointer;" data-toggle="collapse" data-target="#monthlyProductMatrixBody">
+                    <h4 class="box-title" style="font-size: 14px; font-weight: 700; color: #334155;">
+                        <i class="fa fa-table text-primary"></i> Monthly Product Order &amp; Volume Matrix Breakdown
+                        <span style="font-size: 12px; font-weight: normal; color: #64748b; margin-left: 8px;">(Click to expand / collapse 12-Month distribution)</span>
+                    </h4>
+                    <div class="box-tools pull-right">
+                        <button type="button" class="btn btn-box-tool"><i class="fa fa-chevron-down"></i></button>
+                    </div>
+                </div>
+                <div id="monthlyProductMatrixBody" class="collapse in box-body table-responsive" style="padding: 0;">
+                    <table class="table table-bordered table-striped table-hover" style="font-size: 12px; margin-bottom: 0;">
+                        <thead>
+                            <tr style="background: #f1f5f9; color: #1e293b;">
+                                <th style="min-width: 180px;">Top Product</th>
+                                <th class="text-center" style="width: 70px;">Metric</th>
+                                <?php foreach ($month_names_12 as $m_name): ?>
+                                    <th class="text-center" style="width: 55px;"><?php echo $m_name; ?></th>
+                                <?php endforeach; ?>
+                                <th class="text-right" style="width: 100px; background: #e2e8f0;">Total Period</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($top_5_products_monthly as $p_name => $p_data): ?>
+                            <tr>
+                                <td rowspan="2" style="vertical-align: middle; font-weight: 700; color: #0f172a; background: #ffffff;">
+                                    <?php echo htmlspecialchars($p_name); ?>
+                                    <span style="display: block; font-size: 11px; font-weight: normal; color: #10b981;">&#8369;<?php echo number_format($p_data['total_revenue'], 2); ?> Total Revenue</span>
+                                </td>
+                                <td class="text-center" style="background: #f8fafc; font-weight: 600; color: #0284c7;">Orders</td>
+                                <?php for ($m = 1; $m <= 12; $m++): 
+                                    $cnt = $p_data['months'][$m]['orders'];
+                                ?>
+                                    <td class="text-center" style="<?php echo $cnt > 0 ? 'font-weight: 700; color: #0284c7; background: #f0f9ff;' : 'color: #cbd5e1;'; ?>">
+                                        <?php echo $cnt > 0 ? $cnt : '-'; ?>
+                                    </td>
+                                <?php endfor; ?>
+                                <td class="text-right" style="font-weight: 800; background: #f8fafc; color: #0284c7;"><?php echo number_format($p_data['total_orders']); ?> ord</td>
+                            </tr>
+                            <tr style="border-bottom: 2px solid #e2e8f0;">
+                                <td class="text-center" style="background: #f8fafc; font-weight: 600; color: #10b981;">Units</td>
+                                <?php for ($m = 1; $m <= 12; $m++): 
+                                    $u = $p_data['months'][$m]['units'];
+                                ?>
+                                    <td class="text-center" style="<?php echo $u > 0 ? 'font-weight: 700; color: #10b981; background: #ecfdf5;' : 'color: #cbd5e1;'; ?>">
+                                        <?php echo $u > 0 ? number_format($u) : '-'; ?>
+                                    </td>
+                                <?php endfor; ?>
+                                <td class="text-right" style="font-weight: 800; background: #f8fafc; color: #10b981;"><?php echo number_format($p_data['total_units']); ?> pcs</td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- ========================================================= -->
+    <!-- Cashier & Staff Sales Performance Timeline Section -->
+    <!-- ========================================================= -->
+    <div class="row">
+        <!-- Cashier Sales Revenue & Activity Chart -->
+        <div class="col-md-7">
+            <div class="chart-box">
+                <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fa fa-users text-purple" style="color: #8b5cf6;"></i> Cashier Sales &amp; Transaction Timeline</span>
+                    <span style="font-size: 12px; font-weight: normal; color: #64748b;"><?php echo count($cashier_metrics); ?> active staff / cashiers</span>
+                </div>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="cashierPerformanceChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cashier Leaderboard & Performance Matrix -->
+        <div class="col-md-5">
+            <div class="chart-box" style="padding-bottom: 10px;">
+                <div class="chart-header">
+                    <span><i class="fa fa-id-badge text-primary"></i> Cashier Performance Matrix</span>
+                    <span class="badge badge-primary" style="background: #8b5cf6; font-size: 11px;"><?php echo number_format($total_orders_count); ?> Total Orders</span>
+                </div>
+                <div class="table-responsive" style="max-height: 315px; overflow-y: auto;">
+                    <table class="table table-hover table-condensed" style="font-size: 12px; margin-bottom: 0;">
+                        <thead>
+                            <tr style="background: #f8fafc; color: #475569;">
+                                <th>Staff / Cashier</th>
+                                <th class="text-center">Orders</th>
+                                <th class="text-right">Total Revenue</th>
+                                <th class="text-right">Avg Ticket</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($cashier_metrics)): ?>
+                            <tr>
+                                <td colspan="4" class="text-center text-muted" style="padding: 20px;">No cashier transactions recorded in this period.</td>
+                            </tr>
+                            <?php else: ?>
+                            <?php 
+                            $c_rank = 0;
+                            foreach ($cashier_metrics as $c_name => $c_info): 
+                                $c_rank++;
+                                $rank_badge = '';
+                                if ($c_rank === 1) $rank_badge = '<span class="label label-warning" style="background: #f59e0b; margin-right: 4px;"><i class="fa fa-star"></i> #1</span>';
+                                elseif ($c_rank === 2) $rank_badge = '<span class="label label-default" style="background: #94a3b8; margin-right: 4px;">#2</span>';
+                                elseif ($c_rank === 3) $rank_badge = '<span class="label label-default" style="background: #d97706; margin-right: 4px;">#3</span>';
+                                else $rank_badge = '<span class="label label-default" style="background: #cbd5e1; color: #334155; margin-right: 4px;">#' . $c_rank . '</span>';
+                            ?>
+                            <tr>
+                                <td>
+                                    <?php echo $rank_badge; ?>
+                                    <strong style="color: #1e293b;"><?php echo htmlspecialchars($c_name); ?></strong>
+                                    <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                                        <span><?php echo number_format($c_info['share_percent'], 1); ?>% of total sales</span>
+                                        <?php if (!empty($c_info['last_sale'])): ?>
+                                        &bull; <span>Last: <?php echo date('M d, H:i', strtotime($c_info['last_sale'])); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td class="text-center" style="vertical-align: middle; font-weight: 700; color: #0284c7;">
+                                    <?php echo number_format($c_info['orders']); ?>
+                                </td>
+                                <td class="text-right" style="vertical-align: middle; font-weight: 800; color: #10b981;">
+                                    &#8369;<?php echo number_format($c_info['revenue'], 2); ?>
+                                </td>
+                                <td class="text-right" style="vertical-align: middle; font-weight: 600; color: #64748b;">
+                                    &#8369;<?php echo number_format($c_info['avg_ticket'], 2); ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1593,6 +1930,166 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
     });
+
+    // 4. Top Products Monthly Order Counts & Units Sold Timeline (Gantt / Multi-Month Velocity)
+    var topProdMonthlyCtx = document.getElementById('topProductsMonthlyTimelineChart');
+    if (topProdMonthlyCtx) {
+        var topProdMonthlyOrdersDatasets = <?php echo json_encode(!empty($top_prod_monthly_datasets_orders) ? $top_prod_monthly_datasets_orders : []); ?>;
+        var topProdMonthlyUnitsDatasets = <?php echo json_encode(!empty($top_prod_monthly_datasets_units) ? $top_prod_monthly_datasets_units : []); ?>;
+        var monthLabels12 = <?php echo json_encode($month_names_12); ?>;
+
+        window.topProdMonthlyChart = new Chart(topProdMonthlyCtx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: monthLabels12,
+                datasets: topProdMonthlyOrdersDatasets.length ? topProdMonthlyOrdersDatasets : [{
+                    label: 'No Data',
+                    data: [0,0,0,0,0,0,0,0,0,0,0,0],
+                    backgroundColor: '#cbd5e1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, font: { size: 11 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                var label = context.dataset.label || '';
+                                var val = context.parsed.y;
+                                var metricType = window.currentMonthlyProductMetric || 'orders';
+                                return label + ': ' + val.toLocaleString() + (metricType === 'orders' ? ' orders' : ' units');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0 }
+                    }
+                }
+            }
+        });
+
+        window.currentMonthlyProductMetric = 'orders';
+        window.switchMonthlyProductMetric = function(metric) {
+            window.currentMonthlyProductMetric = metric;
+            var btnOrders = document.getElementById('btnShowMonthlyOrders');
+            var btnUnits = document.getElementById('btnShowMonthlyUnits');
+            if (metric === 'orders') {
+                if (btnOrders) { btnOrders.className = 'btn btn-primary active'; }
+                if (btnUnits) { btnUnits.className = 'btn btn-default'; }
+                window.topProdMonthlyChart.data.datasets = topProdMonthlyOrdersDatasets;
+            } else {
+                if (btnOrders) { btnOrders.className = 'btn btn-default'; }
+                if (btnUnits) { btnUnits.className = 'btn btn-primary active'; }
+                window.topProdMonthlyChart.data.datasets = topProdMonthlyUnitsDatasets;
+            }
+            window.topProdMonthlyChart.update();
+        };
+    }
+
+    // 5. Cashier Sales & Performance Timeline Chart
+    var cashierCtx = document.getElementById('cashierPerformanceChart');
+    if (cashierCtx) {
+        var cashierLabels = <?php echo json_encode(!empty($cashier_names) ? $cashier_names : ['No Cashier Data']); ?>;
+        var cashierRevenues = <?php echo json_encode(!empty($cashier_revenues) ? $cashier_revenues : [0]); ?>;
+        var cashierOrders = <?php echo json_encode(!empty($cashier_orders) ? $cashier_orders : [0]); ?>;
+        var cashierAvgTickets = <?php echo json_encode(!empty($cashier_avg_tickets) ? $cashier_avg_tickets : [0]); ?>;
+
+        new Chart(cashierCtx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: cashierLabels,
+                datasets: [
+                    {
+                        label: 'Total Revenue (₱)',
+                        data: cashierRevenues,
+                        backgroundColor: 'rgba(139, 92, 246, 0.85)',
+                        borderColor: '#8b5cf6',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        xAxisID: 'x'
+                    },
+                    {
+                        label: 'Orders Processed',
+                        data: cashierOrders,
+                        backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                        borderColor: '#10b981',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        xAxisID: 'x1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (context.datasetIndex === 0) {
+                                    return 'Gross Revenue: ₱' + context.parsed.x.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                } else {
+                                    return 'Orders Processed: ' + context.parsed.x.toLocaleString() + ' orders';
+                                }
+                            },
+                            afterBody: function(context) {
+                                var idx = context[0].dataIndex;
+                                var avg = cashierAvgTickets[idx] || 0;
+                                return 'Avg Ticket Size: ₱' + Number(avg).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { display: false }
+                    },
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        ticks: {
+                            callback: function(val) { return '₱' + val.toLocaleString(); }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Gross Revenue (₱)',
+                            font: { size: 11, weight: 'bold' }
+                        }
+                    },
+                    x1: {
+                        type: 'linear',
+                        position: 'top',
+                        grid: { drawOnChartArea: false },
+                        ticks: {
+                            precision: 0
+                        },
+                        title: {
+                            display: true,
+                            text: 'Total Completed Orders',
+                            font: { size: 11, weight: 'bold' }
+                        }
+                    }
+                }
+            }
+        });
+    }
 });
 
 // CSV Export Helper
