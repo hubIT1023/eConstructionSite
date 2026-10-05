@@ -315,12 +315,6 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                         </a>
                     </li>
 
-                    <li class="treeview <?php if($cur_page == 'po-created.php') {echo 'active';} ?>">
-                        <a href="po-created.php">
-                            <i class="fa fa-file-text-o" style="color: #f59e0b;"></i> <span style="color: #fef08a; font-weight: bold;">PO Created</span>
-                        </a>
-                    </li>
-
                     <li class="treeview <?php if( ($cur_page == 'product.php') || ($cur_page == 'product-add.php') || ($cur_page == 'product-edit.php') ) {echo 'active';} ?>">
                         <a href="product.php">
                             <i class="fa fa-shopping-bag"></i> <span>Manage Products</span>
@@ -401,6 +395,12 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'printer-settings.php') ) {echo 'active';} ?>">
+                        <a href="printer-settings.php">
+                            <i class="fa fa-print" style="color: #38bdf8;"></i> <span style="color: #bae6fd; font-weight: bold;">Printer Settings</span>
+                        </a>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'user-manual.php') ) {echo 'active';} ?>">
                         <a href="user-manual.php">
                             <i class="fa fa-book" style="color: #38bdf8;"></i> <span style="color: #bae6fd; font-weight: bold;">Users' Manual</span>
@@ -458,6 +458,11 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                         </a>
                     </li>
                     <?php endif; ?>
+                    <li class="treeview <?php if($cur_page == 'printer-settings.php') {echo 'active';} ?>">
+                        <a href="printer-settings.php">
+                            <i class="fa fa-print" style="color: #38bdf8;"></i> <span style="color: #bae6fd; font-weight: bold;">Printer Settings</span>
+                        </a>
+                    </li>
                     <li class="treeview <?php if($cur_page == 'user-manual.php') {echo 'active';} ?>">
                         <a href="user-manual.php">
                             <i class="fa fa-book" style="color: #38bdf8;"></i> <span style="color: #bae6fd; font-weight: bold;">Users' Manual</span>
@@ -477,9 +482,9 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                 <?php endif; ?>
 
                 <?php if (isset($_SESSION['supplier_user'])): ?>
-                    <!-- CREATED PURCHASE ORDERS (ORDER PROCESSING QUEUE) -->
+                    <!-- ACTIVE P.O. (ORDER PROCESSING QUEUE) -->
                     <li class="header" style="color: #f59e0b; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; padding: 14px 15px 8px 15px; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 10px; background: rgba(0,0,0,0.25);">
-                        <i class="fa fa-file-text-o" style="margin-right: 6px; color: #fbbf24;"></i> CREATED PURCHASE ORDERS
+                        <i class="fa fa-file-text-o" style="margin-right: 6px; color: #fbbf24;"></i> ACTIVE P.O.
                         <span class="pull-right badge bg-yellow" id="sidebar_po_badge_count" style="font-size: 10px; padding: 2px 6px; font-weight: 700;"><?= count($sidebar_pending_pos); ?></span>
                     </li>
                     <li style="padding: 6px 12px 15px 12px;">
@@ -669,13 +674,16 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                     <i class="fa fa-shield" style="color: #f59e0b;"></i>
                     <span>Read-only view • This PO will automatically disappear from the sidebar once marked Paid.</span>
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600; padding: 8px 18px; border-radius: 6px;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600; padding: 8px 16px; border-radius: 6px;">
                         <i class="fa fa-times"></i> Close
                     </button>
-                    <button type="button" class="btn btn-warning" onclick="reprintSidebarPOVoucher()" style="font-weight: 800; padding: 8px 22px; border-radius: 6px; background-color: #f59e0b; border-color: #d97706; color: #000; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                    <button type="button" class="btn btn-warning" onclick="reprintSidebarPOVoucher()" style="font-weight: 800; padding: 8px 18px; border-radius: 6px; background-color: #f59e0b; border-color: #d97706; color: #000; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
                         <i class="fa fa-print"></i> 🖨️ Reprint PO
                     </button>
+                    <a id="modal_btn_resume_pos" href="pos.php" class="btn btn-success" style="font-weight: 800; padding: 8px 20px; border-radius: 6px; background-color: #16a34a; border-color: #15803d; color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2);" title="Load this Purchase Order into POS terminal to add items or complete payment">
+                        <i class="fa fa-calculator"></i> ⚡ Resume / Pay in POS
+                    </a>
                 </div>
             </div>
         </div>
@@ -726,6 +734,10 @@ function populateSidebarPOModal(data) {
     $('#modal_po_status_text').text(data.status + ' (UNPAID)');
     $('#modal_po_number_display').text(data.po_number || '');
     $('#modal_po_datetime_display').text(data.date || '');
+    
+    // Set direct POS Resume link
+    var targetPoCode = data.po_number || data.payment_id || '';
+    $('#modal_btn_resume_pos').attr('href', 'pos.php?po_id=' + encodeURIComponent(targetPoCode));
 
     // Store Info
     if (data.supplier) {

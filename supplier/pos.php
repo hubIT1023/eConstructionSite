@@ -182,6 +182,23 @@ if (isset($_GET['clear_cart']) || isset($_GET['new_sale']) || isset($_GET['reset
     $active_pos_cart = [];
 }
 
+// Active Held / Parked PO Count for Toolbar Badge
+$held_pos_count = 0;
+try {
+    $stmt_held_cnt = $pdo->prepare("
+        SELECT COUNT(DISTINCT payment_id) 
+        FROM tbl_payment 
+        WHERE supplier_id = ? 
+          AND (payment_status = 'Awaiting for Payment' OR payment_status = 'Pending' OR payment_status = 'UNPAID')
+          AND payment_status != 'Paid'
+          AND payment_status != 'Completed'
+    ");
+    $stmt_held_cnt->execute([$supplier_id]);
+    $held_pos_count = (int)$stmt_held_cnt->fetchColumn();
+} catch (Exception $e) {
+    $held_pos_count = 0;
+}
+
 // Existing Purchase Order Payment Detection & Authorization (Only when NOT in PO Creation Success View)
 $paying_existing_po = false;
 $existing_po_data = null;
@@ -630,51 +647,122 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
         } elseif (strtolower($existing_payment['payment_status'] ?? '') === 'paid') {
             $pos_order_error = "This Purchase Order has already been paid and settled.";
         } else {
-            // Authoritative line items & calculations directly from tbl_order
+            // Authoritative line items & calculations (supporting added items upon resumption)
+            $cart_submitted_raw = isset($_POST['cart_items']) ? $_POST['cart_items'] : '';
+            $submitted_cart = is_string($cart_submitted_raw) ? json_decode($cart_submitted_raw, true) : (is_array($cart_submitted_raw) ? $cart_submitted_raw : []);
+
             $stmt_po_items = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id = ? AND supplier_id = ? ORDER BY id ASC");
             $stmt_po_items->execute([$paying_po_id, $supplier_id]);
             $po_db_items = $stmt_po_items->fetchAll(PDO::FETCH_ASSOC);
 
+            // Load product catalog for authoritative price & stock validation
+            $stmt_p_auth = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_qty FROM tbl_product WHERE supplier_id = ?");
+            $stmt_p_auth->execute([$supplier_id]);
+            $auth_prod_map = [];
+            while ($pr = $stmt_p_auth->fetch(PDO::FETCH_ASSOC)) {
+                $auth_prod_map[$pr['p_id']] = $pr;
+            }
+
             $computed_subtotal = 0.0;
             $computed_discount_total = 0.0;
             $validated_items = [];
+            $items_were_modified = false;
 
-            foreach ($po_db_items as $p_it) {
-                $qty = max(1, intval($p_it['quantity']));
-                $price = max(0, floatval($p_it['unit_price']));
-                $disc_pct = floatval($p_it['discount_percent'] ?? 0);
-                $disc_amt = floatval($p_it['discount_amount'] ?? 0);
-                $line_gross = round($qty * $price, 2);
-                if ($disc_amt <= 0 && $disc_pct > 0) {
-                    $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+            if (!empty($submitted_cart) && is_array($submitted_cart)) {
+                $items_were_modified = true;
+                foreach ($submitted_cart as $item) {
+                    $item_type = isset($item['item_type']) ? $item['item_type'] : 'STANDARD';
+                    $p_id = intval($item['id'] ?? ($item['product_id'] ?? 0));
+                    $qty = max(1, intval($item['qty'] ?? ($item['quantity'] ?? 1)));
+                    $size = isset($item['size']) ? trim($item['size']) : '';
+                    $color = isset($item['color']) ? trim($item['color']) : '';
+                    $p_details = isset($item['product_details']) ? trim($item['product_details']) : '';
+                    $sp_ref = isset($item['special_order_reference']) ? trim($item['special_order_reference']) : '';
+
+                    if ($item_type === 'SPECIAL_ORDER') {
+                        $p_name = !empty($item['name']) ? trim($item['name']) : 'Special Custom Item';
+                        $unit_price = max(0, floatval($item['price'] ?? 0));
+                    } else {
+                        if ($p_id > 0 && isset($auth_prod_map[$p_id])) {
+                            $p_info = $auth_prod_map[$p_id];
+                            $p_name = $p_info['p_name'];
+                            $unit_price = (floatval($p_info['p_new_price'] ?? 0) > 0) ? floatval($p_info['p_new_price']) : floatval($p_info['p_current_price'] ?? ($item['price'] ?? 0));
+                        } else {
+                            $p_name = !empty($item['name']) ? trim($item['name']) : 'Store Catalog Item';
+                            $unit_price = max(0, floatval($item['price'] ?? 0));
+                        }
+                    }
+
+                    $disc_pct = floatval($item['discount_percent'] ?? 0);
+                    $disc_amt = floatval($item['discount_amount'] ?? 0);
+                    $line_gross = round($qty * $unit_price, 2);
+                    if ($disc_amt <= 0 && $disc_pct > 0) {
+                        $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                    }
+                    $line_net = max(0, $line_gross - $disc_amt);
+
+                    $computed_subtotal += $line_gross;
+                    $computed_discount_total += $disc_amt;
+
+                    $validated_items[] = [
+                        'id' => $p_id,
+                        'name' => $p_name,
+                        'qty' => $qty,
+                        'price' => $unit_price,
+                        'authoritative_unit_price' => $unit_price,
+                        'size' => $size,
+                        'color' => $color,
+                        'item_type' => $item_type,
+                        'product_details' => $p_details,
+                        'special_order_reference' => $sp_ref,
+                        'discount_percent' => $disc_pct,
+                        'discount_amount' => $disc_amt,
+                        'line_net' => $line_net
+                    ];
                 }
-                $line_net = max(0, $line_gross - $disc_amt);
+            } else {
+                // Fallback: parse original DB items
+                foreach ($po_db_items as $p_it) {
+                    $qty = max(1, intval($p_it['quantity']));
+                    $price = max(0, floatval($p_it['unit_price']));
+                    $disc_pct = floatval($p_it['discount_percent'] ?? 0);
+                    $disc_amt = floatval($p_it['discount_amount'] ?? 0);
+                    $line_gross = round($qty * $price, 2);
+                    if ($disc_amt <= 0 && $disc_pct > 0) {
+                        $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                    }
+                    $line_net = max(0, $line_gross - $disc_amt);
 
-                $computed_subtotal += $line_gross;
-                $computed_discount_total += $disc_amt;
+                    $computed_subtotal += $line_gross;
+                    $computed_discount_total += $disc_amt;
 
-                $validated_items[] = [
-                    'id' => $p_it['product_id'],
-                    'name' => $p_it['product_name'],
-                    'qty' => $qty,
-                    'price' => $price,
-                    'authoritative_unit_price' => $price,
-                    'size' => $p_it['size'],
-                    'color' => $p_it['color'],
-                    'item_type' => $p_it['item_type'],
-                    'product_details' => $p_it['product_details'],
-                    'special_order_reference' => $p_it['special_order_reference'],
-                    'discount_percent' => $disc_pct,
-                    'discount_amount' => $disc_amt,
-                    'line_net' => $line_net
-                ];
+                    $validated_items[] = [
+                        'id' => $p_it['product_id'],
+                        'name' => $p_it['product_name'],
+                        'qty' => $qty,
+                        'price' => $price,
+                        'authoritative_unit_price' => $price,
+                        'size' => $p_it['size'],
+                        'color' => $p_it['color'],
+                        'item_type' => $p_it['item_type'],
+                        'product_details' => $p_it['product_details'],
+                        'special_order_reference' => $p_it['special_order_reference'],
+                        'discount_percent' => $disc_pct,
+                        'discount_amount' => $disc_amt,
+                        'line_net' => $line_net
+                    ];
+                }
             }
 
-            $delivery_cost = max(0, floatval($existing_payment['paid_amount']) - ($computed_subtotal - $computed_discount_total));
-            $grand_total = floatval($existing_payment['paid_amount']);
-            if ($grand_total <= 0) {
-                $grand_total = max(0, $computed_subtotal - $computed_discount_total + $delivery_cost);
+            $is_location_active = (!empty($_POST['is_location_delivery']) && $_POST['is_location_delivery'] == 1);
+            $delivery_cost = 0.0;
+            if ($is_location_active && isset($_POST['delivery_cost'])) {
+                $delivery_cost = floatval($_POST['delivery_cost']);
+            } elseif (!$items_were_modified) {
+                $delivery_cost = max(0, floatval($existing_payment['paid_amount']) - ($computed_subtotal - $computed_discount_total));
             }
+
+            $grand_total = max(0, $computed_subtotal - $computed_discount_total + $delivery_cost);
 
             $payment_method = isset($_POST['payment_method']) ? trim($_POST['payment_method']) : 'Cash (OTC)';
             $amount_tendered = isset($_POST['amount_tendered']) ? floatval($_POST['amount_tendered']) : 0.00;
@@ -693,9 +781,71 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     $tx_info .= ' | Total Discounts: -₱' . number_format($computed_discount_total, 2);
                 }
 
-                // Atomic transaction update to tbl_payment
+                // Atomic transaction update to tbl_payment & tbl_order
                 $pdo->beginTransaction();
                 try {
+                    if ($items_were_modified) {
+                        // Calculate stock difference
+                        $old_stock_map = [];
+                        foreach ($po_db_items as $old_it) {
+                            if (($old_it['item_type'] ?? 'STANDARD') === 'STANDARD') {
+                                $pid = (int)$old_it['product_id'];
+                                $old_stock_map[$pid] = ($old_stock_map[$pid] ?? 0) + (int)$old_it['quantity'];
+                            }
+                        }
+                        $new_stock_map = [];
+                        foreach ($validated_items as $new_it) {
+                            if ($new_it['item_type'] === 'STANDARD' && $new_it['id'] > 0) {
+                                $pid = (int)$new_it['id'];
+                                $new_stock_map[$pid] = ($new_stock_map[$pid] ?? 0) + (int)$new_it['qty'];
+                            }
+                        }
+                        $all_pids = array_unique(array_merge(array_keys($old_stock_map), array_keys($new_stock_map)));
+                        foreach ($all_pids as $pid) {
+                            $old_q = $old_stock_map[$pid] ?? 0;
+                            $new_q = $new_stock_map[$pid] ?? 0;
+                            $diff = $new_q - $old_q;
+                            if ($diff > 0) {
+                                // More items added -> deduct additional stock
+                                $stmt_ded = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
+                                $stmt_ded->execute([$diff, $pid, $supplier_id]);
+                            } elseif ($diff < 0) {
+                                // Items removed -> restore stock
+                                $stmt_res = $pdo->prepare("UPDATE tbl_product SET p_qty = p_qty + ? WHERE p_id = ? AND supplier_id = ?");
+                                $stmt_res->execute([abs($diff), $pid, $supplier_id]);
+                            }
+                        }
+
+                        // Re-sync tbl_order
+                        $stmt_del_ord = $pdo->prepare("DELETE FROM tbl_order WHERE payment_id = ? AND supplier_id = ?");
+                        $stmt_del_ord->execute([$paying_po_id, $supplier_id]);
+
+                        foreach ($validated_items as $v_it) {
+                            $stmt_ins_ord = $pdo->prepare("
+                                INSERT INTO tbl_order (
+                                    product_id, product_name, size, color, quantity, unit_price,
+                                    payment_id, supplier_id, item_type,
+                                    special_order_reference, product_details, discount_percent, discount_amount
+                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            ");
+                            $stmt_ins_ord->execute([
+                                $v_it['id'],
+                                $v_it['name'],
+                                $v_it['size'],
+                                $v_it['color'],
+                                $v_it['qty'],
+                                number_format($v_it['price'], 2, '.', ''),
+                                $paying_po_id,
+                                $supplier_id,
+                                $v_it['item_type'],
+                                $v_it['special_order_reference'],
+                                $v_it['product_details'],
+                                $v_it['discount_percent'],
+                                $v_it['discount_amount']
+                            ]);
+                        }
+                    }
+
                     $stmt_up_pay = $pdo->prepare("
                         UPDATE tbl_payment SET
                             payment_status = 'Paid',
@@ -710,7 +860,7 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         $payment_method,
                         $payment_date,
                         $tx_info,
-                        $grand_total,
+                        number_format($grand_total, 2, '.', ''),
                         $paying_po_id,
                         $paying_po_id,
                         $supplier_id
@@ -2191,29 +2341,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </div>
                         </div>
                         <div class="col-md-7 col-sm-6 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; flex-wrap: wrap;">
-                            <!-- In-Stock Filter Toggle -->
-                            <label style="margin: 0; font-size: 12px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; padding: 4px 9px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 4px; height: 38px; user-select: none;" title="Filter: Show only products with active available inventory">
-                                <input type="checkbox" id="posInStockToggle" onchange="filterPOSProducts()" style="margin: 0; cursor: pointer;"> In-Stock
-                            </label>
-
-                            <!-- Dual View Mode Switcher (Grid vs List) -->
-                            <div class="btn-group pos-view-btn-group" role="group" aria-label="View Switcher">
-                                <button type="button" class="btn btn-default active" id="posViewGridBtn" onclick="setPOSViewMode('grid')" title="Visual Grid Cards View" style="height: 38px; padding: 6px 11px;">
-                                    <i class="fa fa-th-large"></i>
-                                </button>
-                                <button type="button" class="btn btn-default" id="posViewListBtn" onclick="setPOSViewMode('list')" title="Compact High-Density List View" style="height: 38px; padding: 6px 11px;">
-                                    <i class="fa fa-list"></i>
-                                </button>
-                            </div>
-
-                            <button type="button" class="btn btn-info input-lg" onclick="openPOSPrinterModal()" id="posPrinterStatusBtn" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #0284c7; border-color: #0369a1; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(2,132,199,0.25); display: inline-flex; align-items: center; gap: 5px;" title="Printer Setup (Auto Detect / Any Connected Printer • Default: 58mm Thermal)">
-                                <i class="fa fa-print"></i> <span id="posPrinterBtnLabel">Printer</span>
+                            <button type="button" class="btn btn-primary input-lg" onclick="openHeldOrdersModal()" id="posHeldOrdersBtn" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #4f46e5; border-color: #4338ca; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(79,70,229,0.25); display: inline-flex; align-items: center; gap: 5px;" title="View & Resume Held / Parked Orders">
+                                <i class="fa fa-pause-circle"></i> <span>Held Orders</span> <span class="badge" id="posHeldCountBadge" style="background:#fff; color:#4f46e5; font-weight:800; font-size:11px; margin-left:2px;"><?php echo $held_pos_count; ?></span>
                             </button>
-                            <button type="button" class="btn btn-warning input-lg" onclick="openSpecialOrderModal()" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #d97706; border-color: #b45309; color: #fff; padding: 6px 11px; border-radius: 4px; box-shadow: 0 1px 3px rgba(217,119,6,0.25); display: inline-flex; align-items: center; gap: 4px;" title="Create custom/manual order item not in catalogue">
-                                <i class="fa fa-plus-circle"></i> + Custom
-                            </button>
+                            <a href="product-add.php" class="btn btn-primary btn-sm" style="height: 38px; font-size: 12.5px; font-weight: 800; padding: 6px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Add New Product">
+                                <i class="fa fa-plus"></i> New Product
+                            </a>
                             <button type="button" class="btn btn-danger input-lg" onclick="openReturnModal()" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #dc2626; border-color: #b91c1c; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(220,38,38,0.25); display: inline-flex; align-items: center; gap: 4px;" title="Search completed orders and process item returns & refunds">
-                                <i class="fa fa-undo"></i> RETURN
+                                <i class="fa fa-undo"></i> RETURN ITEM(s)
                             </button>
                             <span class="text-muted" style="font-size: 12px; font-weight: 700; white-space: nowrap;">
                                 <strong id="productCount" style="color: #0f172a; font-size: 13px;"><?php echo count($grouped_products); ?></strong> items
@@ -2546,9 +2681,20 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             <i class="fa fa-clock-o"></i> Approvals <span id="posPendingBadge" class="badge" style="background-color: #dc2626; font-size: 10px; margin-left: 2px; display: none;">0</span>
                         </button>
                         <?php endif; ?>
+                        <button type="button" class="btn btn-warning btn-xs" onclick="openHoldOrderModal()" id="posHoldCartBtn" style="font-weight: 700; background-color: #d97706; border-color: #b45309; color: #fff; border-radius: 4px; padding: 3px 8px;" title="Hold / Park Current Cart (F8)"><i class="fa fa-pause"></i> Hold (F8)</button>
                         <button type="button" class="btn btn-default btn-xs text-danger" onclick="clearCart()"><i class="fa fa-trash"></i> Clear</button>
                     </div>
                 </div>
+
+                <?php if (!empty($paying_existing_po) && !empty($existing_po_data)): ?>
+                <div class="alert alert-warning" style="margin-bottom: 12px; padding: 9px 12px; font-size: 12.5px; border-radius: 6px; border-left: 4px solid #f59e0b; display: flex; justify-content: space-between; align-items: center; background: #fffbeb; color: #92400e;">
+                    <div>
+                        <strong style="color: #b45309;"><i class="fa fa-pause-circle"></i> Resumed Held Order:</strong> <span style="font-family: monospace; font-weight: bold;"><?php echo htmlspecialchars($existing_po_data['payment_id'] ?? $existing_po_data['txnid']); ?></span><br>
+                        <span style="font-size: 11.5px; color: #78350f;">Customer: <strong><?php echo htmlspecialchars($existing_po_data['customer_name'] ?: 'Walk-in Customer'); ?></strong> &bull; Add items or proceed to pay.</span>
+                    </div>
+                    <a href="pos.php?clear_cart=1" class="btn btn-xs btn-default" style="font-weight: 700; border-color: #cbd5e1;" title="Exit Held PO & start fresh sale"><i class="fa fa-times"></i> Exit</a>
+                </div>
+                <?php endif; ?>
 
                 <?php if (!empty($pos_order_error)): ?>
                 <div class="alert alert-danger" style="margin-bottom: 12px; font-size: 13px; font-weight: bold; border-radius: 6px;">
@@ -2735,11 +2881,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                                 <?php endif; ?>
                                             </td>
                                             <td style="padding: 8px 2px; text-align: center;">
-                                                <?php if (empty($paying_existing_po)): ?>
-                                                    <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(<?php echo $itemIdEsc; ?>)" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
-                                                <?php else: ?>
-                                                    <span class="text-muted" title="Item locked to Purchase Order" style="font-size: 13px;"><i class="fa fa-lock"></i></span>
-                                                <?php endif; ?>
+                                                <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(<?php echo $itemIdEsc; ?>)" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -4240,11 +4382,8 @@ window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
 
                     <!-- 5. Footer -->
                     <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
-                    <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
-                        <div style="font-weight: bold;">*** PROCEED TO CASHIER ***</div>
-                        <div style="font-weight: bold;">FOR PAYMENT</div>
-                        <div style="margin-top: 3px;">Thank you for your business!</div>
-                        <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+                    <div style="text-align: center; line-height: 1.35; padding: 4px 0; font-weight: bold; font-size: 11pt; letter-spacing: 0.5px;">
+                        *** ORDER ON HOLD ***
                     </div>
                     <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
                 </div>
@@ -4291,6 +4430,108 @@ window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
     </div>
 </div>
 <?php endif; ?>
+
+<!-- POS Hold / Park Order Confirmation Modal -->
+<div class="modal fade" id="posHoldOrderModal" tabindex="-1" role="dialog" aria-labelledby="posHoldOrderModalLabel" aria-hidden="true" style="z-index: 10075;">
+    <div class="modal-dialog modal-md" role="document">
+        <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 12px 35px rgba(0,0,0,0.3);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); color: #fff; padding: 14px 20px;">
+                <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.9; font-size: 24px;">&times;</button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="label" style="background: rgba(255,255,255,0.25); font-size: 11px; font-weight: 800; padding: 3px 8px; text-transform: uppercase;">
+                        <i class="fa fa-pause-circle"></i> PARK ORDER
+                    </span>
+                    <h4 class="modal-title" id="posHoldOrderModalLabel" style="font-weight: 800; font-size: 17px; margin: 0; color: #fff;">
+                        Hold / Park Current Cart
+                    </h4>
+                </div>
+                <div style="font-size: 12px; color: #fef3c7; margin-top: 3px;">
+                    Saves cart as an unpaid Purchase Order so customer can pick more items while keeping counter moving.
+                </div>
+            </div>
+
+            <div class="modal-body" style="padding: 18px 22px; background: #fff;">
+                <!-- Cart Live Summary Card -->
+                <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px;">Cart Summary</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #78350f; margin-top: 2px;">
+                            <span id="holdModalItemCount">0</span> items &bull; <span id="holdModalUnitCount">0</span> units
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 11px; color: #92400e; text-transform: uppercase; font-weight: 700; display: block;">Total Due</span>
+                        <strong style="font-size: 20px; color: #b45309;">&#8369;<span id="holdModalTotalAmount">0.00</span></strong>
+                    </div>
+                </div>
+
+                <div id="holdModalAlert" class="alert alert-danger" style="display: none; padding: 8px 12px; font-size: 12.5px; font-weight: 600; margin-bottom: 14px; border-radius: 6px;"></div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Customer Name / Identifier:</label>
+                    <input type="text" id="holdOrderCustName" class="form-control input-sm" placeholder="e.g. John Doe / Walk-in" style="font-weight: 600; height: 36px;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Hold Note / Reason (Optional):</label>
+                    <input type="text" id="holdOrderNote" class="form-control input-sm" placeholder="e.g. Customer getting more cement / tiles" style="font-weight: 500; height: 36px;">
+                </div>
+            </div>
+
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700; border-radius: 6px;">Cancel / Keep Cart</button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-default" onclick="submitHoldOrder(false)" id="btnHoldSilent" style="font-weight: 700; border-radius: 6px; background-color: #f1f5f9; border-color: #cbd5e1; color: #334155;" title="Hold cart and clear register without printing">
+                        <i class="fa fa-pause"></i> Hold (No Print)
+                    </button>
+                    <button type="button" class="btn btn-warning" onclick="submitHoldOrder(true)" id="btnHoldPrint" style="font-weight: 800; border-radius: 6px; background-color: #d97706; border-color: #b45309; color: #fff; box-shadow: 0 2px 6px rgba(217,119,6,0.3);" title="Hold cart, print thermal slip with *** ORDER ON HOLD *** and clear register">
+                        <i class="fa fa-print"></i> Hold &amp; Print Slip
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- POS Active Held Orders Drawer / Modal -->
+<div class="modal fade" id="posHeldOrdersModal" tabindex="-1" role="dialog" aria-labelledby="posHeldOrdersModalLabel" aria-hidden="true" style="z-index: 10070;">
+    <div class="modal-dialog modal-lg" role="document" style="max-width: 900px; width: 95%;">
+        <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 15px 45px rgba(0,0,0,0.35);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #312e81 0%, #4338ca 100%); color: #fff; padding: 14px 20px;">
+                <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.9; font-size: 24px;">&times;</button>
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="label" style="background: rgba(255,255,255,0.25); font-size: 11px; font-weight: 800; padding: 3px 8px; text-transform: uppercase;">
+                            <i class="fa fa-list"></i> PARKED QUEUE
+                        </span>
+                        <h4 class="modal-title" id="posHeldOrdersModalLabel" style="font-weight: 800; font-size: 17px; margin: 0; color: #fff;">
+                            Active Held Orders
+                        </h4>
+                    </div>
+                    <button type="button" class="btn btn-xs btn-default" onclick="loadHeldOrdersList()" style="font-weight: 700; border-radius: 4px; padding: 3px 10px;">
+                        <i class="fa fa-refresh"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal-body" style="padding: 16px; background: #f8fafc; max-height: 70vh; overflow-y: auto;">
+                <div id="heldOrdersListContainer">
+                    <div style="text-align: center; padding: 30px 10px; color: #64748b;">
+                        <i class="fa fa-spinner fa-spin fa-2x"></i>
+                        <p style="margin-top: 10px; font-weight: 600;">Loading held orders...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="background: #ffffff; border-top: 1px solid #e2e8f0; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-muted" style="font-size: 12px;">
+                    <i class="fa fa-info-circle text-primary"></i> Resuming an order loads its items into the POS cart where you can scan new items or proceed to checkout.
+                </span>
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700; border-radius: 6px;">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- POS Item Discount Request Modal (₱ Amount-Based) -->
 <div class="modal fade" id="posDiscountModal" tabindex="-1" role="dialog" aria-labelledby="posDiscountModalLabel" aria-hidden="true" style="z-index: 10065;">
@@ -5050,7 +5291,7 @@ function renderCart() {
                         ${linePriceHtml}
                     </td>
                     <td style="padding: 8px 2px; text-align: center;">
-                        ${isPayingExistingPO ? '' : `<button type="button" class="btn btn-link text-danger" onclick="removeFromCart(${itemIdStr})" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>`}
+                        <button type="button" class="btn btn-link text-danger" onclick="removeFromCart(${itemIdStr})" style="padding: 2px 4px; font-size: 16px;" title="Remove item"><i class="fa fa-times-circle"></i></button>
                     </td>
                 </tr>`;
         });
@@ -8923,7 +9164,7 @@ $(document).ready(function() {
         setPOSViewMode(savedViewMode);
     } catch (e) {}
 
-    // Global Keyboard Shortcuts (F2 / Ctrl+K focus search, Esc clears search)
+    // Global Keyboard Shortcuts (F2 / Ctrl+K focus search, F8 hold order, Esc clears search)
     $(document).on('keydown', function(e) {
         if (e.key === 'F2' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
             if ($('.modal.in').length > 0) return; // Don't interrupt open modal
@@ -8933,6 +9174,11 @@ $(document).ready(function() {
                 input.focus();
                 input.select();
             }
+        }
+        if (e.key === 'F8') {
+            if ($('.modal.in').length > 0) return;
+            e.preventDefault();
+            openHoldOrderModal();
         }
         if (e.key === 'Escape' && document.activeElement && document.activeElement.id === 'posSearchInput') {
             clearPOSSearch();
@@ -8953,6 +9199,313 @@ $(document).ready(function() {
     }
     <?php endif; ?>
 });
+
+// ==========================================
+// POS HOLD / PARK ORDER WORKFLOW JAVASCRIPT
+// ==========================================
+
+function openHoldOrderModal() {
+    if (!cart || cart.length === 0) {
+        alert('Cannot hold an empty cart. Please add items to cart first.');
+        return;
+    }
+
+    // Determine current customer name
+    let custName = 'Walk-in Customer';
+    const custTypeRadio = document.querySelector('input[name="customer_type"]:checked');
+    if (custTypeRadio && custTypeRadio.value === 'registered') {
+        const regSelect = document.getElementById('registeredCustSelect') || document.querySelector('select[name="registered_cust_id"]');
+        if (regSelect && regSelect.selectedIndex >= 0 && regSelect.options[regSelect.selectedIndex].text) {
+            custName = regSelect.options[regSelect.selectedIndex].text.replace(/\s*\(ID:.*?\)/i, '').trim();
+        }
+    } else {
+        const walkinInput = document.getElementById('walkinName') || document.querySelector('input[name="walkin_name"]');
+        if (walkinInput && walkinInput.value.trim()) {
+            custName = walkinInput.value.trim();
+        }
+    }
+
+    // Calculate item count & unit count & total
+    let totalItems = cart.length;
+    let totalUnits = 0;
+    let totalAmount = 0;
+
+    cart.forEach(item => {
+        const q = parseInt(item.qty || 1);
+        const p = parseFloat(item.price || 0);
+        const discAmt = parseFloat(item.discount_amount || 0);
+        const discPct = parseFloat(item.discount_percent || 0);
+        let lineGross = q * p;
+        let lineDisc = discAmt > 0 ? discAmt : (discPct > 0 ? (lineGross * (discPct / 100)) : 0);
+        let lineNet = Math.max(0, lineGross - lineDisc);
+
+        totalUnits += q;
+        totalAmount += lineNet;
+    });
+
+    const isDelivery = document.getElementById('isLocationDelivery')?.checked;
+    const deliveryCost = isDelivery ? (parseFloat(document.getElementById('posDeliveryCost')?.value || 0)) : 0;
+    totalAmount += deliveryCost;
+
+    document.getElementById('holdModalItemCount').innerText = totalItems;
+    document.getElementById('holdModalUnitCount').innerText = totalUnits;
+    document.getElementById('holdModalTotalAmount').innerText = round2(totalAmount).toFixed(2);
+    document.getElementById('holdOrderCustName').value = custName;
+    document.getElementById('holdOrderNote').value = '';
+
+    const alertBox = document.getElementById('holdModalAlert');
+    if (alertBox) {
+        alertBox.style.display = 'none';
+        alertBox.innerText = '';
+    }
+
+    $('#posHoldOrderModal').modal('show');
+}
+
+function submitHoldOrder(printSlip = false) {
+    if (!cart || cart.length === 0) {
+        alert('Cart is empty.');
+        return;
+    }
+
+    const btnSilent = document.getElementById('btnHoldSilent');
+    const btnPrint = document.getElementById('btnHoldPrint');
+    const alertBox = document.getElementById('holdModalAlert');
+
+    if (btnSilent) btnSilent.disabled = true;
+    if (btnPrint) btnPrint.disabled = true;
+    if (alertBox) alertBox.style.display = 'none';
+
+    const custTypeRadio = document.querySelector('input[name="customer_type"]:checked');
+    const custType = custTypeRadio ? custTypeRadio.value : 'walkin';
+    const regCustId = document.querySelector('select[name="registered_cust_id"]')?.value || 0;
+    const walkinName = document.getElementById('holdOrderCustName')?.value.trim() || 'Walk-in Customer';
+    const walkinPhone = document.querySelector('input[name="walkin_phone"]')?.value || '';
+    const isDelivery = document.getElementById('isLocationDelivery')?.checked ? 1 : 0;
+    const locationBrgyId = document.querySelector('select[name="location_brgy_id"]')?.value || 0;
+    const deliveryCost = isDelivery ? (parseFloat(document.getElementById('posDeliveryCost')?.value || 0)) : 0;
+    const holdNote = document.getElementById('holdOrderNote')?.value.trim() || '';
+
+    const payload = new URLSearchParams();
+    payload.append('action', 'hold_order');
+    payload.append('cart_items', JSON.stringify(cart));
+    payload.append('customer_type', custType);
+    payload.append('walkin_name', walkinName);
+    payload.append('walkin_phone', walkinPhone);
+    payload.append('registered_cust_id', regCustId);
+    payload.append('is_location_delivery', isDelivery);
+    payload.append('location_brgy_id', locationBrgyId);
+    payload.append('delivery_cost', deliveryCost);
+    payload.append('hold_note', holdNote);
+
+    fetch('pos-hold-api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload.toString()
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (btnSilent) btnSilent.disabled = false;
+        if (btnPrint) btnPrint.disabled = false;
+
+        if (!res.success) {
+            if (alertBox) {
+                alertBox.innerText = res.message || 'Failed to hold order.';
+                alertBox.style.display = 'block';
+            } else {
+                alert(res.message || 'Failed to hold order.');
+            }
+            return;
+        }
+
+        // Print thermal voucher if requested
+        if (printSlip && res.print_html) {
+            const s = getPOSPrintSettings();
+            const fmt = (s.paperWidthMm ? String(s.paperWidthMm) : '58');
+            const printDoc = generatePOSPrintHTML(res.print_html, 'Purchase Order Voucher (Held)', 'po', fmt);
+            executePOSPrintJob(printDoc, true);
+        }
+
+        // Clear active POS cart
+        cart = [];
+        renderCart();
+
+        // Update badge count
+        const badge = document.getElementById('posHeldCountBadge');
+        if (badge) {
+            const currentCount = parseInt(badge.innerText || '0', 10);
+            badge.innerText = currentCount + 1;
+        }
+
+        $('#posHoldOrderModal').modal('hide');
+
+        // Reset URL if currently in a resumed PO session
+        if (window.location.search.includes('po_id') || window.location.search.includes('payment_id')) {
+            window.history.replaceState({}, document.title, 'pos.php');
+        }
+
+        alert('Order successfully parked and held as ' + res.po_id + ' for ' + res.customer_name + '.\nRegister is now cleared for the next customer.');
+    })
+    .catch(err => {
+        if (btnSilent) btnSilent.disabled = false;
+        if (btnPrint) btnPrint.disabled = false;
+        if (alertBox) {
+            alertBox.innerText = 'Network error: ' + err.message;
+            alertBox.style.display = 'block';
+        } else {
+            alert('Network error: ' + err.message);
+        }
+    });
+}
+
+function openHeldOrdersModal() {
+    $('#posHeldOrdersModal').modal('show');
+    loadHeldOrdersList();
+}
+
+function loadHeldOrdersList() {
+    const container = document.getElementById('heldOrdersListContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="text-align: center; padding: 35px 10px; color: #64748b;">
+            <i class="fa fa-spinner fa-spin fa-2x text-primary"></i>
+            <p style="margin-top: 10px; font-weight: 600;">Loading held orders...</p>
+        </div>
+    `;
+
+    fetch('pos-hold-api.php?action=list_held_orders')
+    .then(r => r.json())
+    .then(res => {
+        if (!res.success) {
+            container.innerHTML = `
+                <div class="alert alert-danger" style="margin: 10px 0;">
+                    <i class="fa fa-exclamation-triangle"></i> Failed to load held orders: ${escapeHtml(res.message || 'Unknown error')}
+                </div>
+            `;
+            return;
+        }
+
+        // Update header badge
+        const badge = document.getElementById('posHeldCountBadge');
+        if (badge) {
+            badge.innerText = res.count || 0;
+        }
+
+        if (!res.orders || res.orders.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 15px; background: #ffffff; border: 1.5px dashed #cbd5e1; border-radius: 8px;">
+                    <i class="fa fa-pause-circle text-muted" style="font-size: 40px; color: #94a3b8; margin-bottom: 12px;"></i>
+                    <h4 style="margin: 0 0 6px 0; font-weight: 800; color: #334155;">No Active Held Orders</h4>
+                    <p style="margin: 0; color: #64748b; font-size: 13px;">When a customer steps away to pick more items, click <strong>"Hold Order (F8)"</strong> to park their cart and keep the line moving.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = `
+            <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <table class="table table-hover" style="margin-bottom: 0; font-size: 13px;">
+                    <thead style="background: #f1f5f9; color: #334155; font-weight: 700; font-size: 12px; text-transform: uppercase;">
+                        <tr>
+                            <th style="padding: 10px 14px;">PO Code & Time</th>
+                            <th style="padding: 10px 14px;">Customer & Note</th>
+                            <th style="padding: 10px 14px; text-align: center;">Items / Units</th>
+                            <th style="padding: 10px 14px; text-align: right;">Total Due</th>
+                            <th style="padding: 10px 14px; text-align: right; width: 220px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        res.orders.forEach(o => {
+            html += `
+                <tr style="border-bottom: 1px solid #f1f5f9; vertical-align: middle;">
+                    <td style="padding: 12px 14px;">
+                        <span style="font-family: monospace; font-weight: 800; font-size: 13.5px; color: #1e3a8a; display: block;">
+                            ${escapeHtml(o.po_id)}
+                        </span>
+                        <span style="font-size: 11.5px; color: #64748b;">
+                            <i class="fa fa-clock-o"></i> ${escapeHtml(o.relative_time)}
+                        </span>
+                    </td>
+                    <td style="padding: 12px 14px;">
+                        <div style="font-weight: 700; color: #0f172a; font-size: 13.5px;">${escapeHtml(o.customer_name)}</div>
+                        ${o.customer_phone ? `<div style="font-size: 11.5px; color: #64748b;"><i class="fa fa-phone"></i> ${escapeHtml(o.customer_phone)}</div>` : ''}
+                        ${o.note ? `<div style="font-size: 11.5px; color: #b45309; font-style: italic; margin-top: 2px;"><i class="fa fa-sticky-note-o"></i> ${escapeHtml(o.note)}</div>` : ''}
+                    </td>
+                    <td style="padding: 12px 14px; text-align: center;">
+                        <span class="badge" style="background: #e0e7ff; color: #3730a3; font-weight: 700; font-size: 12px; padding: 4px 8px;">
+                            ${o.item_count} items (${o.total_units} pcs)
+                        </span>
+                    </td>
+                    <td style="padding: 12px 14px; text-align: right; font-weight: 800; font-size: 14px; color: #0f172a;">
+                        PHP ${round2(o.paid_amount).toFixed(2)}
+                    </td>
+                    <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+                        <button type="button" class="btn btn-success btn-xs" onclick="resumeHeldOrder('${escapeHtml(o.po_id)}')" style="font-weight: 800; padding: 5px 10px; background-color: #16a34a; border-color: #15803d; border-radius: 4px;" title="Load this order into POS cart to add items or complete payment">
+                            <i class="fa fa-play"></i> Resume
+                        </button>
+                        <button type="button" class="btn btn-danger btn-xs" onclick="cancelHeldOrder('${escapeHtml(o.po_id)}')" style="font-weight: 700; padding: 5px 8px; margin-left: 4px; border-radius: 4px;" title="Cancel order and restore items to stock">
+                            <i class="fa fa-times"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    })
+    .catch(err => {
+        container.innerHTML = `
+            <div class="alert alert-danger" style="margin: 10px 0;">
+                <i class="fa fa-exclamation-triangle"></i> Network error: ${escapeHtml(err.message)}
+            </div>
+        `;
+    });
+}
+
+function resumeHeldOrder(poId) {
+    if (cart && cart.length > 0) {
+        if (!confirm('Loading this held order will replace any unsaved items currently in the POS cart. Proceed?')) {
+            return;
+        }
+    }
+    window.location.href = 'pos.php?po_id=' + encodeURIComponent(poId);
+}
+
+function cancelHeldOrder(poId) {
+    if (!confirm('Are you sure you want to cancel held order ' + poId + '?\nAll held items will be immediately returned to available stock.')) {
+        return;
+    }
+
+    const payload = new URLSearchParams();
+    payload.append('action', 'cancel_held_order');
+    payload.append('po_id', poId);
+
+    fetch('pos-hold-api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload.toString()
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (!res.success) {
+            alert(res.message || 'Failed to cancel held order.');
+            return;
+        }
+        loadHeldOrdersList();
+    })
+    .catch(err => {
+        alert('Network error: ' + err.message);
+    });
+}
 
 function escapeHtml(text) {
     if (!text) return '';

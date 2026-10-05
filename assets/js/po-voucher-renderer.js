@@ -362,11 +362,8 @@
             // 8. Footer (Centered)
             buffer += ESCPOS.ALIGN_CENTER;
             buffer += ESCPOS.BOLD_ON;
-            buffer += '*** PROCEED TO CASHIER ***\n';
-            buffer += 'FOR PAYMENT\n';
+            buffer += '*** ORDER ON HOLD ***\n';
             buffer += ESCPOS.BOLD_OFF;
-            buffer += 'Thank you for your business!\n';
-            buffer += 'eConstruction Supply POS\n';
             buffer += this.dividerLine('=', totalCols);
 
             // 9. Feed Lines, Buzzer & Cut
@@ -770,11 +767,8 @@
                 </table>
 
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
-                <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
-                    <div style="font-weight: bold;">*** PROCEED TO CASHIER ***</div>
-                    <div style="font-weight: bold;">FOR PAYMENT</div>
-                    <div style="margin-top: 3px;">Thank you for your business!</div>
-                    <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+                <div style="text-align: center; line-height: 1.35; padding: 4px 0; font-weight: bold; font-size: 11pt; letter-spacing: 0.5px;">
+                    *** ORDER ON HOLD ***
                 </div>
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
             </div>`;

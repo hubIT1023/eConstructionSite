@@ -290,7 +290,7 @@ foreach ($pending_pos as $po) {
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div>
             <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #0f172a;">
-                <i class="fa fa-file-text-o" style="color: #f59e0b; margin-right: 6px;"></i> PO Created
+                <i class="fa fa-file-text-o" style="color: #f59e0b; margin-right: 6px;"></i> On-Hold Order(s)
                 <small style="font-size: 13px; color: #64748b; font-weight: 600;">Purchase Orders Awaiting Cashier Payment</small>
             </h1>
         </div>
@@ -504,7 +504,10 @@ foreach ($pending_pos as $po) {
                             </span>
                         </td>
                         <td style="text-align: center;">
-                            <div style="display: inline-flex; gap: 4px;">
+                            <div style="display: inline-flex; gap: 4px; align-items: center;">
+                                <a href="pos.php?po_id=<?php echo urlencode($po_code); ?>" class="btn btn-success btn-xs" style="font-weight: 700; background-color: #16a34a; border-color: #15803d; border-radius: 4px; padding: 4px 8px; color: #fff; text-decoration: none;" title="Resume in POS terminal to add items or complete payment">
+                                    <i class="fa fa-play"></i> Resume
+                                </a>
                                 <button type="button" class="po-btn-view" data-toggle="modal" data-target="#poDetailModal-<?php echo $po_id; ?>" title="View Complete PO Details">
                                     <i class="fa fa-eye"></i> View
                                 </button>
@@ -734,11 +737,8 @@ foreach ($pending_pos as $po) {
                                                 <tr style="font-weight: bold;"><td style="font-size: 1.08em;">TOTAL DUE:</td><td style="text-align: right; font-size: 1.08em;">PHP <?php echo number_format($total_amount, 2); ?></td></tr>
                                             </table>
                                             <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
-                                            <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
-                                                <div style="font-weight: bold;">*** PROCEED TO CASHIER ***</div>
-                                                <div style="font-weight: bold;">FOR PAYMENT</div>
-                                                <div style="margin-top: 3px;">Thank you for your business!</div>
-                                                <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+                                            <div style="text-align: center; font-weight: bold; padding: 4px 0; font-size: 11pt; letter-spacing: 0.5px;">
+                                                *** ORDER ON HOLD ***
                                             </div>
                                             <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                         </div>

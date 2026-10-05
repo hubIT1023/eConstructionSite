@@ -1673,12 +1673,10 @@ $cashier_avg_tickets = array_column($cashier_metrics, 'avg_ticket');
                                                                         <?php if ($row['payment_status'] === 'Paid' || $row['payment_status'] === 'Completed'): ?>
                                                                             <div style="font-weight: bold;">*** OFFICIAL PO VOUCHER ***</div>
                                                                             <div style="margin-top: 3px;">Thank you for your business!</div>
+                                                                            <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
                                                                         <?php else: ?>
-                                                                            <div style="font-weight: bold;">*** PROCEED TO CASHIER ***</div>
-                                                                            <div style="font-weight: bold;">FOR PAYMENT</div>
-                                                                            <div style="margin-top: 3px;">Thank you for your business!</div>
+                                                                            <div style="font-weight: bold; font-size: 11pt; letter-spacing: 0.5px;">*** ORDER ON HOLD ***</div>
                                                                         <?php endif; ?>
-                                                                        <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
                                                                     </div>
                                                                     <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                                                 </div>
