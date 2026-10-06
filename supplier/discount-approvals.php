@@ -167,14 +167,14 @@ try {
                         <table class="table table-bordered table-hover" style="font-size: 12.5px;">
                             <thead>
                                 <tr style="background: #f1f5f9; color: #1e293b;">
-                                    <th style="width: 155px;">Request Info</th>
-                                    <th>Product / Item Details</th>
-                                    <th style="width: 110px; text-align: right;">Gross Value</th>
-                                    <th style="width: 135px; text-align: center;">Discount Request</th>
-                                    <th style="width: 125px; text-align: right;">Approved Value</th>
-                                    <th style="width: 120px; text-align: center;">Status</th>
-                                    <th style="width: 160px;">Audit / Approver</th>
-                                    <th style="width: 155px; text-align: center;">Actions</th>
+                                    <th style="width: 150px;">Request Info</th>
+                                    <th style="width: 240px; min-width: 200px; max-width: 260px;">Product / Item Details</th>
+                                    <th style="width: 105px; text-align: right;">Gross Value</th>
+                                    <th style="width: 130px; text-align: center;">Discount Request</th>
+                                    <th style="width: 120px; text-align: right;">Approved Value</th>
+                                    <th style="width: 110px; text-align: center;">Status</th>
+                                    <th style="width: 155px;">Audit / Approver</th>
+                                    <th style="width: 145px; text-align: center;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -215,7 +215,7 @@ try {
                                         </td>
 
                                         <!-- Product Details -->
-                                        <td>
+                                        <td style="width: 240px; min-width: 200px; max-width: 260px; word-wrap: break-word; white-space: normal;">
                                             <?php if ($r['item_type'] === 'SPECIAL_ORDER'): ?>
                                                 <span class="label label-warning" style="background-color: #d97706; font-size: 9px; padding: 2px 5px;">SPECIAL ORDER</span><br>
                                             <?php endif; ?>
