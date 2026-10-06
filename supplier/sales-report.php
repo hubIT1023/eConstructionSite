@@ -42,7 +42,7 @@ switch ($filter_type) {
 
     case 'month':
         $m_str = str_pad($selected_month, 2, '0', STR_PAD_LEFT);
-        $days_in_m = cal_days_in_month(CAL_GREGORIAN, $selected_month, $selected_year);
+        $days_in_m = function_exists('cal_days_in_month') ? @cal_days_in_month(CAL_GREGORIAN, (int)$selected_month, (int)$selected_year) : (int)date('t', strtotime("$selected_year-$m_str-01"));
         $start_datetime = "$selected_year-$m_str-01 00:00:00";
         $end_datetime = "$selected_year-$m_str-$days_in_m 23:59:59";
         $filter_label = "Month: " . date('F Y', strtotime("$selected_year-$m_str-01"));
