@@ -147,12 +147,18 @@ if(isset($_POST['form1'])) {
             $n_price_val = $default_n_price;
         }
 
-        // 4. Evaluate Price Rules strictly in sequential order before replenishment additions take effect:
+        // 4. Evaluate Price Rules (with Manual Override Support):
+        // If supplier clicked "APPLY NEW PRICE" -> $final_current_price_val = $n_price_val directly
+        // Otherwise strictly evaluate sequential order:
         // Priority Rule 4: If C is empty / <= 0 -> C = N
         // Priority Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
         // Priority Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
         // Priority Rule 3: Else (all other cases) -> C = C (Default Selling Price)
-        if ($existing_c_price <= 0) {
+        $is_override = (isset($_POST['p_price_override']) && $_POST['p_price_override'] === '1');
+
+        if ($is_override) {
+            $final_current_price_val = $n_price_val; // Manual Override: Bypasses Price Rule calculation
+        } elseif ($existing_c_price <= 0) {
             $final_current_price_val = $n_price_val; // Rule 4: if C = empty, C = N
         } elseif ($orig_q < 6 && $orig_nq > 5) {
             $final_current_price_val = $n_price_val; // Rule 1: Low Stock Replenishment
@@ -390,6 +396,15 @@ foreach ($result as $row) {
 }
 ?>
 
+<style>
+.sticky-pricing-sidebar {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 20px;
+    z-index: 10;
+}
+</style>
+
 <section class="content-header">
 	<div class="content-header-left">
 		<h1>Edit Product</h1>
@@ -417,413 +432,454 @@ foreach ($result as $row) {
 
 			<form class="form-horizontal" action="" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="current_photo" value="<?php echo $p_featured_photo; ?>">
-				<div class="box box-info">
-					<div class="box-body">
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Top Level Category Name <span>*</span></label>
-							<div class="col-sm-4">
-								<select name="tcat_id" class="form-control select2 top-cat" required>
-									<option value="">Select Top Level Category</option>
-									<?php
-									$statement = $pdo->prepare("SELECT * FROM tbl_top_category ORDER BY tcat_name ASC");
-									$statement->execute();
-									$result = $statement->fetchAll(PDO::FETCH_ASSOC);	
-									foreach ($result as $row) {
-										?>
-										<option value="<?php echo $row['tcat_id']; ?>" <?php if($row['tcat_id'] == $tcat_id) {echo 'selected';} ?>><?php echo $row['tcat_name']; ?></option>
-										<?php
-									}
-									?>
-								</select>
+				<div class="row">
+					<!-- ==================== LEFT COLUMN (Main Details - 8 Cols) ==================== -->
+					<div class="col-md-8">
+						<div class="box box-info" style="border-radius: 6px;">
+							<div class="box-header with-border">
+								<h3 class="box-title" style="font-weight: 700; font-size: 15px;"><i class="fa fa-info-circle text-info"></i> Product Information & Categorization</h3>
 							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Mid Level Category Name <span>*</span></label>
-							<div class="col-sm-4">
-								<select name="mcat_id" class="form-control select2 mid-cat" required>
-									<option value="">Select Mid Level Category</option>
-                                    <?php
-									$statement = $pdo->prepare("SELECT * FROM tbl_mid_category WHERE tcat_id = ? ORDER BY mcat_name ASC");
-									$statement->execute(array($tcat_id));
-									$result = $statement->fetchAll(PDO::FETCH_ASSOC);	
-									foreach ($result as $row) {
-										?>
-										<option value="<?php echo $row['mcat_id']; ?>" <?php if($row['mcat_id'] == $mcat_id) {echo 'selected';} ?>><?php echo $row['mcat_name']; ?></option>
-										<?php
-									}
-									?>
-								</select>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">End Level Category Name <span>*</span></label>
-							<div class="col-sm-4">
-								<select name="ecat_id" id="ecat_id" class="form-control select2 end-cat" required>
-									<option value="">Select End Level Category</option>
-                                    <?php
-									$statement = $pdo->prepare("SELECT * FROM tbl_end_category WHERE mcat_id = ? ORDER BY ecat_name ASC");
-									$statement->execute(array($mcat_id));
-									$result = $statement->fetchAll(PDO::FETCH_ASSOC);	
-									foreach ($result as $row) {
-										?>
-										<option value="<?php echo $row['ecat_id']; ?>" <?php if($row['ecat_id'] == $ecat_id) {echo 'selected';} ?>><?php echo $row['ecat_name']; ?></option>
-										<?php
-									}
-									?>
-									<option value="other_new" style="font-weight: bold; color: #2563eb;">+ Add New Category (Not Found in List)</option>
-								</select>
-							</div>
-							<div class="col-sm-4" style="padding-top: 4px;">
-								<button type="button" class="btn btn-info btn-sm" onclick="enableNewCategoryInput()"><i class="fa fa-plus"></i> New Category</button>
-							</div>
-						</div>
-						<div class="form-group" id="newCategoryWrapper" style="display: none; background: #f0f7ff; padding: 12px 0; border: 1px dashed #3b82f6; border-radius: 6px; margin-bottom: 15px;">
-							<label for="" class="col-sm-3 control-label" style="color: #1d4ed8;">New End Category Name <span>*</span></label>
-							<div class="col-sm-4">
-								<input type="text" name="new_ecat_name" id="new_ecat_name" class="form-control" placeholder="Enter new category name (e.g. Deformed Rebars)">
-								<small class="text-muted">Will automatically create and link this new category under the selected Mid Level Category.</small>
-							</div>
-							<div class="col-sm-4" style="padding-top: 4px;">
-								<button type="button" class="btn btn-default btn-sm" onclick="cancelNewCategoryInput()"><i class="fa fa-times"></i> Cancel</button>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Product Name <span>*</span></label>
-							<div class="col-sm-4">
-								<input type="text" name="p_name" class="form-control" value="<?php echo htmlspecialchars($p_name); ?>" required>
-							</div>
-							<div class="col-sm-4" style="padding-top: 4px;">
-								<button type="button" class="btn btn-success btn-sm" onclick="autoClassifyProductCategory()">
-									<i class="fa fa-magic"></i> Auto-Classify Category
-								</button>
-							</div>
-						</div>
-						<div class="form-group" id="aiCategorySuggestionBox" style="display:none;">
-							<div class="col-sm-offset-3 col-sm-8">
-								<div class="alert alert-info" style="margin-bottom:0; padding:10px 14px; font-size:12.5px;">
-									<div id="aiCategorySuggestionText"></div>
-								</div>
-							</div>
-						</div>
-						<script>
-						function autoClassifyProductCategory() {
-							var pNameEl = document.querySelector('input[name="p_name"]');
-							var pName = pNameEl ? pNameEl.value.trim() : '';
-							if (!pName) {
-								alert('Please enter a Product Name first so the Categorization Engine can classify it.');
-								return;
-							}
-							var fd = new FormData();
-							fd.append('action', 'classify_single');
-							fd.append('p_name', pName);
-							fd.append('resolve_ids', '1');
-							fetch('categorization-api.php', { method: 'POST', body: fd })
-								.then(function(r) { return r.json(); })
-								.then(function(res) {
-									if (!res.success) { alert(res.error || 'Classification error'); return; }
-									var c = res.classification;
-									var box = document.getElementById('aiCategorySuggestionBox');
-									var txt = document.getElementById('aiCategorySuggestionText');
-									box.style.display = 'block';
-									txt.innerHTML = '<strong><i class="fa fa-sitemap"></i> Suggested Hierarchy:</strong> ' +
-										c.main_category + ' &rarr; ' + c.mid_category + ' &rarr; <strong>' + c.end_category + '</strong>' +
-										' &nbsp;|&nbsp; <span class="label label-success">Confidence: ' + c.confidence + '% (' + c.status + ')</span>' +
-										'<br><small><strong>Base Product:</strong> ' + c.base_product + ' &nbsp;|&nbsp; <strong>Variant:</strong> ' + c.variant +
-										' &nbsp;|&nbsp; <strong>Reason:</strong> ' + c.reason + '</small>';
-									if (res.category_ids && res.category_ids.tcat_id > 0) {
-										var topSel = document.querySelector('select.top-cat');
-										var midSel = document.querySelector('select.mid-cat');
-										var endSel = document.querySelector('select.end-cat');
-										if (topSel) {
-											if (!topSel.querySelector('option[value="' + res.category_ids.tcat_id + '"]')) {
-												var optT = document.createElement('option');
-												optT.value = res.category_ids.tcat_id;
-												optT.textContent = c.main_category;
-												topSel.appendChild(optT);
+							<div class="box-body">
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Top Level Category Name <span>*</span></label>
+									<div class="col-sm-8">
+										<select name="tcat_id" class="form-control select2 top-cat" required style="width: 100%;">
+											<option value="">Select Top Level Category</option>
+											<?php
+											$statement = $pdo->prepare("SELECT * FROM tbl_top_category ORDER BY tcat_name ASC");
+											$statement->execute();
+											$result = $statement->fetchAll(PDO::FETCH_ASSOC);	
+											foreach ($result as $row) {
+												?>
+												<option value="<?php echo $row['tcat_id']; ?>" <?php if($row['tcat_id'] == $tcat_id) {echo 'selected';} ?>><?php echo $row['tcat_name']; ?></option>
+												<?php
 											}
-											topSel.value = res.category_ids.tcat_id;
-											if (window.jQuery && jQuery(topSel).data('select2')) jQuery(topSel).trigger('change.select2');
-										}
-										if (midSel && res.mid_options) {
-											midSel.innerHTML = '<option value="">Select Mid Level Category</option>';
-											res.mid_options.forEach(function(m) {
-												var o = document.createElement('option');
-												o.value = m.mcat_id;
-												o.textContent = m.mcat_name;
-												if (parseInt(m.mcat_id, 10) === parseInt(res.category_ids.mcat_id, 10)) o.selected = true;
-												midSel.appendChild(o);
-											});
-											if (window.jQuery && jQuery(midSel).data('select2')) jQuery(midSel).trigger('change.select2');
-										}
-										if (endSel && res.end_options) {
-											endSel.innerHTML = '<option value="">Select End Level Category</option>';
-											res.end_options.forEach(function(e) {
-												var o = document.createElement('option');
-												o.value = e.ecat_id;
-												o.textContent = e.ecat_name;
-												if (parseInt(e.ecat_id, 10) === parseInt(res.category_ids.ecat_id, 10)) o.selected = true;
-												endSel.appendChild(o);
-											});
-											if (window.jQuery && jQuery(endSel).data('select2')) jQuery(endSel).trigger('change.select2');
-										}
-									}
-								});
-						}
-						</script>	
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">SKU / Code</label>
-							<div class="col-sm-4">
-								<input type="text" name="p_sku" class="form-control" value="<?php echo htmlspecialchars($p_sku); ?>">
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Brand</label>
-							<div class="col-sm-4">
-								<input type="text" name="p_brand" class="form-control" value="<?php echo htmlspecialchars($p_brand); ?>">
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Minimum Order Quantity (MOQ)</label>
-							<div class="col-sm-4">
-								<input type="number" name="p_moq" class="form-control" value="<?php echo htmlspecialchars($p_moq); ?>">
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Estimated Delivery Time</label>
-							<div class="col-sm-4">
-								<input type="text" name="p_delivery_estimate" class="form-control" value="<?php echo htmlspecialchars($p_delivery_estimate); ?>">
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Specification Sheet (PDF Name)</label>
-							<div class="col-sm-4">
-								<input type="text" name="p_pdf" class="form-control" value="<?php echo htmlspecialchars($p_pdf); ?>">
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Old Price <br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
-							<div class="col-sm-4">
-								<input type="text" name="p_old_price" class="form-control" value="<?php echo htmlspecialchars($p_old_price); ?>">
-							</div>
-						</div>
-						<!-- Authoritative Existing Current Price for Client Comparison -->
-						<input type="hidden" id="p_existing_current_price" value="<?php echo htmlspecialchars($p_current_price); ?>">
-
-						<!-- Capital Price (Ca) -->
-						<div class="form-group" style="background: #f8fafc; padding: 12px 0; border-top: 1.5px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
-							<label for="p_capital_price" class="col-sm-3 control-label" style="color: #0f172a;">Capital Price (Ca) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Original / Base Capital Cost)</span></label>
-							<div class="col-sm-4">
-								<div class="input-group">
-									<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1d4ed8; font-size: 15px;">₱</span>
-									<input type="number" step="0.01" min="0" name="p_capital_price" id="p_capital_price" class="form-control" value="<?php echo htmlspecialchars($p_capital_price); ?>" placeholder="e.g. 100.00" required style="font-weight: 600;">
+											?>
+										</select>
+									</div>
 								</div>
-								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-info-circle"></i> Original / base capital cost (Ca) of the product per unit.</small>
-							</div>
-						</div>
-
-						<!-- Mark-Up (₱) (Fixed Peso Amount) -->
-						<div class="form-group" style="background: #f8fafc; padding: 12px 0; border-bottom: 1.5px solid #e2e8f0;">
-							<label for="p_markup" class="col-sm-3 control-label" style="color: #0f172a;">Mark-Up (₱) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Fixed Peso Amount)</span></label>
-							<div class="col-sm-4">
-								<div class="input-group">
-									<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1d4ed8; font-size: 15px;">₱</span>
-									<input type="number" step="0.01" min="0" name="p_markup" id="p_markup" class="form-control" value="<?php echo htmlspecialchars($p_markup); ?>" placeholder="e.g. 20.00" required style="font-weight: 600;">
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Mid Level Category Name <span>*</span></label>
+									<div class="col-sm-8">
+										<select name="mcat_id" class="form-control select2 mid-cat" required style="width: 100%;">
+											<option value="">Select Mid Level Category</option>
+                                            <?php
+											$statement = $pdo->prepare("SELECT * FROM tbl_mid_category WHERE tcat_id = ? ORDER BY mcat_name ASC");
+											$statement->execute(array($tcat_id));
+											$result = $statement->fetchAll(PDO::FETCH_ASSOC);	
+											foreach ($result as $row) {
+												?>
+												<option value="<?php echo $row['mcat_id']; ?>" <?php if($row['mcat_id'] == $mcat_id) {echo 'selected';} ?>><?php echo $row['mcat_name']; ?></option>
+												<?php
+											}
+											?>
+										</select>
+									</div>
 								</div>
-								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-info-circle"></i> Fixed peso amount (₱) added to Capital Price (not a percentage).</small>
-							</div>
-						</div>
-
-						<!-- New Price (N) - Automatically Calculated or Manually Editable -->
-						<div class="form-group" style="background: #f0fdf4; padding: 12px 0; border-bottom: 1px solid #bbf7d0;">
-							<label for="p_new_price" class="col-sm-3 control-label" style="color: #166534;">New Price (N) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#15803d;">(Calculated or Manual Edit)</span></label>
-							<div class="col-sm-4">
-								<div class="input-group">
-									<span class="input-group-addon" style="font-weight: 700; background: #dcfce7; color: #166534; font-size: 15px;">₱</span>
-									<input type="number" step="0.01" min="0" name="p_new_price" id="p_new_price" class="form-control" value="<?php echo htmlspecialchars($p_new_price); ?>" required style="font-weight: 700; font-size: 15px; color: #166534;">
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">End Level Category Name <span>*</span></label>
+									<div class="col-sm-5">
+										<select name="ecat_id" id="ecat_id" class="form-control select2 end-cat" required style="width: 100%;">
+											<option value="">Select End Level Category</option>
+                                            <?php
+											$statement = $pdo->prepare("SELECT * FROM tbl_end_category WHERE mcat_id = ? ORDER BY ecat_name ASC");
+											$statement->execute(array($mcat_id));
+											$result = $statement->fetchAll(PDO::FETCH_ASSOC);	
+											foreach ($result as $row) {
+												?>
+												<option value="<?php echo $row['ecat_id']; ?>" <?php if($row['ecat_id'] == $ecat_id) {echo 'selected';} ?>><?php echo $row['ecat_name']; ?></option>
+												<?php
+											}
+											?>
+											<option value="other_new" style="font-weight: bold; color: #2563eb;">+ Add New Category (Not Found in List)</option>
+										</select>
+									</div>
+									<div class="col-sm-3" style="padding-top: 4px;">
+										<button type="button" class="btn btn-info btn-sm btn-block" onclick="enableNewCategoryInput()"><i class="fa fa-plus"></i> New Category</button>
+									</div>
 								</div>
-								<small style="color: #15803d; font-size: 11px;"><i class="fa fa-calculator"></i> Auto-calculates as <code>N = Ca + ₱ Mark-Up</code>, or enter custom manual price.</small>
-							</div>
-						</div>	
-
-						<!-- Current Price (C) - Result after Price Rule -->
-						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #e2e8f0;">
-							<label for="p_current_price" class="col-sm-3 control-label" style="color: #0f172a;">Current Price (C) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Result after Price Rule)</span></label>
-							<div class="col-sm-4">
-								<div class="input-group">
-									<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1e40af; font-size: 15px;">₱</span>
-									<input type="text" name="p_current_price" id="p_current_price" class="form-control" value="<?php echo htmlspecialchars($p_current_price); ?>" required style="font-weight: 800; font-size: 16px; color: #1e40af; background-color: #f8fafc;" readonly>
+								<div class="form-group" id="newCategoryWrapper" style="display: none; background: #f0f7ff; padding: 12px 0; border: 1px dashed #3b82f6; border-radius: 6px; margin-bottom: 15px;">
+									<label for="" class="col-sm-3 control-label" style="color: #1d4ed8;">New End Category Name <span>*</span></label>
+									<div class="col-sm-5">
+										<input type="text" name="new_ecat_name" id="new_ecat_name" class="form-control" placeholder="Enter new category name (e.g. Deformed Rebars)">
+										<small class="text-muted">Will automatically create and link this new category under the selected Mid Level Category.</small>
+									</div>
+									<div class="col-sm-3" style="padding-top: 4px;">
+										<button type="button" class="btn btn-default btn-sm btn-block" onclick="cancelNewCategoryInput()"><i class="fa fa-times"></i> Cancel</button>
+									</div>
 								</div>
-								<div id="p_price_rule_notice" style="font-size: 11.5px; margin-top: 6px; font-weight: 600;"></div>
-							</div>
-						</div>	
-
-						<!-- Quantity in Stock (Current) (Q) -->
-						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
-							<label for="p_qty" class="col-sm-3 control-label">Quantity in Stock (Current) (Q) <span>*</span></label>
-							<div class="col-sm-4">
-								<div class="input-group">
-									<input type="number" min="0" name="p_qty" id="p_qty" class="form-control" value="<?php echo htmlspecialchars($p_qty); ?>" required style="font-weight: 700; font-size: 15px;">
-									<span class="input-group-addon" id="p_stock_alert_badge" style="font-weight: 700; font-size: 12px; border-radius: 0 4px 4px 0;"></span>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Product Name <span>*</span></label>
+									<div class="col-sm-5">
+										<input type="text" name="p_name" class="form-control" value="<?php echo htmlspecialchars($p_name); ?>" required>
+									</div>
+									<div class="col-sm-3" style="padding-top: 4px;">
+										<button type="button" class="btn btn-success btn-sm btn-block" onclick="autoClassifyProductCategory()">
+											<i class="fa fa-magic"></i> Auto-Classify Category
+										</button>
+									</div>
 								</div>
-								<div id="p_stock_alert_desc" style="font-size: 11.5px; margin-top: 5px; font-weight: 600;"></div>
+								<div class="form-group" id="aiCategorySuggestionBox" style="display:none;">
+									<div class="col-sm-offset-3 col-sm-8">
+										<div class="alert alert-info" style="margin-bottom:0; padding:10px 14px; font-size:12.5px; border-radius: 4px;">
+											<div id="aiCategorySuggestionText"></div>
+										</div>
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">SKU / Code</label>
+									<div class="col-sm-8">
+										<input type="text" name="p_sku" class="form-control" value="<?php echo htmlspecialchars($p_sku); ?>">
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Brand</label>
+									<div class="col-sm-8">
+										<input type="text" name="p_brand" class="form-control" value="<?php echo htmlspecialchars($p_brand); ?>">
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Minimum Order Quantity (MOQ)</label>
+									<div class="col-sm-8">
+										<input type="number" name="p_moq" class="form-control" value="<?php echo htmlspecialchars($p_moq); ?>">
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Estimated Delivery Time</label>
+									<div class="col-sm-8">
+										<input type="text" name="p_delivery_estimate" class="form-control" value="<?php echo htmlspecialchars($p_delivery_estimate); ?>">
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Specification Sheet (PDF Name)</label>
+									<div class="col-sm-8">
+										<input type="text" name="p_pdf" class="form-control" value="<?php echo htmlspecialchars($p_pdf); ?>">
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Old Price <br><span style="font-size:10px;font-weight:normal;">(In PHP)</span></label>
+									<div class="col-sm-8">
+										<input type="text" name="p_old_price" class="form-control" value="<?php echo htmlspecialchars($p_old_price); ?>">
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Select Size</label>
+									<div class="col-sm-8">
+										<select name="size[]" class="form-control select2" multiple="multiple" style="width: 100%;">
+											<?php
+                                            $statement = $pdo->prepare("SELECT * FROM tbl_product_size WHERE p_id=?");
+                                            $statement->execute(array($_REQUEST['id']));
+                                            $current_sizes = array();
+                                            $res_sizes = $statement->fetchAll(PDO::FETCH_ASSOC);
+                                            foreach($res_sizes as $s) {
+                                                $current_sizes[] = $s['size_id'];
+                                            }
+
+											$statement = $pdo->prepare("SELECT * FROM tbl_size ORDER BY size_id ASC");
+											$statement->execute();
+											$result = $statement->fetchAll(PDO::FETCH_ASSOC);			
+											foreach ($result as $row) {
+												?>
+												<option value="<?php echo $row['size_id']; ?>" <?php if(in_array($row['size_id'], $current_sizes)) {echo 'selected';} ?>><?php echo $row['size_name']; ?></option>
+												<?php
+											}
+											?>
+										</select>
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Select Color</label>
+									<div class="col-sm-8">
+										<select name="color[]" class="form-control select2" multiple="multiple" style="width: 100%;">
+											<?php
+                                            $statement = $pdo->prepare("SELECT * FROM tbl_product_color WHERE p_id=?");
+                                            $statement->execute(array($_REQUEST['id']));
+                                            $current_colors = array();
+                                            $res_colors = $statement->fetchAll(PDO::FETCH_ASSOC);
+                                            foreach($res_colors as $c) {
+                                                $current_colors[] = $c['color_id'];
+                                            }
+
+											$statement = $pdo->prepare("SELECT * FROM tbl_color ORDER BY color_id ASC");
+											$statement->execute();
+											$result = $statement->fetchAll(PDO::FETCH_ASSOC);			
+											foreach ($result as $row) {
+												?>
+												<option value="<?php echo $row['color_id']; ?>" <?php if(in_array($row['color_id'], $current_colors)) {echo 'selected';} ?>><?php echo $row['color_name']; ?></option>
+												<?php
+											}
+											?>
+										</select>
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Featured Photo</label>
+									<div class="col-sm-8" style="padding-top:4px;">
+										<div style="margin-bottom: 8px;">
+                                        <?php
+                                        $featured_photo_display = '';
+                                        if (!empty($p_featured_photo) && file_exists('../assets/uploads/' . $p_featured_photo)) {
+                                            $featured_photo_display = '../assets/uploads/' . htmlspecialchars($p_featured_photo);
+                                        } elseif (!empty($p_featured_photo) && file_exists('../assets/uploads/product_photos/' . $p_featured_photo)) {
+                                            $featured_photo_display = '../assets/uploads/product_photos/' . htmlspecialchars($p_featured_photo);
+                                        } elseif (!empty($p_featured_photo) && file_exists('../assets/uploads/product_photos/general_products/' . $p_featured_photo)) {
+                                            $featured_photo_display = '../assets/uploads/product_photos/general_products/' . htmlspecialchars($p_featured_photo);
+                                        } elseif (file_exists('../assets/uploads/product_photos/general_products/default.png')) {
+                                            $featured_photo_display = '../assets/uploads/product_photos/general_products/default.png';
+                                        } elseif (file_exists('../assets/uploads/product_photos/general_products/general_products.png')) {
+                                            $featured_photo_display = '../assets/uploads/product_photos/general_products/general_products.png';
+                                        } elseif (file_exists('../assets/uploads/product_photos/general_products.png')) {
+                                            $featured_photo_display = '../assets/uploads/product_photos/general_products.png';
+                                        } else {
+                                            $featured_photo_display = '../assets/uploads/product_photos/general_products/default.png';
+                                        }
+                                        ?>
+                                        	<img src="<?php echo $featured_photo_display; ?>" alt="Featured Photo" id="featured_photo_preview" style="width:120px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;">
+                                        	<div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                                            	<i class="fa fa-folder-open text-primary"></i> Current: <code><?php echo htmlspecialchars($p_featured_photo ? $p_featured_photo : 'general_products.png'); ?></code>
+                                        	</div>
+										</div>
+										<input type="file" name="p_featured_photo" id="p_featured_photo" onchange="previewFeaturedPhoto(this)">
+										<small class="text-muted" style="font-size: 11px;">Select a new file if you wish to change the featured photo.</small>
+									</div>
+								</div>
+								<div class="form-group">
+									<label for="" class="col-sm-3 control-label">Other Photos</label>
+									<div class="col-sm-8" style="padding-top:4px;">
+										<table id="ProductTable" style="width:100%;">
+											<tbody>
+												<?php
+												$statement = $pdo->prepare("SELECT * FROM tbl_product_photo WHERE p_id=?");
+												$statement->execute(array($_REQUEST['id']));
+												$result = $statement->fetchAll(PDO::FETCH_ASSOC);
+												foreach ($result as $row) {
+													?>
+													<tr>
+														<td>
+															<img src="../assets/uploads/product_photos/<?php echo $row['photo']; ?>" alt="Gallery Photo" style="width:120px;margin-bottom:5px;border:1px solid #cbd5e1;border-radius:4px;padding:2px;background:#fff;">
+														</td>
+														<td style="width:28px;">
+															<a onclick="return confirmDelete();" href="product-other-photo-delete.php?id=<?php echo $row['pp_id']; ?>&id1=<?php echo $_REQUEST['id']; ?>" class="btn btn-danger btn-xs">X</a>
+														</td>
+													</tr>
+													<?php
+												}
+												?>
+											</tbody>
+										</table>
+										<input type="button" id="btnAddNew" value="Add Item" style="margin-top: 5px;margin-bottom:10px;border:0;color: #fff;font-size: 14px;border-radius:3px;" class="btn btn-warning btn-xs">
+									</div>
+								</div>
 							</div>
 						</div>
 
-						<!-- (N)Quantity (New Quantity) (NQ) -->
-						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; background: #fafafa;">
-							<label for="p_new_qty" class="col-sm-3 control-label">(N)Quantity (New Quantity) (NQ)</label>
-							<div class="col-sm-4">
-								<input type="number" min="0" name="p_new_qty" id="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>" style="font-weight: 600;">
-								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-cubes"></i> Incoming replenishment stock. Trigger: <code>Q &lt; 2 AND NQ &gt; 1</code> or <code>Q &lt; 6 AND NQ &gt; 5</code> rolls NQ into Q.</small>
-								<div id="p_qty_rule_notice" style="font-size: 11.5px; margin-top: 4px; font-weight: 600;"></div>
-							</div>
-						</div>
+						<!-- ==================== DESCRIPTIONS & POLICIES (TABBED OPTION A) ==================== -->
+						<div class="nav-tabs-custom" style="border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-top: 15px;">
+							<ul class="nav nav-tabs">
+								<li class="active">
+									<a href="#tab_desc" data-toggle="tab" style="font-weight: 600;">
+										<i class="fa fa-align-left text-primary"></i> Description
+									</a>
+								</li>
+								<li>
+									<a href="#tab_summary" data-toggle="tab" style="font-weight: 600;">
+										<i class="fa fa-list-ul text-success"></i> Short Description & Highlights
+									</a>
+								</li>
+								<li>
+									<a href="#tab_specs" data-toggle="tab" style="font-weight: 600;">
+										<i class="fa fa-wrench text-info"></i> Technical Specifications
+									</a>
+								</li>
+								<li>
+									<a href="#tab_policies" data-toggle="tab" style="font-weight: 600;">
+										<i class="fa fa-shield text-warning"></i> Conditions & Policies
+									</a>
+								</li>
+							</ul>
+							<div class="tab-content" style="padding: 15px;">
+								<!-- Tab 1: Full Description -->
+								<div class="tab-pane active" id="tab_desc">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label class="col-sm-12" style="text-align: left; margin-bottom: 6px; font-weight: 600;">Description</label>
+										<div class="col-sm-12">
+											<textarea name="p_description" class="form-control" cols="30" rows="10" id="editor1"><?php echo $p_description; ?></textarea>
+										</div>
+									</div>
+								</div>
 
-						<!-- Safety Stock Level (S) -->
-						<div class="form-group" style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
-							<label for="p_s_level" class="col-sm-3 control-label">Safety Stock Level (S) <span>*</span></label>
-							<div class="col-sm-4">
-								<input type="number" min="0" name="p_s_level" id="p_s_level" class="form-control" value="<?php echo htmlspecialchars($p_s_level); ?>" style="font-weight: 600;">
-								<small class="text-muted" style="font-size: 11px;"><i class="fa fa-shield"></i> Threshold buffer: RED if <code>Q &lt; 50% of S</code>, ORANGE if <code>50% &le; Q &lt; 80% of S</code>, NORMAL if <code>Q &ge; 80% of S</code>.</small>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Select Size</label>
-							<div class="col-sm-4">
-								<select name="size[]" class="form-control select2" multiple="multiple">
-									<?php
-                                    $statement = $pdo->prepare("SELECT * FROM tbl_product_size WHERE p_id=?");
-                                    $statement->execute(array($_REQUEST['id']));
-                                    $current_sizes = array();
-                                    $res_sizes = $statement->fetchAll(PDO::FETCH_ASSOC);
-                                    foreach($res_sizes as $s) {
-                                        $current_sizes[] = $s['size_id'];
-                                    }
+								<!-- Tab 2: Short Description & Highlights -->
+								<div class="tab-pane" id="tab_summary">
+									<div class="form-group" style="margin-bottom: 15px;">
+										<label class="col-sm-12" style="text-align: left; margin-bottom: 6px; font-weight: 600;">Short Description</label>
+										<div class="col-sm-12">
+											<textarea name="p_short_description" class="form-control" cols="30" rows="6" id="editor2"><?php echo $p_short_description; ?></textarea>
+										</div>
+									</div>
+									<div class="form-group" style="margin-bottom: 0;">
+										<label class="col-sm-12" style="text-align: left; margin-bottom: 6px; font-weight: 600;">Highlights</label>
+										<div class="col-sm-12">
+											<textarea name="p_feature" class="form-control" cols="30" rows="6" id="editor3"><?php echo $p_feature; ?></textarea>
+										</div>
+									</div>
+								</div>
 
-									$statement = $pdo->prepare("SELECT * FROM tbl_size ORDER BY size_id ASC");
-									$statement->execute();
-									$result = $statement->fetchAll(PDO::FETCH_ASSOC);			
-									foreach ($result as $row) {
-										?>
-										<option value="<?php echo $row['size_id']; ?>" <?php if(in_array($row['size_id'], $current_sizes)) {echo 'selected';} ?>><?php echo $row['size_name']; ?></option>
-										<?php
-									}
-									?>
-								</select>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Select Color</label>
-							<div class="col-sm-4">
-								<select name="color[]" class="form-control select2" multiple="multiple">
-									<?php
-                                    $statement = $pdo->prepare("SELECT * FROM tbl_product_color WHERE p_id=?");
-                                    $statement->execute(array($_REQUEST['id']));
-                                    $current_colors = array();
-                                    $res_colors = $statement->fetchAll(PDO::FETCH_ASSOC);
-                                    foreach($res_colors as $c) {
-                                        $current_colors[] = $c['color_id'];
-                                    }
+								<!-- Tab 3: Technical Specifications -->
+								<div class="tab-pane" id="tab_specs">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label class="col-sm-12" style="text-align: left; margin-bottom: 6px; font-weight: 600;">Technical Specifications</label>
+										<div class="col-sm-12">
+											<textarea name="p_specs" class="form-control" cols="30" rows="8" placeholder="e.g. Dimensions, standard compliance (PNS/ASTM), material grade, yield strength..."><?php echo htmlspecialchars($p_specs); ?></textarea>
+										</div>
+									</div>
+								</div>
 
-									$statement = $pdo->prepare("SELECT * FROM tbl_color ORDER BY color_id ASC");
-									$statement->execute();
-									$result = $statement->fetchAll(PDO::FETCH_ASSOC);			
-									foreach ($result as $row) {
-										?>
-										<option value="<?php echo $row['color_id']; ?>" <?php if(in_array($row['color_id'], $current_colors)) {echo 'selected';} ?>><?php echo $row['color_name']; ?></option>
-										<?php
-									}
-									?>
-								</select>
+								<!-- Tab 4: Conditions & Delivery/Return Policy -->
+								<div class="tab-pane" id="tab_policies">
+									<div class="form-group" style="margin-bottom: 15px;">
+										<label class="col-sm-12" style="text-align: left; margin-bottom: 6px; font-weight: 600;">Conditions</label>
+										<div class="col-sm-12">
+											<textarea name="p_condition" class="form-control" cols="30" rows="6" id="editor4"><?php echo $p_condition; ?></textarea>
+										</div>
+									</div>
+									<div class="form-group" style="margin-bottom: 0;">
+										<label class="col-sm-12" style="text-align: left; margin-bottom: 6px; font-weight: 600;">Delivery & Return Policy</label>
+										<div class="col-sm-12">
+											<textarea name="p_return_policy" class="form-control" cols="30" rows="6" id="editor5"><?php echo $p_return_policy; ?></textarea>
+										</div>
+									</div>
+								</div>
 							</div>
 						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Featured Photo</label>
-							<div class="col-sm-4" style="padding-top:4px;">
-								<input type="file" name="p_featured_photo">
-                                <br>
-                                <?php
-                                $featured_photo_display = '';
-                                if (!empty($p_featured_photo) && file_exists('../assets/uploads/' . $p_featured_photo)) {
-                                    $featured_photo_display = '../assets/uploads/' . htmlspecialchars($p_featured_photo);
-                                } elseif (!empty($p_featured_photo) && file_exists('../assets/uploads/product_photos/' . $p_featured_photo)) {
-                                    $featured_photo_display = '../assets/uploads/product_photos/' . htmlspecialchars($p_featured_photo);
-                                } elseif (!empty($p_featured_photo) && file_exists('../assets/uploads/product_photos/general_products/' . $p_featured_photo)) {
-                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/' . htmlspecialchars($p_featured_photo);
-                                } elseif (file_exists('../assets/uploads/product_photos/general_products/default.png')) {
-                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/default.png';
-                                } elseif (file_exists('../assets/uploads/product_photos/general_products/general_products.png')) {
-                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/general_products.png';
-                                } elseif (file_exists('../assets/uploads/product_photos/general_products.png')) {
-                                    $featured_photo_display = '../assets/uploads/product_photos/general_products.png';
-                                } else {
-                                    $featured_photo_display = '../assets/uploads/product_photos/general_products/default.png';
-                                }
-                                ?>
-                                <img src="<?php echo $featured_photo_display; ?>" alt="Featured Photo" style="width:120px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;">
-                                <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
-                                    <i class="fa fa-folder-open text-primary"></i> Default source: <code>assets/uploads/product_photos/general_products</code>
-                                </div>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Description</label>
-							<div class="col-sm-8">
-								<textarea name="p_description" class="form-control" cols="30" rows="10" id="editor1"><?php echo $p_description; ?></textarea>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Technical Specifications</label>
-							<div class="col-sm-8">
-								<textarea name="p_specs" class="form-control" cols="30" rows="5"><?php echo htmlspecialchars($p_specs); ?></textarea>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Short Description</label>
-							<div class="col-sm-8">
-								<textarea name="p_short_description" class="form-control" cols="30" rows="10" id="editor2"><?php echo $p_short_description; ?></textarea>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Highlights</label>
-							<div class="col-sm-8">
-								<textarea name="p_feature" class="form-control" cols="30" rows="10" id="editor3"><?php echo $p_feature; ?></textarea>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Conditions</label>
-							<div class="col-sm-8">
-								<textarea name="p_condition" class="form-control" cols="30" rows="10" id="editor4"><?php echo $p_condition; ?></textarea>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Delivery & Return Policy</label>
-							<div class="col-sm-8">
-								<textarea name="p_return_policy" class="form-control" cols="30" rows="10" id="editor5"><?php echo $p_return_policy; ?></textarea>
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Is Featured?</label>
-							<div class="col-sm-8">
-								<select name="p_is_featured" class="form-control" style="width:auto;">
-									<option value="0" <?php if($p_is_featured == 0) {echo 'selected';} ?>>No</option>
-									<option value="1" <?php if($p_is_featured == 1) {echo 'selected';} ?>>Yes</option>
-								</select> 
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label">Is Active?</label>
-							<div class="col-sm-8">
-								<select name="p_is_active" class="form-control" style="width:auto;">
-									<option value="0" <?php if($p_is_active == 0) {echo 'selected';} ?>>No</option>
-									<option value="1" <?php if($p_is_active == 1) {echo 'selected';} ?>>Yes</option>
-								</select> 
-							</div>
-						</div>
-						<div class="form-group">
-							<label for="" class="col-sm-3 control-label"></label>
-							<div class="col-sm-6">
-								<button type="submit" class="btn btn-success pull-left" name="form1">Update Product</button>
+					</div>
+
+					<!-- ==================== RIGHT COLUMN (Sticky Pricing & Stock Sidebar - 4 Cols) ==================== -->
+					<div class="col-md-4">
+						<div class="sticky-pricing-sidebar">
+							<div class="box box-success" style="border-radius: 6px; border-top-width: 3px;">
+								<div class="box-header with-border">
+									<h3 class="box-title" style="font-weight: 700; font-size: 15px; color: #166534;"><i class="fa fa-calculator text-success"></i> Pricing & Inventory Rules</h3>
+								</div>
+								<div class="box-body">
+									<!-- Authoritative Existing Current Price for Client Comparison -->
+									<input type="hidden" id="p_existing_current_price" value="<?php echo htmlspecialchars($p_current_price); ?>">
+
+									<!-- Capital Price (Ca) -->
+									<div class="form-group" style="background: #f8fafc; padding: 10px 10px; border-top: 1.5px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+										<label for="p_capital_price" class="col-sm-12" style="text-align: left; color: #0f172a; margin-bottom: 4px;">Capital Price (Ca) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Original / Base Capital Cost)</span></label>
+										<div class="col-sm-12">
+											<div class="input-group">
+												<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1d4ed8; font-size: 15px;">₱</span>
+												<input type="number" step="0.01" min="0" name="p_capital_price" id="p_capital_price" class="form-control" value="<?php echo htmlspecialchars($p_capital_price); ?>" placeholder="e.g. 100.00" required style="font-weight: 600;">
+											</div>
+											<small class="text-muted" style="font-size: 11px;"><i class="fa fa-info-circle"></i> Original / base capital cost (Ca) of the product per unit.</small>
+										</div>
+									</div>
+
+									<!-- Mark-Up (₱) (Fixed Peso Amount) -->
+									<div class="form-group" style="background: #f8fafc; padding: 10px 10px; border-bottom: 1.5px solid #e2e8f0; margin-bottom: 10px;">
+										<label for="p_markup" class="col-sm-12" style="text-align: left; color: #0f172a; margin-bottom: 4px;">Mark-Up (₱) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Fixed Peso Amount)</span></label>
+										<div class="col-sm-12">
+											<div class="input-group">
+												<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1d4ed8; font-size: 15px;">₱</span>
+												<input type="number" step="0.01" min="0" name="p_markup" id="p_markup" class="form-control" value="<?php echo htmlspecialchars($p_markup); ?>" placeholder="e.g. 20.00" required style="font-weight: 600;">
+											</div>
+											<small class="text-muted" style="font-size: 11px;"><i class="fa fa-info-circle"></i> Fixed peso amount (₱) added to Capital Price (not a percentage).</small>
+										</div>
+									</div>
+
+									<!-- New Price (N) - Automatically Calculated or Manually Editable -->
+									<div class="form-group" style="background: #f0fdf4; padding: 10px 10px; border-bottom: 1px solid #bbf7d0; margin-bottom: 10px;">
+										<label for="p_new_price" class="col-sm-12" style="text-align: left; color: #166534; margin-bottom: 4px;">New Price (N) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#15803d;">(Calculated or Manual Edit)</span></label>
+										<div class="col-sm-12">
+											<div class="input-group">
+												<span class="input-group-addon" style="font-weight: 700; background: #dcfce7; color: #166534; font-size: 15px;">₱</span>
+												<input type="number" step="0.01" min="0" name="p_new_price" id="p_new_price" class="form-control" value="<?php echo htmlspecialchars($p_new_price); ?>" required style="font-weight: 700; font-size: 15px; color: #166534;">
+											</div>
+											<div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+												<small style="color: #15803d; font-size: 11px; flex: 1;">
+													<i class="fa fa-calculator"></i> Auto-calculates as <code>N = Ca + ₱ Mark-Up</code>, or enter custom manual price.
+												</small>
+												<button type="button" id="btnApplyNewPrice" class="btn btn-xs btn-success" style="font-weight: 700; padding: 3px 8px; font-size: 11px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); white-space: nowrap;" onclick="applyNewPriceOverride()">
+													<i class="fa fa-bolt"></i> APPLY NEW PRICE
+												</button>
+											</div>
+											<input type="hidden" name="p_price_override" id="p_price_override" value="0">
+										</div>
+									</div>	
+
+									<!-- Current Price (C) - Result after Price Rule -->
+									<div class="form-group" style="padding: 10px 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+										<label for="p_current_price" class="col-sm-12" style="text-align: left; color: #0f172a; margin-bottom: 4px;">Current Price (C) <span>*</span><br><span style="font-size:10px;font-weight:normal;color:#64748b;">(Result after Price Rule)</span></label>
+										<div class="col-sm-12">
+											<div class="input-group">
+												<span class="input-group-addon" style="font-weight: 700; background: #eff6ff; color: #1e40af; font-size: 15px;">₱</span>
+												<input type="text" name="p_current_price" id="p_current_price" class="form-control" value="<?php echo htmlspecialchars($p_current_price); ?>" required style="font-weight: 800; font-size: 16px; color: #1e40af; background-color: #f8fafc;" readonly>
+											</div>
+											<div id="p_price_rule_notice" style="font-size: 11.5px; margin-top: 6px; font-weight: 600;"></div>
+										</div>
+									</div>	
+
+									<!-- Quantity in Stock (Current) (Q) -->
+									<div class="form-group" style="margin-bottom: 10px; padding: 0 10px;">
+										<label for="p_qty" class="col-sm-12" style="text-align: left; margin-bottom: 4px;">Quantity in Stock (Current) (Q) <span>*</span></label>
+										<div class="col-sm-12">
+											<div class="input-group">
+												<input type="number" min="0" name="p_qty" id="p_qty" class="form-control" value="<?php echo htmlspecialchars($p_qty); ?>" required style="font-weight: 700; font-size: 15px;">
+												<span class="input-group-addon" id="p_stock_alert_badge" style="font-weight: 700; font-size: 12px; border-radius: 0 4px 4px 0;"></span>
+											</div>
+											<div id="p_stock_alert_desc" style="font-size: 11.5px; margin-top: 5px; font-weight: 600;"></div>
+										</div>
+									</div>
+
+									<!-- (N)Quantity (New Quantity) (NQ) -->
+									<div class="form-group" style="margin-bottom: 10px; padding: 0 10px;">
+										<label for="p_new_qty" class="col-sm-12" style="text-align: left; margin-bottom: 4px;">(N)Quantity (New Quantity) (NQ)</label>
+										<div class="col-sm-12">
+											<input type="number" min="0" name="p_new_qty" id="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>" style="font-weight: 600;">
+											<small class="text-muted" style="font-size: 11px;"><i class="fa fa-cubes"></i> Incoming replenishment stock. Trigger: <code>Q &lt; 2 AND NQ &gt; 1</code> or <code>Q &lt; 6 AND NQ &gt; 5</code> rolls NQ into Q.</small>
+											<div id="p_qty_rule_notice" style="font-size: 11.5px; margin-top: 4px; font-weight: 600;"></div>
+										</div>
+									</div>
+
+									<!-- Safety Stock Level (S) -->
+									<div class="form-group" style="margin-bottom: 15px; padding: 0 10px;">
+										<label for="p_s_level" class="col-sm-12" style="text-align: left; margin-bottom: 4px;">Safety Stock Level (S) <span>*</span></label>
+										<div class="col-sm-12">
+											<input type="number" min="0" name="p_s_level" id="p_s_level" class="form-control" value="<?php echo htmlspecialchars($p_s_level); ?>" style="font-weight: 600;">
+											<small class="text-muted" style="font-size: 11px;"><i class="fa fa-shield"></i> Threshold buffer: RED if <code>Q &lt; 50% of S</code>, ORANGE if <code>50% &le; Q &lt; 80% of S</code>, NORMAL if <code>Q &ge; 80% of S</code>.</small>
+										</div>
+									</div>
+
+									<div class="form-group" style="margin-bottom: 10px; padding: 0 10px;">
+										<label for="" class="col-sm-6" style="text-align: left;">Is Featured?</label>
+										<div class="col-sm-6">
+											<select name="p_is_featured" class="form-control" style="width:100%;">
+												<option value="0" <?php if($p_is_featured == 0) {echo 'selected';} ?>>No</option>
+												<option value="1" <?php if($p_is_featured == 1) {echo 'selected';} ?>>Yes</option>
+											</select> 
+										</div>
+									</div>
+
+									<div class="form-group" style="margin-bottom: 15px; padding: 0 10px;">
+										<label for="" class="col-sm-6" style="text-align: left;">Is Active?</label>
+										<div class="col-sm-6">
+											<select name="p_is_active" class="form-control" style="width:100%;">
+												<option value="0" <?php if($p_is_active == 0) {echo 'selected';} ?>>No</option>
+												<option value="1" <?php if($p_is_active == 1) {echo 'selected';} ?>>Yes</option>
+											</select> 
+										</div>
+									</div>
+
+									<div class="form-group" style="margin-bottom: 0; padding: 0 10px;">
+										<div class="col-sm-12">
+											<button type="submit" class="btn btn-success btn-block btn-lg" name="form1" style="font-weight: 700; border-radius: 4px;">
+												<i class="fa fa-refresh"></i> Update Product
+											</button>
+										</div>
+									</div>
+
+								</div>
 							</div>
 						</div>
 					</div>
@@ -831,6 +887,8 @@ foreach ($result as $row) {
 			</form>
 		</div>
 	</div>
+</section>
+
 <script>
 function checkNewCategoryOption(val) {
     if (val === 'other_new') {
@@ -866,6 +924,17 @@ function cancelNewCategoryInput() {
     $('#new_ecat_name').val('');
 }
 
+function previewFeaturedPhoto(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var preview = document.getElementById('featured_photo_preview');
+            if (preview) preview.src = e.target.result;
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
 function cleanNum(val) {
     if (!val) return 0;
     var clean = val.toString().replace(/[^0-9.]/g, '');
@@ -876,6 +945,39 @@ function cleanInt(val) {
     if (!val) return 0;
     var clean = val.toString().replace(/[^0-9]/g, '');
     return parseInt(clean, 10) || 0;
+}
+
+var isPriceOverrideActive = false;
+
+function applyNewPriceOverride() {
+    var npEl = document.getElementById('p_new_price');
+    var caEl = document.getElementById('p_capital_price');
+    var muEl = document.getElementById('p_markup');
+    var overrideFlag = document.getElementById('p_price_override');
+
+    var nPrice = npEl ? cleanNum(npEl.value) : 0;
+    if (nPrice <= 0) {
+        var ca = caEl ? cleanNum(caEl.value) : 0;
+        var mu = muEl ? cleanNum(muEl.value) : 0;
+        nPrice = Math.round((ca + mu) * 100) / 100;
+        if (npEl) npEl.value = nPrice.toFixed(2);
+    }
+
+    if (nPrice <= 0) {
+        alert('Please enter a valid Capital Price or New Price first.');
+        return;
+    }
+
+    isPriceOverrideActive = true;
+    if (overrideFlag) overrideFlag.value = '1';
+    evaluateRulesLive();
+}
+
+function cancelPriceOverride() {
+    isPriceOverrideActive = false;
+    var overrideFlag = document.getElementById('p_price_override');
+    if (overrideFlag) overrideFlag.value = '0';
+    evaluateRulesLive();
 }
 
 function evaluateRulesLive() {
@@ -905,7 +1007,8 @@ function evaluateRulesLive() {
         nPrice = calcN;
     }
 
-    // 2. Price Rule evaluation strictly in sequential order:
+    // 2. Price Rule evaluation strictly in sequential order (or Manual Override):
+    // If supplier clicked "APPLY NEW PRICE" -> C = N directly (Override)
     // Priority Rule 4: If C is empty / <= 0 -> C = N
     // Priority Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
     // Priority Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
@@ -914,7 +1017,11 @@ function evaluateRulesLive() {
     var priceNotice = (typeof $ !== 'undefined') ? $('#p_price_rule_notice') : null;
     var priceNoticeEl = document.getElementById('p_price_rule_notice');
 
-    if (!existingC || existingC <= 0) {
+    if (isPriceOverrideActive) {
+        // Manual Override Active: C = N directly
+        resultingC = nPrice;
+        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-bolt"></i> <strong>Manual Price Override Applied:</strong> Current Price bypassed rule calculation and set directly to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>). <a href="javascript:void(0)" onclick="cancelPriceOverride()" style="color: #dc2626; text-decoration: underline; margin-left: 6px; font-weight: 600;"><i class="fa fa-undo"></i> Undo</a></span>';
+    } else if (!existingC || existingC <= 0) {
         // Rule 4: if C = empty, C = N
         resultingC = nPrice;
         if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-info-circle"></i> <strong>Rule 4 (Initial / Empty Price):</strong> Current Price (C) is empty, automatically set to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>';
@@ -994,6 +1101,70 @@ function evaluateRulesLive() {
     }
 }
 
+function autoClassifyProductCategory() {
+    var pNameEl = document.querySelector('input[name="p_name"]');
+    var pName = pNameEl ? pNameEl.value.trim() : '';
+    if (!pName) {
+        alert('Please enter a Product Name first so the Categorization Engine can classify it.');
+        return;
+    }
+    var fd = new FormData();
+    fd.append('action', 'classify_single');
+    fd.append('p_name', pName);
+    fd.append('resolve_ids', '1');
+    fetch('categorization-api.php', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (!res.success) { alert(res.error || 'Classification error'); return; }
+            var c = res.classification;
+            var box = document.getElementById('aiCategorySuggestionBox');
+            var txt = document.getElementById('aiCategorySuggestionText');
+            box.style.display = 'block';
+            txt.innerHTML = '<strong><i class="fa fa-sitemap"></i> Suggested Hierarchy:</strong> ' +
+                c.main_category + ' &rarr; ' + c.mid_category + ' &rarr; <strong>' + c.end_category + '</strong>' +
+                ' &nbsp;|&nbsp; <span class="label label-success">Confidence: ' + c.confidence + '% (' + c.status + ')</span>' +
+                '<br><small><strong>Base Product:</strong> ' + c.base_product + ' &nbsp;|&nbsp; <strong>Variant:</strong> ' + c.variant +
+                ' &nbsp;|&nbsp; <strong>Reason:</strong> ' + c.reason + '</small>';
+            if (res.category_ids && res.category_ids.tcat_id > 0) {
+                var topSel = document.querySelector('select.top-cat');
+                var midSel = document.querySelector('select.mid-cat');
+                var endSel = document.querySelector('select.end-cat');
+                if (topSel) {
+                    if (!topSel.querySelector('option[value="' + res.category_ids.tcat_id + '"]')) {
+                        var optT = document.createElement('option');
+                        optT.value = res.category_ids.tcat_id;
+                        optT.textContent = c.main_category;
+                        topSel.appendChild(optT);
+                    }
+                    topSel.value = res.category_ids.tcat_id;
+                    if (window.jQuery && jQuery(topSel).data('select2')) jQuery(topSel).trigger('change.select2');
+                }
+                if (midSel && res.mid_options) {
+                    midSel.innerHTML = '<option value="">Select Mid Level Category</option>';
+                    res.mid_options.forEach(function(m) {
+                        var o = document.createElement('option');
+                        o.value = m.mcat_id;
+                        o.textContent = m.mcat_name;
+                        if (parseInt(m.mcat_id, 10) === parseInt(res.category_ids.mcat_id, 10)) o.selected = true;
+                        midSel.appendChild(o);
+                    });
+                    if (window.jQuery && jQuery(midSel).data('select2')) jQuery(midSel).trigger('change.select2');
+                }
+                if (endSel && res.end_options) {
+                    endSel.innerHTML = '<option value="">Select End Level Category</option>';
+                    res.end_options.forEach(function(e) {
+                        var o = document.createElement('option');
+                        o.value = e.ecat_id;
+                        o.textContent = e.ecat_name;
+                        if (parseInt(e.ecat_id, 10) === parseInt(res.category_ids.ecat_id, 10)) o.selected = true;
+                        endSel.appendChild(o);
+                    });
+                    if (window.jQuery && jQuery(endSel).data('select2')) jQuery(endSel).trigger('change.select2');
+                }
+            }
+        });
+}
+
 function bindAllEditListeners() {
     var caEl = document.getElementById('p_capital_price');
     var muEl = document.getElementById('p_markup');
@@ -1046,6 +1217,19 @@ function bindAllEditListeners() {
         });
         $('#p_new_price, #p_qty, #p_new_qty, #p_s_level').on('input keyup change paste', function() {
             evaluateRulesLive();
+        });
+
+        // Dynamic gallery row add
+        $("#btnAddNew").click(function () {
+            var row = '<tr>' +
+                '<td><div class="upload-btn"><input type="file" name="photo[]" style="margin-bottom:5px;"></div></td>' +
+                '<td style="width:28px;"><a href="javascript:void()" class="Delete btn btn-danger btn-xs">X</a></td>' +
+                '</tr>';
+            $("#ProductTable tbody").append(row);
+        });
+
+        $('#ProductTable').on('click', '.Delete', function () {
+            $(this).closest('tr').remove();
         });
     }
 
