@@ -5358,7 +5358,7 @@ function openVariantModal(group) {
         opt.innerText = `${v.name} - ₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${isOutOfStock ? 'Out of stock' : v.stock + ' in stock'})`;
         select.appendChild(opt);
         
-        // Populate Quick Variant Chip (Two-Line Stacked Chip with Product Name + Spec & Price)
+        // Populate Quick Variant Chip (Clean Single-Line with Product Name & Price)
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = `pos-variant-chip ${isOutOfStock ? 'disabled' : ''}`;
@@ -5366,14 +5366,8 @@ function openVariantModal(group) {
         chip.setAttribute('data-id', v.id);
         chip.title = isOutOfStock ? 'Out of stock' : `${v.stock} units available in stock`;
         chip.innerHTML = `
-            <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: left; overflow: hidden; max-width: calc(100% - 85px);">
-                <div style="font-size: 13.5px; font-weight: 800; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">
-                    ${escapeHtml(v.name)}
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 12.5px; opacity: 0.9;">
-                    <i class="fa ${isOutOfStock ? 'fa-ban text-danger' : 'fa-check-circle'}" style="font-size: 13px;"></i>
-                    <span style="font-weight: 700;">${escapeHtml(v.spec_label)}</span>
-                </div>
+            <div style="font-size: 13.5px; font-weight: 800; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 90px); text-align: left;">
+                ${escapeHtml(v.name)}
             </div>
             <span class="chip-price-badge" style="align-self: center; margin-left: 8px; flex-shrink: 0;">₱${v.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
         `;
