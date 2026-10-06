@@ -397,6 +397,24 @@ if (!function_exists('ensure_supplier_user_schema')) {
             $pdo->exec("ALTER TABLE tbl_supplier_user ADD COLUMN IF NOT EXISTS date_started DATE DEFAULT CURRENT_DATE");
             $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_user_employee_id ON tbl_supplier_user (employee_id) WHERE employee_id IS NOT NULL AND employee_id != ''");
             
+            // Ensure tbl_credit_payments schema for credit installment ledger
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS tbl_credit_payments (
+                    id SERIAL PRIMARY KEY,
+                    payment_id VARCHAR(100) NOT NULL,
+                    supplier_id INT NOT NULL,
+                    payment_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    amount_paid NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+                    payment_method VARCHAR(100) NOT NULL DEFAULT 'Cash',
+                    reference_no VARCHAR(255) DEFAULT '',
+                    remaining_balance NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+                    cashier_name VARCHAR(100) DEFAULT 'Cashier',
+                    notes TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_credit_payments_pid ON tbl_credit_payments (payment_id);
+                CREATE INDEX IF NOT EXISTS idx_credit_payments_supplier ON tbl_credit_payments (supplier_id);
+            ");
+
             // Create persistent tenant sequence table
             $pdo->exec("CREATE TABLE IF NOT EXISTS tbl_supplier_employee_sequence (
                 supplier_id INTEGER PRIMARY KEY,
