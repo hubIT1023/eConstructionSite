@@ -764,19 +764,58 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
 
             $grand_total = max(0, $computed_subtotal - $computed_discount_total + $delivery_cost);
 
-            $payment_method = isset($_POST['payment_method']) ? trim($_POST['payment_method']) : 'Cash (OTC)';
+            $payment_method_raw = isset($_POST['payment_method']) ? trim($_POST['payment_method']) : 'Cash (OTC)';
+            $payment_reference = isset($_POST['payment_reference']) ? trim($_POST['payment_reference']) : '';
+            $credit_reference_no = !empty($_POST['credit_reference_no']) ? trim($_POST['credit_reference_no']) : ('CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)));
+            $payment_term_days = isset($_POST['payment_term_days']) ? intval($_POST['payment_term_days']) : 15;
+            if (!in_array($payment_term_days, [15, 21, 30])) {
+                $payment_term_days = 15;
+            }
+
+            $payment_method = $payment_method_raw;
+            $due_date_str = null;
+            if ($payment_method_raw === 'Check / Terms') {
+                $payment_method = 'Check / Terms (' . $payment_term_days . ' Days)';
+                $due_date_str = date('Y-m-d', strtotime("+$payment_term_days days"));
+            }
+
             $amount_tendered = isset($_POST['amount_tendered']) ? floatval($_POST['amount_tendered']) : 0.00;
 
-            if (stripos($payment_method, 'Cash') !== false && $amount_tendered < $grand_total) {
-                $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
+            if ($payment_method_raw === 'Check / Terms') {
+                $amount_paid = min($grand_total, max(0.0, $amount_tendered));
+                $credit_balance = max(0.0, round($grand_total - $amount_paid, 2));
+                $payment_status = ($credit_balance <= 0.009) ? 'Paid' : 'On Credit';
+                $change_amount = ($credit_balance <= 0.009) ? max(0.0, $amount_tendered - $grand_total) : 0.00;
             } else {
-                if (stripos($payment_method, 'Cash') === false && $amount_tendered <= 0) {
-                    $amount_tendered = $grand_total;
+                if (stripos($payment_method_raw, 'Cash') !== false && $grand_total > 0 && $amount_tendered < $grand_total) {
+                    $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
+                } else {
+                    if (stripos($payment_method_raw, 'Cash') === false && $amount_tendered <= 0) {
+                        $amount_tendered = $grand_total;
+                    }
+                    $amount_paid = $grand_total;
+                    $credit_balance = 0.00;
+                    $payment_status = 'Paid';
+                    $change_amount = max(0.0, $amount_tendered - $grand_total);
                 }
-                $change_amount = max(0, $amount_tendered - $grand_total);
+            }
+
+            if (empty($pos_order_error)) {
                 $payment_date = date('Y-m-d H:i:s');
 
-                $tx_info = 'POS Payment for ' . $paying_po_id . ' - Method: ' . $payment_method . ' | Tendered: ₱' . number_format($amount_tendered, 2) . ' | Change: ₱' . number_format($change_amount, 2);
+                $tx_info = 'POS Payment for ' . $paying_po_id . ' - Method: ' . $payment_method;
+                if (!empty($payment_reference)) {
+                    $tx_info .= ' | Ref #: ' . $payment_reference;
+                }
+                if ($payment_method_raw === 'Check / Terms') {
+                    $tx_info .= ' | Credit Ref #: ' . $credit_reference_no;
+                    $tx_info .= ' | Total: ₱' . number_format($grand_total, 2) . ' | Upfront Paid: ₱' . number_format($amount_paid, 2) . ' | Balance Due: ₱' . number_format($credit_balance, 2);
+                    if (!empty($due_date_str)) {
+                        $tx_info .= ' | Due Date: ' . $due_date_str . ' | Terms: ' . $payment_term_days . ' Days';
+                    }
+                } else {
+                    $tx_info .= ' | Tendered: ₱' . number_format($amount_tendered, 2) . ' | Change: ₱' . number_format($change_amount, 2);
+                }
                 if ($computed_discount_total > 0) {
                     $tx_info .= ' | Total Discounts: -₱' . number_format($computed_discount_total, 2);
                 }
@@ -846,10 +885,13 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         }
                     }
 
+                    $saved_card_number = ($payment_method_raw === 'Check / Terms') ? $credit_reference_no : $payment_reference;
+
                     $stmt_up_pay = $pdo->prepare("
                         UPDATE tbl_payment SET
-                            payment_status = 'Paid',
+                            payment_status = ?,
                             payment_method = ?,
+                            card_number = ?,
                             payment_date = ?,
                             bank_transaction_info = ?,
                             paid_amount = ?,
@@ -857,14 +899,38 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         WHERE (payment_id = ? OR txnid = ?) AND supplier_id = ?
                     ");
                     $stmt_up_pay->execute([
+                        $payment_status,
                         $payment_method,
+                        $saved_card_number,
                         $payment_date,
                         $tx_info,
-                        number_format($grand_total, 2, '.', ''),
+                        number_format($amount_paid, 2, '.', ''),
                         $paying_po_id,
                         $paying_po_id,
                         $supplier_id
                     ]);
+
+                    if ($payment_status === 'On Credit' && $amount_paid > 0) {
+                        try {
+                            $combined_cred_ref = $credit_reference_no . (!empty($payment_reference) ? ' (Check: ' . $payment_reference . ')' : '');
+                            $stmt_ins_cp = $pdo->prepare("
+                                INSERT INTO tbl_credit_payments (
+                                    payment_id, supplier_id, payment_date, amount_paid, payment_method,
+                                    reference_no, remaining_balance, cashier_name, notes
+                                ) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
+                            ");
+                            $stmt_ins_cp->execute([
+                                $paying_po_id,
+                                $supplier_id,
+                                $amount_paid,
+                                $payment_method_raw,
+                                $combined_cred_ref,
+                                $credit_balance,
+                                (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier')),
+                                'Initial Upfront Downpayment at POS Register (PO Resumed)'
+                            ]);
+                        } catch (Exception $e) {}
+                    }
 
                     $pdo->commit();
                 } catch (Exception $e) {
@@ -878,7 +944,7 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     $cust_name = $existing_payment['customer_name'] ?: 'Customer';
                     if (!empty($cust_email)) {
                         $subject_customer = "Payment Receipt - " . $paying_po_id;
-                        $email_body = "<html><body><h3>Dear " . htmlspecialchars($cust_name) . ",</h3><p>Your payment of <strong>₱" . number_format($grand_total, 2) . "</strong> for Purchase Order <strong>" . htmlspecialchars($paying_po_id) . "</strong> has been confirmed and marked as <strong>PAID</strong>.</p><p>Thank you for your business!</p></body></html>";
+                        $email_body = "<html><body><h3>Dear " . htmlspecialchars($cust_name) . ",</h3><p>Your payment of <strong>₱" . number_format($amount_paid, 2) . "</strong> for Purchase Order <strong>" . htmlspecialchars($paying_po_id) . "</strong> has been processed (" . htmlspecialchars($payment_status) . ").</p><p>Thank you for your business!</p></body></html>";
                         send_system_email($cust_email, $subject_customer, $email_body);
                     }
 
@@ -887,6 +953,13 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         'payment_id' => $paying_po_id,
                         'payment_date' => $payment_date,
                         'payment_method' => $payment_method,
+                        'payment_method_raw' => $payment_method_raw,
+                        'payment_reference' => $payment_reference,
+                        'credit_reference_no' => $credit_reference_no,
+                        'credit_ref_no' => $credit_reference_no,
+                        'payment_term_days' => $payment_term_days,
+                        'due_date' => $due_date_str,
+                        'payment_status' => $payment_status,
                         'customer_name' => $cust_name,
                         'customer_phone' => $existing_payment['customer_phone'] ?? '',
                         'customer_email' => $cust_email,
@@ -897,6 +970,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         'subtotal' => ($computed_subtotal - $computed_discount_total),
                         'delivery_cost' => $delivery_cost,
                         'grand_total' => $grand_total,
+                        'amount_paid' => $amount_paid,
+                        'credit_balance' => $credit_balance,
                         'amount_tendered' => $amount_tendered,
                         'change_amount' => $change_amount,
                         'supplier_name' => $supplier_info['supplier_name'],
@@ -975,7 +1050,21 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                 }
             }
 
-            $payment_method = isset($_POST['payment_method']) ? $_POST['payment_method'] : 'Cash (OTC)';
+            $payment_method_raw = isset($_POST['payment_method']) ? trim($_POST['payment_method']) : 'Cash (OTC)';
+            $payment_reference = isset($_POST['payment_reference']) ? trim($_POST['payment_reference']) : '';
+            $credit_reference_no = !empty($_POST['credit_reference_no']) ? trim($_POST['credit_reference_no']) : ('CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)));
+            $payment_term_days = isset($_POST['payment_term_days']) ? intval($_POST['payment_term_days']) : 15;
+            if (!in_array($payment_term_days, [15, 21, 30])) {
+                $payment_term_days = 15;
+            }
+
+            $payment_method = $payment_method_raw;
+            $due_date_str = null;
+            if ($payment_method_raw === 'Check / Terms') {
+                $payment_method = 'Check / Terms (' . $payment_term_days . ' Days)';
+                $due_date_str = date('Y-m-d', strtotime("+$payment_term_days days"));
+            }
+
             $delivery_type = $is_location_active ? 'delivery' : 'pickup';
             $delivery_cost = ($is_location_active && isset($_POST['delivery_cost'])) ? floatval($_POST['delivery_cost']) : 0.00;
             $amount_tendered = isset($_POST['amount_tendered']) ? floatval($_POST['amount_tendered']) : 0.00;
@@ -1065,60 +1154,117 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                 $net_payable = ($subtotal + $delivery_cost) - $total_return_credits;
                 $grand_total = max(0, $net_payable);
                 $refund_due = ($net_payable < 0) ? abs($net_payable) : 0.00;
-                $change_amount = max(0, $amount_tendered - $grand_total);
 
-                $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
-                $payment_date = date('Y-m-d H:i:s');
-
-                $tx_info = 'POS Terminal - Method: ' . $payment_method . ' | Tendered: ₱' . number_format($amount_tendered, 2) . ' | Change: ₱' . number_format($change_amount, 2);
-                if ($total_discount_savings > 0) {
-                    $tx_info .= ' | Total Discounts: -₱' . number_format($total_discount_savings, 2);
+                // Credit terms and upfront payment calculation
+                if ($payment_method_raw === 'Check / Terms') {
+                    $amount_paid = min($grand_total, max(0.0, $amount_tendered));
+                    $credit_balance = max(0.0, round($grand_total - $amount_paid, 2));
+                    $payment_status = ($credit_balance <= 0.009) ? 'Paid' : 'On Credit';
+                    $change_amount = ($credit_balance <= 0.009) ? max(0.0, $amount_tendered - $grand_total) : 0.00;
+                } else {
+                    if (stripos($payment_method_raw, 'Cash') !== false && $grand_total > 0 && $amount_tendered < $grand_total) {
+                        $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
+                    } else {
+                        if (stripos($payment_method_raw, 'Cash') === false && $amount_tendered <= 0) {
+                            $amount_tendered = $grand_total;
+                        }
+                        $amount_paid = $grand_total;
+                        $credit_balance = 0.00;
+                        $payment_status = 'Paid';
+                        $change_amount = max(0.0, $amount_tendered - $grand_total);
+                    }
                 }
-                if ($total_return_credits > 0) {
-                    $tx_info .= ' | Trade-In Return Credits: -₱' . number_format($total_return_credits, 2);
-                }
-                if ($refund_due > 0) {
-                    $tx_info .= ' | Refund Due to Customer: ₱' . number_format($refund_due, 2);
-                }
 
-                // Insert into tbl_payment
-                $statement_p = $pdo->prepare("INSERT INTO tbl_payment (
-                    customer_id,
-                    customer_name,
-                    customer_email,
-                    payment_date,
-                    txnid,
-                    paid_amount,
-                    card_number,
-                    card_cvv,
-                    card_month,
-                    card_year,
-                    bank_transaction_info,
-                    payment_method,
-                    payment_status,
-                    shipping_status,
-                    payment_id,
-                    supplier_id
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id");
+                if (empty($pos_order_error)) {
+                    $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+                    $payment_date = date('Y-m-d H:i:s');
 
-                $statement_p->execute(array(
-                    $customer_id,
-                    $customer_name,
-                    $customer_email,
-                    $payment_date,
-                    $payment_id,
-                    number_format($grand_total, 2, '.', ''),
-                    '',
-                    '',
-                    '',
-                    '',
-                    $tx_info,
-                    $payment_method,
-                    'Paid',
-                    ($delivery_type === 'delivery') ? 'Pending' : 'Completed',
-                    $payment_id,
-                    $supplier_id
-                ));
+                    $tx_info = 'POS Terminal - Method: ' . $payment_method;
+                    if (!empty($payment_reference)) {
+                        $tx_info .= ' | Ref #: ' . $payment_reference;
+                    }
+                    if ($payment_method_raw === 'Check / Terms') {
+                        $tx_info .= ' | Credit Ref #: ' . $credit_reference_no;
+                        $tx_info .= ' | Total: ₱' . number_format($grand_total, 2) . ' | Upfront Paid: ₱' . number_format($amount_paid, 2) . ' | Balance Due: ₱' . number_format($credit_balance, 2);
+                        if (!empty($due_date_str)) {
+                            $tx_info .= ' | Due Date: ' . $due_date_str . ' | Terms: ' . $payment_term_days . ' Days';
+                        }
+                    } else {
+                        $tx_info .= ' | Tendered: ₱' . number_format($amount_tendered, 2) . ' | Change: ₱' . number_format($change_amount, 2);
+                    }
+                    if ($total_discount_savings > 0) {
+                        $tx_info .= ' | Total Discounts: -₱' . number_format($total_discount_savings, 2);
+                    }
+                    if ($total_return_credits > 0) {
+                        $tx_info .= ' | Trade-In Return Credits: -₱' . number_format($total_return_credits, 2);
+                    }
+                    if ($refund_due > 0) {
+                        $tx_info .= ' | Refund Due to Customer: ₱' . number_format($refund_due, 2);
+                    }
+
+                    $saved_card_number = ($payment_method_raw === 'Check / Terms') ? $credit_reference_no : $payment_reference;
+
+                    // Insert into tbl_payment
+                    $statement_p = $pdo->prepare("INSERT INTO tbl_payment (
+                        customer_id,
+                        customer_name,
+                        customer_email,
+                        payment_date,
+                        txnid,
+                        paid_amount,
+                        card_number,
+                        card_cvv,
+                        card_month,
+                        card_year,
+                        bank_transaction_info,
+                        payment_method,
+                        payment_status,
+                        shipping_status,
+                        payment_id,
+                        supplier_id
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id");
+
+                    $statement_p->execute(array(
+                        $customer_id,
+                        $customer_name,
+                        $customer_email,
+                        $payment_date,
+                        $payment_id,
+                        number_format($amount_paid, 2, '.', ''),
+                        $saved_card_number,
+                        '',
+                        '',
+                        '',
+                        $tx_info,
+                        $payment_method,
+                        $payment_status,
+                        ($delivery_type === 'delivery') ? 'Pending' : 'Completed',
+                        $payment_id,
+                        $supplier_id
+                    ));
+
+                    // If sale on credit with upfront deposit, log into tbl_credit_payments
+                    if ($payment_status === 'On Credit' && $amount_paid > 0) {
+                        try {
+                            $combined_cred_ref = $credit_reference_no . (!empty($payment_reference) ? ' (Check: ' . $payment_reference . ')' : '');
+                            $stmt_ins_cp = $pdo->prepare("
+                                INSERT INTO tbl_credit_payments (
+                                    payment_id, supplier_id, payment_date, amount_paid, payment_method,
+                                    reference_no, remaining_balance, cashier_name, notes
+                                ) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
+                            ");
+                            $stmt_ins_cp->execute([
+                                $payment_id,
+                                $supplier_id,
+                                $amount_paid,
+                                $payment_method_raw,
+                                $combined_cred_ref,
+                                $credit_balance,
+                                (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier')),
+                                'Initial Upfront Downpayment at POS Register'
+                            ]);
+                        } catch (Exception $e) {}
+                    }
 
                 // Insert items into tbl_order and update stock & link discount requests & returns
                 foreach ($validated_items as $item) {
@@ -1393,6 +1539,13 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     'payment_id' => $payment_id,
                     'payment_date' => $payment_date,
                     'payment_method' => $payment_method,
+                    'payment_method_raw' => $payment_method_raw,
+                    'payment_reference' => $payment_reference,
+                    'credit_reference_no' => $credit_reference_no,
+                    'credit_ref_no' => $credit_reference_no,
+                    'payment_term_days' => $payment_term_days,
+                    'due_date' => $due_date_str,
+                    'payment_status' => $payment_status,
                     'customer_name' => $customer_name,
                     'customer_phone' => $customer_phone,
                     'customer_email' => $customer_email,
@@ -1405,6 +1558,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     'subtotal' => $subtotal,
                     'delivery_cost' => $delivery_cost,
                     'grand_total' => $grand_total,
+                    'amount_paid' => $amount_paid,
+                    'credit_balance' => $credit_balance,
                     'amount_tendered' => $amount_tendered,
                     'change_amount' => $change_amount,
                     'supplier_name' => $supplier_info['supplier_name'],
@@ -1419,6 +1574,7 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
             }
         }
     }
+}
 }
 
 // Active POS Cart & Customer Context Persistence
@@ -2976,17 +3132,106 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </select>
                         </div>
 
-                        <div id="cashCalculatorSection">
-                            <div class="form-group" style="margin-bottom: 8px;">
-                                <label style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Amount Tendered (Cash Received):</label>
-                                <div class="input-group">
-                                    <span class="input-group-addon" style="font-size: 20px; font-weight: bold;">&#8369;</span>
-                                    <input type="number" step="any" id="posAmountTendered" name="amount_tendered" class="form-control input-lg" placeholder="0.00" onkeyup="updatePOSCalculations()" style="font-size: 22px; font-weight: 900; height: 48px; color: #0f172a;">
+                        <!-- Task 1: Contextual Payment Reference Input Box -->
+                        <div id="posPaymentRefSection" style="display: none; margin-bottom: 12px;">
+                            <label id="posPaymentRefLabel" style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">
+                                <i class="fa fa-hashtag text-primary"></i> Payment Reference:
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-addon" style="background: #f8fafc; font-weight: 700; color: #64748b;"><i class="fa fa-id-card-o"></i></span>
+                                <input type="text" id="posPaymentReference" name="payment_reference" class="form-control input-lg" style="height: 42px; font-size: 14px; font-weight: 600; border-color: #cbd5e1;" placeholder="Enter reference number or check number">
+                            </div>
+                        </div>
+
+                        <!-- Check / Terms Duration & Upfront Presets Section -->
+                        <div id="posTermsSection" style="display: none; background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <label style="font-size: 13px; font-weight: 800; color: #92400e; margin: 0;">
+                                    <i class="fa fa-calendar-check-o"></i> Credit Terms:
+                                </label>
+                                <span id="posTermsDueDateBadge" class="badge" style="background: #d97706; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px;">
+                                    15 Days
+                                </span>
+                            </div>
+                            
+                            <!-- 1-Click Term Presets (15 | 21 | 30 Days) -->
+                            <div class="btn-group btn-group-justified" style="margin-bottom: 10px;">
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-default pos-term-btn active" id="termBtn15" onclick="setPaymentTerms(15)" style="font-weight: 800; font-size: 13px; background: #d97706; color: #fff; border-color: #b45309;">
+                                        15 Days
+                                    </button>
+                                </div>
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-default pos-term-btn" id="termBtn21" onclick="setPaymentTerms(21)" style="font-weight: 800; font-size: 13px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">
+                                        21 Days
+                                    </button>
+                                </div>
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-default pos-term-btn" id="termBtn30" onclick="setPaymentTerms(30)" style="font-weight: 800; font-size: 13px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">
+                                        30 Days
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="hidden" name="payment_term_days" id="posPaymentTermDays" value="15">
+
+                            <!-- Upfront Downpayment Presets (0%, 25%, 50%, 100%) -->
+                            <div style="margin-bottom: 10px; border-top: 1px dashed #fde68a; padding-top: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <label style="font-size: 12px; font-weight: 700; color: #92400e; margin: 0;">
+                                        <i class="fa fa-hand-holding-usd"></i> Upfront Downpayment (Initial Payment):
+                                    </label>
+                                    <span style="font-size: 11px; color: #78350f; font-weight: 600;">% of Grand Total</span>
+                                </div>
+                                <div class="btn-group btn-group-justified">
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn0" onclick="setUpfrontPreset(0)" style="font-weight: 800; font-size: 12px; height: 32px; background: #d97706; color: #fff; border-color: #b45309;">0%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn25" onclick="setUpfrontPreset(25)" style="font-weight: 800; font-size: 12px; height: 32px; background: #fff; color: #78350f; border-color: #cbd5e1;">25%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn50" onclick="setUpfrontPreset(50)" style="font-weight: 800; font-size: 12px; height: 32px; background: #fff; color: #78350f; border-color: #cbd5e1;">50%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn100" onclick="setUpfrontPreset(100)" style="font-weight: 800; font-size: 12px; height: 32px; background: #fff; color: #78350f; border-color: #cbd5e1;">100% (Exact)</button>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- Quick Cash Presets -->
-                            <div style="margin-bottom: 12px;">
+                            <!-- Live Real-Time Credit Breakdown -->
+                            <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px; font-size: 12.5px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #1e3a8a; font-family: monospace; font-size: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
+                                    <span style="color: #64748b; font-family: sans-serif; font-weight: 600;"><i class="fa fa-tag"></i> Credit Ref #:</span>
+                                    <strong id="posCreditRefDisplay"><?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?></strong>
+                                    <input type="hidden" name="credit_reference_no" id="posCreditRefInput" value="<?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?>">
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
+                                    <span>Grand Total:</span>
+                                    <strong style="color: #0f172a;" id="posCreditGrandTotalDisplay">₱0.00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #059669;">
+                                    <span>Upfront Paid Now:</span>
+                                    <strong id="posCreditUpfrontDisplay">₱0.00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px dashed #e2e8f0; padding-top: 6px; margin-top: 4px;">
+                                    <span style="color: #dc2626;">Balance on Credit:</span>
+                                    <span style="font-size: 14.5px; color: #dc2626;" id="posCreditBalanceDisplay">₱0.00</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Amount Paid / Tendered Section -->
+                        <div id="cashCalculatorSection">
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label id="posAmountPaidLabel" style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Amount Tendered (Cash Received):</label>
+                                <div class="input-group">
+                                    <span class="input-group-addon" style="font-size: 20px; font-weight: bold;">&#8369;</span>
+                                    <input type="number" step="any" id="posAmountTendered" name="amount_tendered" class="form-control input-lg" placeholder="0.00" onkeyup="updatePOSCalculations(); updateCreditCalculations();" style="font-size: 22px; font-weight: 900; height: 48px; color: #0f172a;">
+                                </div>
+                            </div>
+
+                            <!-- Quick Cash Presets (for Cash OTC Mode) -->
+                            <div id="posCashQuickPresets" style="margin-bottom: 12px;">
                                 <button type="button" class="btn btn-default pos-preset-btn" onclick="setExactAmount()">Exact</button>
                                 <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(100)">₱100</button>
                                 <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(500)">₱500</button>
@@ -2994,7 +3239,8 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <button type="button" class="btn btn-default pos-preset-btn" onclick="setCashPreset(5000)">₱5,000</button>
                             </div>
 
-                            <div style="background: #ecfdf5; border: 2px solid #6ee7b7; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                            <!-- Change Due Box (for Cash OTC Mode) -->
+                            <div id="posChangeDueBox" style="background: #ecfdf5; border: 2px solid #6ee7b7; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
                                 <span style="font-size: 17px; font-weight: 800; color: #065f46;">Change Due:</span>
                                 <span style="font-size: 24px; font-weight: 900; color: #047857;">&#8369;<span id="posChangeAmount">0.00</span></span>
                             </div>
@@ -3992,6 +4238,31 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
             <div class="modal-body" style="background: #f8fafc; padding: 20px; max-height: calc(100vh - 200px); overflow-y: auto;">
                 
                 <!-- Status Banner -->
+                <?php 
+                $is_credit_sale = (($pos_success_receipt['payment_status'] ?? '') === 'On Credit' || ($pos_success_receipt['credit_balance'] ?? 0) > 0 || stripos($pos_success_receipt['payment_method'] ?? '', 'Terms') !== false || stripos($pos_success_receipt['payment_method'] ?? '', 'Credit') !== false);
+                $pos_success_receipt['is_credit'] = $is_credit_sale;
+                if ($is_credit_sale && empty($pos_success_receipt['credit_balance'])) {
+                    $pos_success_receipt['credit_balance'] = max(0, floatval($pos_success_receipt['grand_total']) - floatval($pos_success_receipt['amount_paid'] ?? 0));
+                }
+                if ($is_credit_sale): 
+                ?>
+                <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa fa-calendar-check-o" style="font-size: 22px; color: #d97706;"></i>
+                        <div>
+                            <div style="font-weight: 800; color: #92400e; font-size: 14px; text-transform: uppercase;">
+                                PAYMENT STATUS: ON CREDIT (PENDING TERMS)
+                            </div>
+                            <div style="font-size: 12px; color: #b45309;">
+                                Initial deposit recorded. Remaining balance of <strong>₱<?php echo number_format($pos_success_receipt['credit_balance'] ?? ($pos_success_receipt['grand_total'] - ($pos_success_receipt['amount_paid'] ?? 0)), 2); ?></strong> is scheduled for payment on <strong><?php echo htmlspecialchars($pos_success_receipt['due_date'] ?? date('Y-m-d', strtotime('+15 days'))); ?></strong> (<?php echo htmlspecialchars($pos_success_receipt['payment_term_days'] ?? '15'); ?> Days Terms).
+                            </div>
+                        </div>
+                    </div>
+                    <span class="label label-warning" style="font-size: 12px; padding: 5px 12px; font-weight: 800; background-color: #d97706 !important;">
+                        ON CREDIT
+                    </span>
+                </div>
+                <?php else: ?>
                 <div style="background: #ecfdf5; border: 1.5px solid #10b981; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <i class="fa fa-check-circle" style="font-size: 22px; color: #059669;"></i>
@@ -4008,6 +4279,7 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         COMPLETED
                     </span>
                 </div>
+                <?php endif; ?>
 
                 <!-- 2-Column Metadata Cards -->
                 <div class="row" style="margin-bottom: 16px;">
@@ -4031,7 +4303,16 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                             <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Customer &amp; Payment</div>
                             <div style="font-size: 13px; line-height: 1.6; color: #1e293b;">
                                 <div><strong>Customer:</strong> <?php echo htmlspecialchars($pos_success_receipt['customer_name'] ?? 'Walk-in Customer'); ?></div>
-                                <div><strong>Payment Method:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_method'] ?? 'Cash'); ?></div>
+                                <div><strong>Payment Method:</strong> <?php echo htmlspecialchars($pos_success_receipt['payment_method'] ?? 'Cash'); ?> <?php echo $is_credit_sale ? '<span class="label label-warning" style="background: #d97706; font-size: 10px;">ON CREDIT</span>' : ''; ?></div>
+                                <?php if (!empty($pos_success_receipt['credit_reference_no'])): ?>
+                                    <div><strong>Credit Ref #:</strong> <span class="badge" style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 12px;"><i class="fa fa-tag"></i> <?php echo htmlspecialchars($pos_success_receipt['credit_reference_no']); ?></span></div>
+                                <?php endif; ?>
+                                <?php if (!empty($pos_success_receipt['payment_reference'])): ?>
+                                    <div><strong>Ref / Check #:</strong> <span class="badge" style="background: #e2e8f0; color: #1e293b; font-family: monospace; font-size: 12px;"><?php echo htmlspecialchars($pos_success_receipt['payment_reference']); ?></span></div>
+                                <?php endif; ?>
+                                <?php if (!empty($pos_success_receipt['due_date'])): ?>
+                                    <div><strong>Credit Terms:</strong> <span class="badge" style="background: #fef3c7; color: #92400e; font-weight: 800; font-size: 12px;"><i class="fa fa-calendar-check-o"></i> <?php echo htmlspecialchars($pos_success_receipt['payment_term_days'] ?? '15'); ?> Days (Due: <?php echo htmlspecialchars($pos_success_receipt['due_date']); ?>)</span></div>
+                                <?php endif; ?>
                                 <div><strong>Store:</strong> <?php echo htmlspecialchars($pos_success_receipt['supplier_name'] ?? 'SAM & INRI CONSTRUCTION SUPPLY'); ?></div>
                             </div>
                         </div>
@@ -4096,22 +4377,39 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                                 <span style="font-weight: 600;">-₱<?php echo number_format($pos_success_receipt['total_discount_savings'], 2); ?></span>
                             </div>
                             <?php endif; ?>
+                            <?php if (!empty($pos_success_receipt['delivery_cost']) && $pos_success_receipt['delivery_cost'] > 0): ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #0284c7;">
+                                <span>Delivery Fee:</span>
+                                <span style="font-weight: 600;">+₱<?php echo number_format($pos_success_receipt['delivery_cost'], 2); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <?php if (!empty($pos_success_receipt['total_return_credits']) && $pos_success_receipt['total_return_credits'] > 0): ?>
                             <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #dc2626;">
                                 <span><i class="fa fa-undo"></i> Return Credit:</span>
                                 <span style="font-weight: 700;">-₱<?php echo number_format($pos_success_receipt['total_return_credits'], 2); ?></span>
                             </div>
                             <?php endif; ?>
-                            <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #0f172a; border-top: 2px dashed #cbd5e1; padding-top: 8px; margin-top: 6px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #0f172a; border-top: 2px dashed #cbd5e1; padding-top: 8px; margin-top: 6px;">
+                                <span>TOTAL INVOICE:</span>
+                                <span style="color: #0f172a; font-size: 16px;">₱<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></span>
+                            </div>
+                            <?php if ($is_credit_sale): ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; color: #059669; font-weight: 700;">
+                                <span>Upfront Paid (Deposit):</span>
+                                <span style="font-weight: 800; color: #059669;">₱<?php echo number_format($pos_success_receipt['amount_paid'] ?? 0, 2); ?></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 15px; margin-top: 6px; color: #d97706; font-weight: 800; background: #fffbeb; padding: 6px 8px; border-radius: 4px; border: 1px dashed #f59e0b;">
+                                <span>BALANCE ON CREDIT:</span>
+                                <span style="font-weight: 900; color: #b45309; font-size: 16px;">₱<?php echo number_format($pos_success_receipt['credit_balance'] ?? 0, 2); ?></span>
+                            </div>
+                            <div style="font-size: 11px; color: #78350f; margin-top: 4px; text-align: right;">
+                                <i class="fa fa-clock-o"></i> Due on <?php echo htmlspecialchars($pos_success_receipt['due_date'] ?? date('Y-m-d', strtotime('+15 days'))); ?> (<?php echo htmlspecialchars($pos_success_receipt['payment_term_days'] ?? '15'); ?> Days Terms)
+                            </div>
+                            <?php else: ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #059669; margin-top: 4px;">
                                 <span>TOTAL PAID:</span>
                                 <span style="color: #059669; font-size: 18px;">₱<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></span>
                             </div>
-                            <?php if (!empty($pos_success_receipt['refund_due']) && $pos_success_receipt['refund_due'] > 0): ?>
-                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; color: #d97706; font-weight: 700;">
-                                <span>Refund Paid Out:</span>
-                                <span style="font-weight: 800; color: #d97706;">₱<?php echo number_format($pos_success_receipt['refund_due'], 2); ?></span>
-                            </div>
-                            <?php endif; ?>
                             <?php if (isset($pos_success_receipt['amount_tendered']) && $pos_success_receipt['amount_tendered'] > 0): ?>
                             <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-top: 6px; color: #64748b;">
                                 <span>Amount Tendered:</span>
@@ -4120,6 +4418,13 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                             <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-top: 3px; color: #64748b;">
                                 <span>Change:</span>
                                 <span>₱<?php echo number_format($pos_success_receipt['change_amount'], 2); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php endif; ?>
+                            <?php if (!empty($pos_success_receipt['refund_due']) && $pos_success_receipt['refund_due'] > 0): ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; color: #d97706; font-weight: 700;">
+                                <span>Refund Paid Out:</span>
+                                <span style="font-weight: 800; color: #d97706;">₱<?php echo number_format($pos_success_receipt['refund_due'], 2); ?></span>
                             </div>
                             <?php endif; ?>
                         </div>
@@ -4133,7 +4438,7 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;"><?php echo htmlspecialchars(strtoupper($pos_success_receipt['supplier_name'] ?? 'SAM & INRI CONSTRUCTION SUPPLY')); ?></div>
                         <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_success_receipt['supplier_phone']) ? htmlspecialchars($pos_success_receipt['supplier_phone']) : '09612735733'; ?></div>
                         <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">P.O.  RECEIPT</div>
-                        <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;">(PAID)</div>
+                        <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;"><?php echo $is_credit_sale ? '(ON CREDIT)' : '(PAID)'; ?></div>
                     </div>
                     <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>
 
@@ -4154,8 +4459,26 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         </tr>
                         <tr>
                             <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">PAYMENT   :</td>
-                            <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($pos_success_receipt['payment_method'] ?? 'Cash'); ?> (PAID)</td>
+                            <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($pos_success_receipt['payment_method'] ?? 'Cash'); ?> <?php echo $is_credit_sale ? '(ON CREDIT)' : '(PAID)'; ?></td>
                         </tr>
+                        <?php if (!empty($pos_success_receipt['credit_reference_no'])): ?>
+                        <tr>
+                            <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CREDIT REF:</td>
+                            <td style="padding: 1px 0; vertical-align: top; font-weight: bold;"><?php echo htmlspecialchars($pos_success_receipt['credit_reference_no']); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if (!empty($pos_success_receipt['payment_reference'])): ?>
+                        <tr>
+                            <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">REF NO    :</td>
+                            <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($pos_success_receipt['payment_reference']); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if (!empty($pos_success_receipt['due_date'])): ?>
+                        <tr>
+                            <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">DUE DATE  :</td>
+                            <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($pos_success_receipt['due_date']); ?> (<?php echo htmlspecialchars($pos_success_receipt['payment_term_days'] ?? '15'); ?> Days)</td>
+                        </tr>
+                        <?php endif; ?>
                         <tr>
                             <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">DATE      :</td>
                             <td style="padding: 1px 0; vertical-align: top;"><?php echo htmlspecialchars($pos_success_receipt['payment_date']); ?></td>
@@ -4216,15 +4539,27 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         </tr>
                         <?php endif; ?>
                         <tr style="font-weight: bold;">
+                            <td style="text-align: left; padding: 2px 0; font-size: 1.05em;">TOTAL INVOICE:</td>
+                            <td style="text-align: right; padding: 2px 0; font-size: 1.05em; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
+                        </tr>
+                        <?php if ($is_credit_sale): ?>
+                        <tr>
+                            <td style="text-align: left; padding: 1px 0; font-weight: bold;">UPFRONT PAID (DEPOSIT):</td>
+                            <td style="text-align: right; padding: 1px 0; font-weight: bold; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['amount_paid'] ?? 0, 2); ?></td>
+                        </tr>
+                        <tr style="font-weight: 900; font-size: 1.12em; border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000;">
+                            <td style="text-align: left; padding: 3px 0; font-weight: 900;">BALANCE ON CREDIT:</td>
+                            <td style="text-align: right; padding: 3px 0; font-weight: 900; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['credit_balance'] ?? 0, 2); ?></td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left; padding: 2px 0 1px 0; font-weight: bold;">TERMS DUE DATE:</td>
+                            <td style="text-align: right; padding: 2px 0 1px 0; font-weight: bold; white-space: nowrap;"><?php echo htmlspecialchars($pos_success_receipt['due_date'] ?? date('Y-m-d', strtotime('+15 days'))); ?> (<?php echo htmlspecialchars($pos_success_receipt['payment_term_days'] ?? '15'); ?> Days)</td>
+                        </tr>
+                        <?php else: ?>
+                        <tr style="font-weight: bold;">
                             <td style="text-align: left; padding: 2px 0; font-size: 1.08em;">TOTAL PAID:</td>
                             <td style="text-align: right; padding: 2px 0; font-size: 1.08em; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['grand_total'], 2); ?></td>
                         </tr>
-                        <?php if (!empty($pos_success_receipt['refund_due']) && $pos_success_receipt['refund_due'] > 0): ?>
-                        <tr style="font-weight: bold;">
-                            <td style="text-align: left; padding: 1px 0;">Refund Due:</td>
-                            <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['refund_due'], 2); ?></td>
-                        </tr>
-                        <?php endif; ?>
                         <?php if (isset($pos_success_receipt['amount_tendered']) && $pos_success_receipt['amount_tendered'] > 0): ?>
                         <tr>
                             <td style="text-align: left; padding: 1px 0;">Tendered:</td>
@@ -4233,6 +4568,13 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         <tr>
                             <td style="text-align: left; padding: 1px 0;">Change:</td>
                             <td style="text-align: right; padding: 1px 0; white-space: nowrap;"><?php echo number_format($pos_success_receipt['change_amount'], 2); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php endif; ?>
+                        <?php if (!empty($pos_success_receipt['refund_due']) && $pos_success_receipt['refund_due'] > 0): ?>
+                        <tr style="font-weight: bold;">
+                            <td style="text-align: left; padding: 1px 0;">Refund Due:</td>
+                            <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP <?php echo number_format($pos_success_receipt['refund_due'], 2); ?></td>
                         </tr>
                         <?php endif; ?>
                     </table>
@@ -5419,6 +5761,15 @@ function updatePOSCalculations() {
 
     document.getElementById('posGrandTotal').innerText = grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+    // For non-cash payment methods (except Check / Terms which supports flexible upfront downpayment), auto-keep amount tendered synced with grand total
+    const payMethod = document.getElementById('posPaymentMethod')?.value || 'Cash (OTC)';
+    if (!payMethod.toLowerCase().includes('cash') && payMethod !== 'Check / Terms') {
+        const tenderedInput = document.getElementById('posAmountTendered');
+        if (tenderedInput) {
+            tenderedInput.value = grandTotal.toFixed(2);
+        }
+    }
+
     // Update Change
     const tendered = parseFloat(document.getElementById('posAmountTendered').value) || 0;
     const change = (grandTotal === 0 && refundDue > 0) ? (tendered + refundDue) : Math.max(0, tendered - grandTotal);
@@ -6057,7 +6408,7 @@ function rejectQueueDiscount(requestId) {
 setInterval(pollDiscountStatuses, 3000);
 setTimeout(pollDiscountStatuses, 500);
 
-function setExactAmount() {
+function getPOSGrandTotal() {
     let grossSubtotal = 0;
     let totalDiscountSavings = 0;
     let totalReturnCredits = 0;
@@ -6073,13 +6424,21 @@ function setExactAmount() {
             totalDiscountSavings += discAmt;
         }
     });
-    const isLocationActive = document.getElementById('locationRadio').checked;
-    const deliveryCost = isLocationActive ? (parseFloat(document.getElementById('posDeliveryCost').value) || 0) : 0;
+    const isLocationActive = document.getElementById('locationRadio')?.checked;
+    const deliveryCost = isLocationActive ? (parseFloat(document.getElementById('posDeliveryCost')?.value) || 0) : 0;
     const netSubtotal = Math.max(0, grossSubtotal - totalDiscountSavings);
     const netPayable = (netSubtotal + deliveryCost) - totalReturnCredits;
-    const grandTotal = Math.max(0, netPayable);
-    document.getElementById('posAmountTendered').value = grandTotal.toFixed(2);
+    return Math.max(0, netPayable);
+}
+
+function setExactAmount() {
+    const grandTotal = getPOSGrandTotal();
+    const tenderedInput = document.getElementById('posAmountTendered');
+    if (tenderedInput) {
+        tenderedInput.value = grandTotal.toFixed(2);
+    }
     updatePOSCalculations();
+    updateCreditCalculations();
 }
 
 function setCashPreset(amount) {
@@ -6087,14 +6446,208 @@ function setCashPreset(amount) {
     updatePOSCalculations();
 }
 
-function handlePaymentMethodChange() {
-    const method = document.getElementById('posPaymentMethod').value;
-    const cashSection = document.getElementById('cashCalculatorSection');
-    if (method.indexOf('Cash') > -1) {
-        cashSection.style.display = 'block';
-    } else {
-        setExactAmount();
+function highlightUpfrontPreset(pct) {
+    const presets = [0, 25, 50, 100];
+    presets.forEach(function(p) {
+        const btn = document.getElementById('upfrontBtn' + p);
+        if (btn) {
+            if (p === pct) {
+                btn.style.backgroundColor = '#d97706';
+                btn.style.color = '#ffffff';
+                btn.style.borderColor = '#b45309';
+                btn.classList.add('active');
+            } else {
+                btn.style.backgroundColor = '#ffffff';
+                btn.style.color = '#78350f';
+                btn.style.borderColor = '#cbd5e1';
+                btn.classList.remove('active');
+            }
+        }
+    });
+}
+
+function updateCreditCalculations() {
+    const grandTotal = getPOSGrandTotal();
+    const upfrontInput = document.getElementById('posAmountTendered');
+    let upfrontVal = parseFloat(upfrontInput?.value) || 0;
+    if (upfrontVal < 0) upfrontVal = 0;
+    
+    const balance = Math.max(0, grandTotal - upfrontVal);
+    
+    const gtEl = document.getElementById('posCreditGrandTotalDisplay');
+    const upEl = document.getElementById('posCreditUpfrontDisplay');
+    const balEl = document.getElementById('posCreditBalanceDisplay');
+    
+    if (gtEl) gtEl.innerText = '₱' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (upEl) upEl.innerText = '₱' + upfrontVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (balEl) {
+        balEl.innerText = '₱' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        balEl.style.color = (balance > 0.009) ? '#dc2626' : '#059669';
     }
+
+    // Dynamic preset matching highlight
+    let matchedPct = null;
+    if (grandTotal > 0) {
+        if (Math.abs(upfrontVal - 0) < 0.009) matchedPct = 0;
+        else if (Math.abs(upfrontVal - (grandTotal * 0.25)) < 0.02) matchedPct = 25;
+        else if (Math.abs(upfrontVal - (grandTotal * 0.50)) < 0.02) matchedPct = 50;
+        else if (Math.abs(upfrontVal - grandTotal) < 0.009) matchedPct = 100;
+    } else if (upfrontVal === 0) {
+        matchedPct = 0;
+    }
+    highlightUpfrontPreset(matchedPct);
+
+    // Dynamic due date badge
+    const curDays = parseInt(document.getElementById('posPaymentTermDays')?.value || 15, 10);
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + curDays);
+    const formatted = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const badge = document.getElementById('posTermsDueDateBadge');
+    if (badge) {
+        badge.innerText = `${curDays} Days • Due: ${formatted}`;
+    }
+
+    const completeBtn = document.getElementById('posCompleteBtn');
+    if (completeBtn && cart.length > 0) {
+        const method = document.getElementById('posPaymentMethod')?.value || '';
+        if (method === 'Check / Terms') {
+            if (balance > 0.009) {
+                completeBtn.className = 'btn btn-warning btn-block btn-lg';
+                completeBtn.style.backgroundColor = '#d97706';
+                completeBtn.style.borderColor = '#b45309';
+                completeBtn.innerHTML = `<i class="fa fa-handshake-o"></i> Complete Sale On Credit (₱${upfrontVal.toFixed(2)} Paid • ₱${balance.toFixed(2)} Bal)`;
+            } else {
+                completeBtn.className = 'btn btn-success btn-block btn-lg';
+                completeBtn.style.backgroundColor = '';
+                completeBtn.style.borderColor = '';
+                completeBtn.innerHTML = `<i class="fa fa-check-circle"></i> Complete Sale &amp; Print Receipt`;
+            }
+        }
+    }
+}
+
+function setUpfrontPreset(type) {
+    const grandTotal = getPOSGrandTotal();
+    let pct = 0;
+    let amount = 0;
+    if (type === 0 || type === '0' || type === 'zero') {
+        pct = 0;
+        amount = 0;
+    } else if (type === 25 || type === '25') {
+        pct = 25;
+        amount = Math.round(grandTotal * 0.25 * 100) / 100;
+    } else if (type === 50 || type === '50') {
+        pct = 50;
+        amount = Math.round(grandTotal * 0.50 * 100) / 100;
+    } else if (type === 100 || type === '100' || type === 'exact') {
+        pct = 100;
+        amount = grandTotal;
+    }
+    const upfrontInput = document.getElementById('posAmountTendered');
+    if (upfrontInput) {
+        upfrontInput.value = amount.toFixed(2);
+    }
+    highlightUpfrontPreset(pct);
+    updateCreditCalculations();
+}
+
+function handlePaymentMethodChange() {
+    const methodSelect = document.getElementById('posPaymentMethod');
+    if (!methodSelect) return;
+    const method = methodSelect.value;
+    const cashSection = document.getElementById('cashCalculatorSection');
+    const refSection = document.getElementById('posPaymentRefSection');
+    const refLabel = document.getElementById('posPaymentRefLabel');
+    const refInput = document.getElementById('posPaymentReference');
+    const termsSection = document.getElementById('posTermsSection');
+    const amountLabel = document.getElementById('posAmountPaidLabel');
+    const quickPresets = document.getElementById('posCashQuickPresets');
+    const changeDueBox = document.getElementById('posChangeDueBox');
+
+    if (method.indexOf('Cash') > -1) {
+        // Cash (OTC) Mode
+        if (cashSection) cashSection.style.display = 'block';
+        if (refSection) refSection.style.display = 'none';
+        if (termsSection) termsSection.style.display = 'none';
+        if (amountLabel) amountLabel.innerText = 'Amount Tendered (Cash Received):';
+        if (quickPresets) quickPresets.style.display = 'block';
+        if (changeDueBox) changeDueBox.style.display = 'flex';
+        if (refInput) refInput.required = false;
+        setExactAmount();
+    } else if (method === 'Check / Terms') {
+        // Check / Terms (Credit & Upfront Mode)
+        if (cashSection) cashSection.style.display = 'block';
+        if (refSection) refSection.style.display = 'block';
+        if (termsSection) termsSection.style.display = 'block';
+        if (amountLabel) amountLabel.innerText = 'Upfront Amount Paid (Initial Downpayment):';
+        if (quickPresets) quickPresets.style.display = 'none';
+        if (changeDueBox) changeDueBox.style.display = 'none';
+        if (refLabel) refLabel.innerHTML = '<i class="fa fa-file-text-o text-primary"></i> Check Number / Bank Branch (Optional):';
+        if (refInput) refInput.placeholder = 'e.g. Bank Branch & Check No. 0012345';
+        
+        const curDays = parseInt(document.getElementById('posPaymentTermDays')?.value || 15, 10);
+        setPaymentTerms(curDays);
+        
+        // If amount tendered is empty or equals total, set to 0% preset by default for credit
+        const upfrontInput = document.getElementById('posAmountTendered');
+        if (upfrontInput && (!upfrontInput.value || parseFloat(upfrontInput.value) === getPOSGrandTotal())) {
+            setUpfrontPreset(0);
+        } else {
+            updateCreditCalculations();
+        }
+    } else {
+        // Digital (GCash / Maya, Card, Bank Transfer)
+        setExactAmount();
+        if (cashSection) cashSection.style.display = 'block';
+        if (refSection) refSection.style.display = 'block';
+        if (termsSection) termsSection.style.display = 'none';
+        if (amountLabel) amountLabel.innerText = 'Amount Paid (₱):';
+        if (quickPresets) quickPresets.style.display = 'none';
+        if (changeDueBox) changeDueBox.style.display = 'none';
+
+        if (method === 'GCash / Maya') {
+            if (refLabel) refLabel.innerHTML = '<i class="fa fa-mobile text-primary"></i> GCash / Maya Reference No.:';
+            if (refInput) refInput.placeholder = 'e.g. 13-digit Ref # (MP2409... / 0019283746)';
+        } else if (method === 'Debit/Credit Card') {
+            if (refLabel) refLabel.innerHTML = '<i class="fa fa-credit-card text-primary"></i> Card Approval / Auth Code:';
+            if (refInput) refInput.placeholder = 'e.g. Approval / Auth Code (Trace # / Last 4 digits)';
+        } else if (method === 'Bank Transfer') {
+            if (refLabel) refLabel.innerHTML = '<i class="fa fa-university text-primary"></i> Bank Transfer Confirmation No.:';
+            if (refInput) refInput.placeholder = 'e.g. BDO / BPI Online Transfer Ref / Txn ID';
+        }
+    }
+}
+
+function setPaymentTerms(days) {
+    const input = document.getElementById('posPaymentTermDays');
+    if (input) input.value = days;
+
+    [15, 21, 30].forEach(function(d) {
+        const btn = document.getElementById('termBtn' + d);
+        if (btn) {
+            if (d === days) {
+                btn.style.background = '#d97706';
+                btn.style.color = '#ffffff';
+                btn.style.borderColor = '#b45309';
+                btn.classList.add('active');
+            } else {
+                btn.style.background = '#ffffff';
+                btn.style.color = '#78350f';
+                btn.style.borderColor = '#cbd5e1';
+                btn.classList.remove('active');
+            }
+        }
+    });
+
+    // Calculate dynamic due date
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + parseInt(days, 10));
+    const formatted = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const badge = document.getElementById('posTermsDueDateBadge');
+    if (badge) {
+        badge.innerText = `${days} Days • Due: ${formatted}`;
+    }
+    updateCreditCalculations();
 }
 
 function toggleCustomerType() {
@@ -8015,6 +8568,9 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
     const discount = parseFloat(orderData.discount || 0).toFixed(2);
     const returnCredits = parseFloat(orderData.return_credits || orderData.total_return_credits || 0).toFixed(2);
     const total = parseFloat(orderData.total || 0).toFixed(2);
+    const isCredit = (orderData.payment_status === 'On Credit' || orderData.payment_status === 'ON CREDIT' || (orderData.credit_balance !== undefined && parseFloat(orderData.credit_balance) > 0) || (orderData.payment_method && (orderData.payment_method.indexOf('Terms') > -1 || orderData.payment_method.indexOf('Credit') > -1)));
+    const amountPaid = (orderData.amount_paid !== undefined && orderData.amount_paid !== null) ? parseFloat(orderData.amount_paid).toFixed(2) : (isCredit ? (parseFloat(orderData.tendered || orderData.amount_tendered || 0)).toFixed(2) : total);
+    const creditBalance = (orderData.credit_balance !== undefined && orderData.credit_balance !== null) ? parseFloat(orderData.credit_balance).toFixed(2) : (isCredit ? Math.max(0, parseFloat(total) - parseFloat(amountPaid)).toFixed(2) : '0.00');
     const refundDue = parseFloat(orderData.refund_due || 0);
     const tendered = (orderData.tendered !== undefined && orderData.tendered !== null) ? parseFloat(orderData.tendered).toFixed(2) : (orderData.amount_tendered ? parseFloat(orderData.amount_tendered).toFixed(2) : null);
     const change = (orderData.change !== undefined && orderData.change !== null) ? parseFloat(orderData.change).toFixed(2) : (orderData.change_amount ? parseFloat(orderData.change_amount).toFixed(2) : null);
@@ -8195,7 +8751,8 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
         <div class="thermal-header">
             <div class="thermal-title">${escapeHtml(supplierName)}</div>
             <div class="thermal-phone">Tel: ${escapeHtml(supplierPhone)}</div>
-            <div class="thermal-doc-title">Purchase Order Receipt</div>
+            <div class="thermal-doc-title">P.O.  RECEIPT</div>
+            <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase;">${isCredit ? '(ON CREDIT)' : '(PAID)'}</div>
         </div>
         <div class="thermal-divider-double">================================</div>
 
@@ -8210,7 +8767,23 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             </tr>
             <tr>
                 <td class="meta-label">PAYMENT   :</td>
-                <td>${escapeHtml(paymentMethod)} (${escapeHtml(paymentStatus)})</td>
+                <td>${escapeHtml(paymentMethod)} ${isCredit ? '(ON CREDIT)' : '(PAID)'}</td>
+            </tr>
+            ${orderData.credit_reference_no ? `
+            <tr>
+                <td class="meta-label">CREDIT REF:</td>
+                <td style="font-weight: bold;">${escapeHtml(orderData.credit_reference_no)}</td>
+            </tr>
+            ` : ''}
+            ${orderData.due_date ? `
+            <tr>
+                <td class="meta-label">DUE DATE  :</td>
+                <td style="font-weight: bold;">${escapeHtml(orderData.due_date)}${orderData.payment_term_days ? ' (' + orderData.payment_term_days + ' Days)' : ''}</td>
+            </tr>
+            ` : ''}
+            <tr>
+                <td class="meta-label">STATUS    :</td>
+                <td style="font-weight: bold;">${isCredit ? 'ON CREDIT' : 'PAID'}</td>
             </tr>
             <tr>
                 <td class="meta-label">DATE      :</td>
@@ -8250,11 +8823,32 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             </tr>
             ${returnCreditRow}
             <tr style="font-weight: bold;">
-                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL:</td>
-                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${total}</td>
+                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL INVOICE:</td>
+                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">PHP ${total}</td>
             </tr>
-            ${refundDueRow}
+            ${isCredit ? `
+            <tr>
+                <td style="text-align: left; font-weight: bold;">UPFRONT PAID (DEPOSIT):</td>
+                <td style="text-align: right; font-weight: bold; white-space: nowrap;">PHP ${amountPaid}</td>
+            </tr>
+            <tr style="font-weight: 900; font-size: ${totalFontSizePt}pt; border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000;">
+                <td style="text-align: left; padding: 2px 0;">BALANCE ON CREDIT:</td>
+                <td style="text-align: right; padding: 2px 0; white-space: nowrap;">PHP ${creditBalance}</td>
+            </tr>
+            ${orderData.due_date ? `
+            <tr>
+                <td style="text-align: left; font-weight: bold;">TERMS DUE DATE:</td>
+                <td style="text-align: right; font-weight: bold; white-space: nowrap;">${escapeHtml(orderData.due_date)}${orderData.payment_term_days ? ' (' + orderData.payment_term_days + ' Days)' : ''}</td>
+            </tr>
+            ` : ''}
+            ` : `
+            <tr style="font-weight: bold;">
+                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL PAID:</td>
+                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">PHP ${total}</td>
+            </tr>
             ${tenderedRows}
+            `}
+            ${refundDueRow}
         </table>
 
         <div class="thermal-divider-double">================================</div>
@@ -9512,6 +10106,15 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.innerText = text;
     return div.innerHTML;
+}
+
+// Initial state execution for Payment Method & Terms
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        handlePaymentMethodChange();
+    });
+} else {
+    handlePaymentMethodChange();
 }
 </script>
 

@@ -1241,6 +1241,25 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                          </div>
                                                      </div>
 
+                                                     <?php
+                                                     $is_credit_row = (($row['payment_status'] ?? '') === 'On Credit' || strpos($row['payment_method'] ?? '', 'Terms') !== false || strpos($row['payment_method'] ?? '', 'Credit') !== false);
+                                                     $credit_ref_row = $row['card_number'] ?? '';
+                                                     $due_date_row = '';
+                                                     if (preg_match('/(?:Due Date|Due):\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i', $row['bank_transaction_info'] ?? '', $m_due)) {
+                                                         $due_date_row = $m_due[1];
+                                                     }
+                                                     $terms_days_row = '15';
+                                                     if (preg_match('/([0-9]+)\s*Days/i', ($row['payment_method'] ?? '') . ' ' . ($row['bank_transaction_info'] ?? ''), $m_d)) {
+                                                         $terms_days_row = $m_d[1];
+                                                     }
+                                                     $invoice_total_row = floatval($subtotal_items) + floatval($delivery_cost);
+                                                     if (preg_match('/Total:\s*₱?([0-9,.]+)/i', $row['bank_transaction_info'] ?? '', $m_tot)) {
+                                                         $p_tot = floatval(str_replace(',', '', $m_tot[1]));
+                                                         if ($p_tot > 0) $invoice_total_row = $p_tot;
+                                                     }
+                                                     $amount_paid_row = floatval($row['paid_amount']);
+                                                     $credit_balance_row = max(0, $invoice_total_row - $amount_paid_row);
+                                                     ?>
                                                      <!-- Hidden Silent Thermal Print Element -->
                                                      <div id="receipt-printable-thermal-<?php echo $row['id']; ?>" style="display: none;">
                                                          <div style="font-family: 'Courier New', Consolas, monospace; font-size: 11pt; line-height: 1.25; color: #000; text-align: left;">
@@ -1252,15 +1271,21 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                  <?php endif; ?>
                                                                  <div style="font-size: 10pt;">Tel: <?php echo htmlspecialchars(!empty($sup_data['supplier_phone']) ? $sup_data['supplier_phone'] : '09612735733'); ?></div>
                                                                  <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px;">P.O.  RECEIPT</div>
-                                                                 <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase;">(PAID)</div>
+                                                                 <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase;"><?php echo $is_credit_row ? '(ON CREDIT)' : '(PAID)'; ?></div>
                                                              </div>
                                                              <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                                              <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt; margin-bottom: 2px;">
                                                                  <tr><td colspan="2" style="font-weight: bold; padding: 1px 0; white-space: nowrap;">P.O. Receipt No:</td></tr>
                                                                  <tr><td colspan="2" style="padding: 0 0 2px 8px; font-weight: bold;">&nbsp;&nbsp;<?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">CUSTOMER:</td><td><?php echo htmlspecialchars($row['customer_name'] ?? 'Walk-in Customer'); ?></td></tr>
-                                                                 <tr><td style="font-weight: bold;">PAY METH:</td><td><?php echo htmlspecialchars($row['payment_method'] ?? 'Cash'); ?></td></tr>
-                                                                 <tr><td style="font-weight: bold;">STATUS  :</td><td style="font-weight: bold;">PAID</td></tr>
+                                                                 <tr><td style="font-weight: bold;">PAY METH:</td><td><?php echo htmlspecialchars($row['payment_method'] ?? 'Cash'); ?> <?php echo $is_credit_row ? '(ON CREDIT)' : '(PAID)'; ?></td></tr>
+                                                                 <?php if (!empty($credit_ref_row)): ?>
+                                                                 <tr><td style="font-weight: bold;">CREDIT REF:</td><td style="font-weight: bold;"><?php echo htmlspecialchars($credit_ref_row); ?></td></tr>
+                                                                 <?php endif; ?>
+                                                                 <?php if (!empty($due_date_row)): ?>
+                                                                 <tr><td style="font-weight: bold;">DUE DATE:</td><td style="font-weight: bold;"><?php echo htmlspecialchars($due_date_row); ?> (<?php echo htmlspecialchars($terms_days_row); ?> Days)</td></tr>
+                                                                 <?php endif; ?>
+                                                                 <tr><td style="font-weight: bold;">STATUS  :</td><td style="font-weight: bold;"><?php echo $is_credit_row ? 'ON CREDIT' : 'PAID'; ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">DATE    :</td><td><?php echo date('Y-m-d H:i:s', strtotime($row['payment_date'])); ?></td></tr>
                                                              </table>
                                                              <div style="text-align: center; overflow: hidden; white-space: nowrap;">--------------------------------</div>
@@ -1308,9 +1333,18 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                  <?php if ($delivery_cost > 0): ?>
                                                                  <tr><td>Delivery Fee:</td><td style="text-align: right;"><?php echo number_format($delivery_cost, 2); ?></td></tr>
                                                                  <?php endif; ?>
-                                                                 <tr style="font-weight: bold;"><td style="font-size: 1.08em;">TOTAL PAID:</td><td style="text-align: right; font-size: 1.08em;">PHP <?php echo number_format(floatval($row['paid_amount']), 2); ?></td></tr>
-                                                                 <tr><td>Tendered:</td><td style="text-align: right;"><?php echo number_format(floatval($row['paid_amount']), 2); ?></td></tr>
+                                                                 <tr style="font-weight: bold;"><td style="font-size: 1.05em;">TOTAL INVOICE:</td><td style="text-align: right; font-size: 1.05em;">PHP <?php echo number_format($invoice_total_row, 2); ?></td></tr>
+                                                                 <?php if ($is_credit_row): ?>
+                                                                 <tr><td style="font-weight: bold;">UPFRONT PAID (DEPOSIT):</td><td style="text-align: right; font-weight: bold;">PHP <?php echo number_format($amount_paid_row, 2); ?></td></tr>
+                                                                 <tr style="font-weight: 900; font-size: 1.1em; border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000;"><td style="padding: 2px 0;">BALANCE ON CREDIT:</td><td style="text-align: right; white-space: nowrap;">PHP <?php echo number_format($credit_balance_row, 2); ?></td></tr>
+                                                                 <?php if (!empty($due_date_row)): ?>
+                                                                 <tr><td style="font-weight: bold;">TERMS DUE DATE:</td><td style="text-align: right; font-weight: bold;"><?php echo htmlspecialchars($due_date_row); ?> (<?php echo htmlspecialchars($terms_days_row); ?> Days)</td></tr>
+                                                                 <?php endif; ?>
+                                                                 <?php else: ?>
+                                                                 <tr style="font-weight: bold;"><td style="font-size: 1.08em;">TOTAL PAID:</td><td style="text-align: right; font-size: 1.08em;">PHP <?php echo number_format($amount_paid_row, 2); ?></td></tr>
+                                                                 <tr><td>Tendered:</td><td style="text-align: right;"><?php echo number_format($amount_paid_row, 2); ?></td></tr>
                                                                  <tr><td>Change:</td><td style="text-align: right;">0.00</td></tr>
+                                                                 <?php endif; ?>
                                                              </table>
                                                              <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                                              <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
@@ -1487,6 +1521,9 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
     const delivery = parseFloat(orderData.delivery || 0).toFixed(2);
     const discount = parseFloat(orderData.discount || 0).toFixed(2);
     const total = parseFloat(orderData.total || 0).toFixed(2);
+    const isCredit = (orderData.payment_status === 'On Credit' || orderData.payment_status === 'ON CREDIT' || (orderData.credit_balance !== undefined && parseFloat(orderData.credit_balance) > 0) || (orderData.payment_method && (orderData.payment_method.indexOf('Terms') > -1 || orderData.payment_method.indexOf('Credit') > -1)));
+    const amountPaid = (orderData.amount_paid !== undefined && orderData.amount_paid !== null) ? parseFloat(orderData.amount_paid).toFixed(2) : (isCredit ? (parseFloat(orderData.tendered || orderData.amount_tendered || 0)).toFixed(2) : total);
+    const creditBalance = (orderData.credit_balance !== undefined && orderData.credit_balance !== null) ? parseFloat(orderData.credit_balance).toFixed(2) : (isCredit ? Math.max(0, parseFloat(total) - parseFloat(amountPaid)).toFixed(2) : '0.00');
     const tendered = (orderData.tendered !== undefined && orderData.tendered !== null) ? parseFloat(orderData.tendered).toFixed(2) : (orderData.amount_tendered ? parseFloat(orderData.amount_tendered).toFixed(2) : null);
     const change = (orderData.change !== undefined && orderData.change !== null) ? parseFloat(orderData.change).toFixed(2) : (orderData.change_amount ? parseFloat(orderData.change_amount).toFixed(2) : null);
 
@@ -1696,7 +1733,8 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
         <div class="thermal-header">
             <div class="thermal-title">${escapeHtml(supplierName)}</div>
             <div class="thermal-phone">Tel: ${escapeHtml(supplierPhone)}</div>
-            <div class="thermal-doc-title">Purchase Order Receipt</div>
+            <div class="thermal-doc-title">P.O.  RECEIPT</div>
+            <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase;">${isCredit ? '(ON CREDIT)' : '(PAID)'}</div>
         </div>
         <div class="thermal-divider-double">================================</div>
 
@@ -1711,7 +1749,23 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
             </tr>
             <tr>
                 <td class="meta-label">PAYMENT   :</td>
-                <td>${escapeHtml(paymentMethod)} (${escapeHtml(paymentStatus)})</td>
+                <td>${escapeHtml(paymentMethod)} ${isCredit ? '(ON CREDIT)' : '(PAID)'}</td>
+            </tr>
+            ${orderData.credit_reference_no ? `
+            <tr>
+                <td class="meta-label">CREDIT REF:</td>
+                <td style="font-weight: bold;">${escapeHtml(orderData.credit_reference_no)}</td>
+            </tr>
+            ` : ''}
+            ${orderData.due_date ? `
+            <tr>
+                <td class="meta-label">DUE DATE  :</td>
+                <td style="font-weight: bold;">${escapeHtml(orderData.due_date)}${orderData.payment_term_days ? ' (' + orderData.payment_term_days + ' Days)' : ''}</td>
+            </tr>
+            ` : ''}
+            <tr>
+                <td class="meta-label">STATUS    :</td>
+                <td style="font-weight: bold;">${isCredit ? 'ON CREDIT' : 'PAID'}</td>
             </tr>
             <tr>
                 <td class="meta-label">DATE      :</td>
@@ -1750,10 +1804,31 @@ function generatePaidOrderThermalHTML(orderData, requestedWidthMm, requestedCont
                 <td style="text-align: right; white-space: nowrap;">${delivery}</td>
             </tr>
             <tr style="font-weight: bold;">
-                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL:</td>
-                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">${total}</td>
+                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL INVOICE:</td>
+                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">PHP ${total}</td>
+            </tr>
+            ${isCredit ? `
+            <tr>
+                <td style="text-align: left; font-weight: bold;">UPFRONT PAID (DEPOSIT):</td>
+                <td style="text-align: right; font-weight: bold; white-space: nowrap;">PHP ${amountPaid}</td>
+            </tr>
+            <tr style="font-weight: 900; font-size: ${totalFontSizePt}pt; border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000;">
+                <td style="text-align: left; padding: 2px 0;">BALANCE ON CREDIT:</td>
+                <td style="text-align: right; padding: 2px 0; white-space: nowrap;">PHP ${creditBalance}</td>
+            </tr>
+            ${orderData.due_date ? `
+            <tr>
+                <td style="text-align: left; font-weight: bold;">TERMS DUE DATE:</td>
+                <td style="text-align: right; font-weight: bold; white-space: nowrap;">${escapeHtml(orderData.due_date)}${orderData.payment_term_days ? ' (' + orderData.payment_term_days + ' Days)' : ''}</td>
+            </tr>
+            ` : ''}
+            ` : `
+            <tr style="font-weight: bold;">
+                <td style="text-align: left; font-size: ${totalFontSizePt}pt;">TOTAL PAID:</td>
+                <td style="text-align: right; font-size: ${totalFontSizePt}pt; white-space: nowrap;">PHP ${total}</td>
             </tr>
             ${tenderedRows}
+            `}
         </table>
 
         <div class="thermal-divider-double">================================</div>

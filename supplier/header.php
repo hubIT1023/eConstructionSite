@@ -96,6 +96,7 @@ if ($cur_page === 'pos.php' && !$user_has_pos) {
 $allowed_pos_pages = ['profile-edit.php', 'logout.php', 'user-manual.php'];
 if ($user_has_pos) {
     $allowed_pos_pages[] = 'pos.php';
+    $allowed_pos_pages[] = 'on-credit.php';
 }
 if ($user_role === 'SUPERVISOR') {
     $allowed_pos_pages[] = 'discount-approvals.php';
@@ -119,6 +120,7 @@ if ($user_role === 'CASHIER' || $user_role === 'SUPERVISOR') {
     $allowed_pos_pages[] = 'shipping-change-status.php';
     $allowed_pos_pages[] = 'paid-orders.php';
     $allowed_pos_pages[] = 'returns.php';
+    $allowed_pos_pages[] = 'on-credit.php';
 }
 if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
     ?>
@@ -339,6 +341,12 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                         </a>
                     </li>
 
+                    <li class="treeview <?php if( ($cur_page == 'on-credit.php') ) {echo 'active';} ?>">
+                        <a href="on-credit.php">
+                            <i class="fa fa-calendar-check-o" style="color: #f59e0b;"></i> <span style="color: #fef08a; font-weight: bold;">On Credit</span>
+                        </a>
+                    </li>
+
                     <li class="treeview <?php if( ($cur_page == 'returns.php') ) {echo 'active';} ?>">
                         <a href="returns.php">
                             <i class="fa fa-undo" style="color: #f87171;"></i> <span style="color: #fca5a5; font-weight: bold;">Return History</span>
@@ -424,6 +432,11 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                     <li class="treeview <?php if($cur_page == 'paid-orders.php') {echo 'active';} ?>">
                         <a href="paid-orders.php">
                             <i class="fa fa-check-square-o" style="color: #4ade80;"></i> <span style="color: #bbf7d0; font-weight: bold;">Paid Orders</span>
+                        </a>
+                    </li>
+                    <li class="treeview <?php if($cur_page == 'on-credit.php') {echo 'active';} ?>">
+                        <a href="on-credit.php">
+                            <i class="fa fa-calendar-check-o" style="color: #f59e0b;"></i> <span style="color: #fef08a; font-weight: bold;">On Credit</span>
                         </a>
                     </li>
                     <?php endif; ?>

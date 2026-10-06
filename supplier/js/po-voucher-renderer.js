@@ -204,7 +204,7 @@
             }
             buffer += 'Tel: ' + (d.store_phone || '09612735733') + '\n';
             buffer += ESCPOS.BOLD_ON;
-            buffer += 'P.O.  RECEIPT\n(PAID)\n';
+            buffer += 'P.O.  RECEIPT\n' + (d.is_credit ? '(ON CREDIT)\n' : '(PAID)\n');
             buffer += ESCPOS.BOLD_OFF;
             buffer += this.dividerLine('=', totalCols);
 
@@ -216,7 +216,16 @@
                 buffer += this.twoColumnLine('CASHIER   :', d.cashier_name, totalCols);
             }
             buffer += this.twoColumnLine('CUSTOMER  :', d.customer_name, totalCols);
-            buffer += this.twoColumnLine('PAYMENT   :', d.payment_method + ' (PAID)', totalCols);
+            buffer += this.twoColumnLine('PAYMENT   :', d.payment_method + (d.is_credit ? ' (ON CREDIT)' : ' (PAID)'), totalCols);
+            if (d.credit_reference_no || (d.is_credit && d.payment_reference)) {
+                buffer += this.twoColumnLine('CREDIT REF:', d.credit_reference_no || d.payment_reference, totalCols);
+            } else if (d.payment_reference) {
+                buffer += this.twoColumnLine('REF NO    :', d.payment_reference, totalCols);
+            }
+            if (d.due_date) {
+                buffer += this.twoColumnLine('DUE DATE  :', d.due_date + (d.payment_term_days ? ' (' + d.payment_term_days + ' Days)' : ''), totalCols);
+            }
+            buffer += this.twoColumnLine('STATUS    :', (d.is_credit ? 'ON CREDIT' : 'PAID'), totalCols);
             buffer += this.twoColumnLine('DATE      :', d.payment_date, totalCols);
             buffer += this.dividerLine('-', totalCols);
 
@@ -227,10 +236,11 @@
             // 7. Line Items
             d.items.forEach((item) => {
                 const isSp = (item.item_type === 'SPECIAL_ORDER');
-                const name = (isSp ? '[SPECIAL] ' : '') + item.product_name;
+                const isRet = (item.item_type === 'RETURN_CREDIT');
+                const name = (isRet ? '[RETURN CREDIT] ' : (isSp ? '[SPECIAL] ' : '')) + item.product_name;
                 const unitLabel = item.quantity > 1 ? 'pcs' : 'pc';
-                const leftDetail = '  ' + item.quantity + ' ' + unitLabel + ' @ ' + POVoucherRenderer.formatMoney(item.unit_price);
-                const rightAmount = POVoucherRenderer.formatMoney(item.line_net);
+                const leftDetail = '  ' + item.quantity + ' ' + unitLabel + ' @ ' + POVoucherRenderer.formatMoney(Math.abs(item.unit_price));
+                const rightAmount = (isRet ? '-' : '') + POVoucherRenderer.formatMoney(Math.abs(item.line_net));
 
                 buffer += ESCPOS.BOLD_ON;
                 buffer += name + '\n';
@@ -241,16 +251,38 @@
 
             // 8. Financial Summary & Totals
             buffer += this.twoColumnLine('Subtotal:', POVoucherRenderer.formatMoney(d.gross_subtotal), totalCols);
+            if (d.total_discount_savings > 0) {
+                buffer += this.twoColumnLine('Discount:', '-' + POVoucherRenderer.formatMoney(d.total_discount_savings), totalCols);
+            }
+            if (d.total_return_credits > 0) {
+                buffer += this.twoColumnLine('Return Credit:', '-' + POVoucherRenderer.formatMoney(d.total_return_credits), totalCols);
+            }
             if (d.delivery_cost > 0) {
                 buffer += this.twoColumnLine('Delivery Fee:', POVoucherRenderer.formatMoney(d.delivery_cost), totalCols);
             }
             buffer += ESCPOS.BOLD_ON;
-            buffer += this.twoColumnLine('TOTAL PAID:', 'PHP ' + POVoucherRenderer.formatMoney(d.grand_total), totalCols);
+            buffer += this.twoColumnLine('TOTAL INVOICE:', 'PHP ' + POVoucherRenderer.formatMoney(d.grand_total), totalCols);
             buffer += ESCPOS.BOLD_OFF;
 
-            if (d.amount_tendered !== undefined && d.amount_tendered !== null) {
-                buffer += this.twoColumnLine('Tendered:', POVoucherRenderer.formatMoney(d.amount_tendered), totalCols);
-                buffer += this.twoColumnLine('Change:', POVoucherRenderer.formatMoney(d.change_amount), totalCols);
+            if (d.is_credit) {
+                buffer += this.twoColumnLine('UPFRONT PAID:', 'PHP ' + POVoucherRenderer.formatMoney(d.amount_paid), totalCols);
+                buffer += ESCPOS.BOLD_ON;
+                buffer += this.twoColumnLine('BALANCE DUE :', 'PHP ' + POVoucherRenderer.formatMoney(d.credit_balance), totalCols);
+                buffer += ESCPOS.BOLD_OFF;
+                if (d.due_date) {
+                    buffer += this.twoColumnLine('TERMS DUE   :', d.due_date + (d.payment_term_days ? ' (' + d.payment_term_days + 'd)' : ''), totalCols);
+                }
+            } else {
+                buffer += ESCPOS.BOLD_ON;
+                buffer += this.twoColumnLine('TOTAL PAID  :', 'PHP ' + POVoucherRenderer.formatMoney(d.grand_total), totalCols);
+                buffer += ESCPOS.BOLD_OFF;
+                if (d.amount_tendered !== undefined && d.amount_tendered !== null) {
+                    buffer += this.twoColumnLine('Tendered    :', POVoucherRenderer.formatMoney(d.amount_tendered), totalCols);
+                    buffer += this.twoColumnLine('Change      :', POVoucherRenderer.formatMoney(d.change_amount), totalCols);
+                }
+            }
+            if (d.refund_due > 0) {
+                buffer += this.twoColumnLine('Refund Due  :', 'PHP ' + POVoucherRenderer.formatMoney(d.refund_due), totalCols);
             }
             buffer += this.dividerLine('=', totalCols);
 
@@ -436,7 +468,6 @@
             const s = this.getSettings();
             const daemonUrl = s.escposDaemonUrl || 'http://127.0.0.1:9100/print';
             
-            // Base64 encode the binary/ascii payload
             let base64Data = '';
             try {
                 base64Data = btoa(unescape(encodeURIComponent(escposString)));
@@ -516,7 +547,7 @@
          */
         wrapThermalHtml: function(innerHtml, format) {
             const is80 = (format === '80' || format === '80mm' || format === 80);
-            const isA4 = (format === 'a4' || format === 'pdfA4' || format === 210 || format === '210');
+            const isA4 = (format === 'a4' || format === 'pdfA4' || format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 210 || format === '210');
             
             const savedSettings = this.getSettings();
             const paperWidthMm = isA4 ? 210 : (is80 ? 80 : (savedSettings.paperWidthMm || 58));
@@ -844,13 +875,34 @@
             });
 
             const grossSubtotal = parseFloat(data.gross_subtotal || data.subtotal || calcSubtotal) || calcSubtotal;
+            const discountSavings = parseFloat(data.total_discount_savings || data.discount_total || data.discount || 0) || 0;
+            const returnCredits = parseFloat(data.total_return_credits || data.return_credits || 0) || 0;
             const deliveryCost = parseFloat(data.delivery_cost || data.delivery_fee || data.delivery || 0) || 0;
-            const grandTotal = parseFloat(data.grand_total || data.total_amount || data.paid_amount || (grossSubtotal + deliveryCost)) || 0;
+            const grandTotal = parseFloat(data.grand_total || data.total_amount || data.paid_amount || (grossSubtotal - discountSavings - returnCredits + deliveryCost)) || 0;
+
+            const isCredit = (
+                data.payment_status === 'On Credit' ||
+                data.is_credit === true ||
+                (data.credit_balance !== undefined && parseFloat(data.credit_balance) > 0) ||
+                (data.payment_method && (data.payment_method.indexOf('Terms') > -1 || data.payment_method.indexOf('Credit') > -1))
+            );
+            const amountPaid = (data.amount_paid !== undefined && data.amount_paid !== null && (parseFloat(data.amount_paid) < grandTotal || !isCredit)) 
+                ? parseFloat(data.amount_paid) 
+                : (isCredit ? parseFloat(data.amount_tendered || data.amount_paid || 0) : grandTotal);
+            const creditBalance = (data.credit_balance !== undefined && data.credit_balance !== null && parseFloat(data.credit_balance) > 0) 
+                ? parseFloat(data.credit_balance) 
+                : (isCredit ? Math.max(0, grandTotal - amountPaid) : 0);
 
             return {
                 payment_id: data.payment_id || data.txnid || 'OR-PAID',
                 payment_date: data.payment_date || data.date || new Date().toLocaleString(),
                 payment_method: data.payment_method || 'Cash',
+                payment_reference: data.payment_reference || data.reference_no || '',
+                credit_reference_no: data.credit_reference_no || data.credit_ref_no || '',
+                due_date: data.due_date || '',
+                payment_term_days: data.payment_term_days || '',
+                payment_status: data.payment_status || (isCredit ? 'On Credit' : 'Paid'),
+                is_credit: isCredit,
                 cashier_name: data.cashier_name || data.cashier || (data.supplier && data.supplier.cashier) || '',
                 customer_name: (data.customer && data.customer.name) || data.customer_name || 'Walk-in Customer',
                 store_name: (data.supplier && data.supplier.name) || data.store_name || 'SAM & INRI CONSTRUCTION SUPPLY',
@@ -858,10 +910,15 @@
                 store_address: (data.supplier && data.supplier.address) || data.store_address || '',
                 items: normalizedItems,
                 gross_subtotal: grossSubtotal,
+                total_discount_savings: discountSavings,
+                total_return_credits: returnCredits,
                 delivery_cost: deliveryCost,
                 grand_total: grandTotal,
-                amount_tendered: parseFloat(data.amount_tendered || grandTotal) || grandTotal,
-                change_amount: parseFloat(data.change_amount || 0) || 0
+                amount_paid: amountPaid,
+                credit_balance: creditBalance,
+                amount_tendered: parseFloat(data.amount_tendered || (isCredit ? amountPaid : grandTotal)) || (isCredit ? amountPaid : grandTotal),
+                change_amount: parseFloat(data.change_amount || 0) || 0,
+                refund_due: parseFloat(data.refund_due || 0) || 0
             };
         },
 
@@ -876,6 +933,7 @@
             let itemsHtml = '';
             d.items.forEach(function(item) {
                 const isSp = (item.item_type === 'SPECIAL_ORDER');
+                const isRet = (item.item_type === 'RETURN_CREDIT');
                 let specs = '';
                 if (item.size) specs += 'Size: ' + POVoucherRenderer.escapeHtml(item.size) + ' ';
                 if (item.color) specs += 'Color: ' + POVoucherRenderer.escapeHtml(item.color);
@@ -883,16 +941,16 @@
                 itemsHtml += `
                 <tr>
                     <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">
-                        ${isSp ? '[SPECIAL ORDER] ' : ''}${POVoucherRenderer.escapeHtml(item.product_name)}
+                        ${isRet ? '[RETURN CREDIT] ' : (isSp ? '[SPECIAL ORDER] ' : '')}${POVoucherRenderer.escapeHtml(item.product_name)}
                         ${specs ? `<div style="font-size: 9pt; font-weight: normal; margin-top: 1px;">${specs}</div>` : ''}
                     </td>
                 </tr>
                 <tr>
                     <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
-                        <strong style="font-weight: 900; font-size: 11pt; color: #000;">${item.quantity} ${item.quantity > 1 ? 'pcs' : 'pc'}</strong> @ ${POVoucherRenderer.formatMoney(item.unit_price)}
+                        <strong style="font-weight: 900; font-size: 11pt; color: #000;">${item.quantity} ${item.quantity > 1 ? 'pcs' : 'pc'}</strong> @ ${POVoucherRenderer.formatMoney(Math.abs(item.unit_price))}
                     </td>
-                    <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
-                        ${POVoucherRenderer.formatMoney(item.line_net)}
+                    <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom; font-weight: ${isRet ? 'bold' : 'normal'};">
+                        ${isRet ? '-' : ''}${POVoucherRenderer.formatMoney(Math.abs(item.line_net))}
                     </td>
                 </tr>`;
             });
@@ -905,7 +963,7 @@
                     ${d.store_address ? `<div style="font-size: 9.5pt; margin-top: 2px; color: #000;">${POVoucherRenderer.escapeHtml(d.store_address)}</div>` : ''}
                     <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: ${POVoucherRenderer.escapeHtml(d.store_phone)}</div>
                     <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">P.O.  RECEIPT</div>
-                    <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;">(PAID)</div>
+                    <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;">${d.is_credit ? '(ON CREDIT)' : '(PAID)'}</div>
                 </div>
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>
 
@@ -927,11 +985,26 @@
                     </tr>
                     <tr>
                         <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">PAY METH:</td>
-                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(d.payment_method)}</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(d.payment_method)} ${d.is_credit ? '(ON CREDIT)' : '(PAID)'}</td>
                     </tr>
+                    ${(d.credit_reference_no || (d.is_credit && d.payment_reference)) ? `
+                    <tr>
+                        <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CREDIT REF:</td>
+                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${POVoucherRenderer.escapeHtml(d.credit_reference_no || d.payment_reference)}</td>
+                    </tr>` : ''}
+                    ${(d.payment_reference && d.payment_reference !== d.credit_reference_no) ? `
+                    <tr>
+                        <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">REF NO  :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(d.payment_reference)}</td>
+                    </tr>` : ''}
+                    ${d.due_date ? `
+                    <tr>
+                        <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">DUE DATE:</td>
+                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${POVoucherRenderer.escapeHtml(d.due_date)}${d.payment_term_days ? ' (' + d.payment_term_days + ' Days)' : ''}</td>
+                    </tr>` : ''}
                     <tr>
                         <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">STATUS  :</td>
-                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">PAID</td>
+                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${d.is_credit ? 'ON CREDIT (PENDING TERMS)' : 'PAID'}</td>
                     </tr>
                     <tr>
                         <td style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">DATE    :</td>
@@ -961,11 +1034,39 @@
                         <td style="text-align: left; padding: 1px 0;">Subtotal:</td>
                         <td style="text-align: right; padding: 1px 0; white-space: nowrap;">${POVoucherRenderer.formatMoney(d.gross_subtotal)}</td>
                     </tr>
+                    ${d.total_discount_savings > 0 ? `
+                    <tr>
+                        <td style="text-align: left; padding: 1px 0;">Discount:</td>
+                        <td style="text-align: right; padding: 1px 0; white-space: nowrap;">-${POVoucherRenderer.formatMoney(d.total_discount_savings)}</td>
+                    </tr>` : ''}
+                    ${d.total_return_credits > 0 ? `
+                    <tr>
+                        <td style="text-align: left; padding: 1px 0;">Return Credit:</td>
+                        <td style="text-align: right; padding: 1px 0; white-space: nowrap;">-${POVoucherRenderer.formatMoney(d.total_return_credits)}</td>
+                    </tr>` : ''}
                     ${d.delivery_cost > 0 ? `
                     <tr>
                         <td style="text-align: left; padding: 1px 0;">Delivery Fee:</td>
                         <td style="text-align: right; padding: 1px 0; white-space: nowrap;">${POVoucherRenderer.formatMoney(d.delivery_cost)}</td>
                     </tr>` : ''}
+                    <tr style="font-weight: bold;">
+                        <td style="text-align: left; padding: 2px 0; font-size: 1.05em;">TOTAL INVOICE:</td>
+                        <td style="text-align: right; padding: 2px 0; font-size: 1.05em; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(d.grand_total)}</td>
+                    </tr>
+                    ${d.is_credit ? `
+                    <tr>
+                        <td style="text-align: left; padding: 1px 0; font-weight: bold;">UPFRONT PAID (DEPOSIT):</td>
+                        <td style="text-align: right; padding: 1px 0; font-weight: bold; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(d.amount_paid)}</td>
+                    </tr>
+                    <tr style="font-weight: 900; font-size: 1.12em; border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000;">
+                        <td style="text-align: left; padding: 3px 0; font-weight: 900;">BALANCE ON CREDIT:</td>
+                        <td style="text-align: right; padding: 3px 0; font-weight: 900; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(d.credit_balance)}</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left; padding: 2px 0 1px 0; font-weight: bold;">TERMS DUE DATE:</td>
+                        <td style="text-align: right; padding: 2px 0 1px 0; font-weight: bold; white-space: nowrap;">${POVoucherRenderer.escapeHtml(d.due_date)}${d.payment_term_days ? ' (' + d.payment_term_days + ' Days)' : ''}</td>
+                    </tr>
+                    ` : `
                     <tr style="font-weight: bold;">
                         <td style="text-align: left; padding: 2px 0; font-size: 1.08em;">TOTAL PAID:</td>
                         <td style="text-align: right; padding: 2px 0; font-size: 1.08em; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(d.grand_total)}</td>
@@ -978,6 +1079,12 @@
                         <td style="text-align: left; padding: 1px 0;">Change:</td>
                         <td style="text-align: right; padding: 1px 0; white-space: nowrap;">${POVoucherRenderer.formatMoney(d.change_amount)}</td>
                     </tr>
+                    `}
+                    ${d.refund_due > 0 ? `
+                    <tr style="font-weight: bold;">
+                        <td style="text-align: left; padding: 1px 0;">Refund Due:</td>
+                        <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(d.refund_due)}</td>
+                    </tr>` : ''}
                 </table>
 
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
@@ -990,7 +1097,251 @@
             </div>`;
         },
 
+        /**
+         * Render HTML for Credit Settlement / Collection Receipt
+         */
+        renderThermalSettlementReceipt: function(data, format) {
+            const is80 = (format === '80' || format === '80mm' || format === 80);
+            const maxWidth = is80 ? '72mm' : '53mm';
+
+            const paymentId = data.payment_id || data.txnid || 'OR-SETTLE';
+            const creditRef = data.credit_reference_no || data.credit_ref_no || '';
+            const customerName = data.customer_name || 'Valued Customer';
+            const paymentMethod = data.payment_method || 'Cash';
+            const paymentRef = data.reference_no || data.payment_reference || '';
+            const storeName = data.supplier_name || data.store_name || 'SAM & INRI CONSTRUCTION SUPPLY';
+            const storePhone = data.supplier_phone || data.store_phone || '09612735733';
+            const storeAddress = data.supplier_address || data.store_address || '';
+            const cashierName = data.cashier_name || 'Cashier';
+            const paymentDate = data.payment_date || new Date().toLocaleString();
+            
+            const invoiceTotal = parseFloat(data.invoice_total || data.grand_total || 0);
+            const amountPaidNow = parseFloat(data.amount_paid_now || data.amount_paid || 0);
+            const totalPaid = parseFloat(data.total_paid || data.new_paid_total || amountPaidNow);
+            const remainingBalance = parseFloat(data.remaining_balance !== undefined ? data.remaining_balance : (data.credit_balance || Math.max(0, invoiceTotal - totalPaid)));
+            const isSettled = (remainingBalance <= 0.009);
+            const previousPaid = Math.max(0, totalPaid - amountPaidNow);
+
+            return `
+            <div class="thermal-print-container" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 12px; font-family: 'Courier New', Consolas, monospace; color: #000; font-size: 11pt; line-height: 1.25; width: 100%; max-width: ${maxWidth}; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-bottom: 3px; overflow: hidden; white-space: nowrap;">================================</div>
+                <div style="text-align: center;">
+                    <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;">${POVoucherRenderer.escapeHtml(storeName.toUpperCase())}</div>
+                    ${storeAddress ? `<div style="font-size: 9.5pt; margin-top: 2px; color: #000;">${POVoucherRenderer.escapeHtml(storeAddress)}</div>` : ''}
+                    <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: ${POVoucherRenderer.escapeHtml(storePhone)}</div>
+                    <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 3px; color: #000;">COLLECTION RECEIPT</div>
+                    <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #000;">(PAYMENT SETTLEMENT)</div>
+                </div>
+                <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>
+
+                <table style="width: 100%; font-family: 'Courier New', Consolas, monospace; font-size: 10.5pt; line-height: 1.25; margin-bottom: 2px; border-collapse: collapse;">
+                    <tr>
+                        <td colspan="2" style="font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">P.O. Receipt No:</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="padding: 0 0 2px 8px; vertical-align: top; font-weight: bold;">&nbsp;&nbsp;${POVoucherRenderer.escapeHtml(paymentId)}</td>
+                    </tr>
+                    ${cashierName ? `
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CASHIER   :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(cashierName)}</td>
+                    </tr>` : ''}
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CUSTOMER  :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(customerName)}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">PAY METH  :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(paymentMethod)}</td>
+                    </tr>
+                    ${creditRef ? `
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">CREDIT REF:</td>
+                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${POVoucherRenderer.escapeHtml(creditRef)}</td>
+                    </tr>` : ''}
+                    ${paymentRef ? `
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">REF NO    :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(paymentRef)}</td>
+                    </tr>` : ''}
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">STATUS    :</td>
+                        <td style="padding: 1px 0; vertical-align: top; font-weight: bold;">${isSettled ? 'FULLY SETTLED (PAID)' : 'PARTIAL PAYMENT (ON CREDIT)'}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 32%; font-weight: bold; padding: 1px 0; vertical-align: top; white-space: nowrap;">DATE      :</td>
+                        <td style="padding: 1px 0; vertical-align: top;">${POVoucherRenderer.escapeHtml(paymentDate)}</td>
+                    </tr>
+                </table>
+
+                <div style="text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+                <div style="font-weight: bold; font-size: 10pt; text-align: center; margin: 2px 0;">PAYMENT BREAKDOWN</div>
+                <div style="text-align: center; letter-spacing: -0.5px; margin: 2px 0; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+
+                <table style="width: 100%; border-collapse: collapse; font-family: 'Courier New', Consolas, monospace; font-size: 10.5pt; line-height: 1.3; margin: 2px 0;">
+                    <tr>
+                        <td style="text-align: left; padding: 1px 0;">Original Total:</td>
+                        <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(invoiceTotal)}</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left; padding: 1px 0;">Previously Paid:</td>
+                        <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(previousPaid)}</td>
+                    </tr>
+                    <tr style="font-weight: 800;">
+                        <td style="text-align: left; padding: 2px 0;">AMOUNT PAID NOW:</td>
+                        <td style="text-align: right; padding: 2px 0; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(amountPaidNow)}</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left; padding: 1px 0;">Total Paid to Date:</td>
+                        <td style="text-align: right; padding: 1px 0; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(totalPaid)}</td>
+                    </tr>
+                    <tr style="font-weight: 900; font-size: 1.12em; border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000;">
+                        <td style="text-align: left; padding: 3px 0; font-weight: 900;">REMAINING BALANCE:</td>
+                        <td style="text-align: right; padding: 3px 0; font-weight: 900; white-space: nowrap;">PHP ${POVoucherRenderer.formatMoney(remainingBalance)}</td>
+                    </tr>
+                    ${(!isSettled && data.due_date) ? `
+                    <tr>
+                        <td style="text-align: left; padding: 2px 0 1px 0; font-weight: bold;">TERMS DUE DATE:</td>
+                        <td style="text-align: right; padding: 2px 0 1px 0; font-weight: bold; white-space: nowrap;">${POVoucherRenderer.escapeHtml(data.due_date)}${data.payment_term_days ? ' (' + data.payment_term_days + ' Days)' : ''}</td>
+                    </tr>
+                    ` : ''}
+                </table>
+
+                <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
+                <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
+                    <div style="font-weight: bold;">*** SALES INVOICE ***</div>
+                    <div style="margin-top: 3px;">THANK YOU FOR YOUR PAYMENT!</div>
+                    <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+                </div>
+                <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
+            </div>`;
+        },
+
+        /**
+         * Generate ESC/POS Binary/String Payload for Credit Settlement / Collection Receipt
+         */
+        generateESCPOSSettlementReceipt: function(data, format, options) {
+            const opts = Object.assign({}, this.getSettings(), options || {});
+            const is80 = (format === '80' || format === '80mm' || format === 80 || opts.paperWidthMm === 80);
+            const totalCols = is80 ? 48 : (opts.printColumns || 32);
+
+            const paymentId = data.payment_id || data.txnid || 'OR-SETTLE';
+            const creditRef = data.credit_reference_no || data.credit_ref_no || '';
+            const customerName = data.customer_name || 'Valued Customer';
+            const paymentMethod = data.payment_method || 'Cash';
+            const paymentRef = data.reference_no || data.payment_reference || '';
+            const storeName = data.supplier_name || data.store_name || 'SAM & INRI CONSTRUCTION SUPPLY';
+            const storePhone = data.supplier_phone || data.store_phone || '09612735733';
+            const storeAddress = data.supplier_address || data.store_address || '';
+            const cashierName = data.cashier_name || 'Cashier';
+            const paymentDate = data.payment_date || new Date().toLocaleString();
+            
+            const invoiceTotal = parseFloat(data.invoice_total || data.grand_total || 0);
+            const amountPaidNow = parseFloat(data.amount_paid_now || data.amount_paid || 0);
+            const totalPaid = parseFloat(data.total_paid || data.new_paid_total || amountPaidNow);
+            const remainingBalance = parseFloat(data.remaining_balance !== undefined ? data.remaining_balance : (data.credit_balance || Math.max(0, invoiceTotal - totalPaid)));
+            const isSettled = (remainingBalance <= 0.009);
+            const previousPaid = Math.max(0, totalPaid - amountPaidNow);
+
+            let buffer = '';
+
+            // 1. Initialize
+            buffer += ESCPOS.INIT;
+
+            // 2. Darkness & Font
+            if (opts.thermalDensity >= 120 || opts.hardwareFont === 'font_a_bold') {
+                buffer += ESCPOS.DOUBLE_STRIKE_ON;
+            } else {
+                buffer += ESCPOS.DOUBLE_STRIKE_OFF;
+            }
+
+            if (opts.hardwareFont === 'font_b') {
+                buffer += ESCPOS.FONT_B;
+            } else {
+                buffer += ESCPOS.FONT_A;
+            }
+
+            // 3. Cash Drawer Kick
+            if (opts.autoCashDrawer) {
+                buffer += ESCPOS.DRAWER_KICK;
+            }
+
+            // 4. Header (Centered)
+            buffer += ESCPOS.ALIGN_CENTER;
+            buffer += ESCPOS.SIZE_DOUBLE;
+            buffer += (storeName || 'SAM & INRI CONSTRUCTION SUPPLY').toUpperCase() + '\n';
+            buffer += ESCPOS.SIZE_NORMAL;
+            if (storeAddress) {
+                buffer += storeAddress + '\n';
+            }
+            buffer += 'Tel: ' + (storePhone || '09612735733') + '\n';
+            buffer += ESCPOS.BOLD_ON;
+            buffer += 'COLLECTION RECEIPT\n(PAYMENT SETTLEMENT)\n';
+            buffer += ESCPOS.BOLD_OFF;
+            buffer += this.dividerLine('=', totalCols);
+
+            // 5. Metadata Table (Left-aligned)
+            buffer += ESCPOS.ALIGN_LEFT;
+            buffer += this.twoColumnLine('P.O. Receipt No:', '', totalCols);
+            buffer += this.twoColumnLine('  ' + paymentId, '', totalCols);
+            if (cashierName) {
+                buffer += this.twoColumnLine('CASHIER   :', cashierName, totalCols);
+            }
+            buffer += this.twoColumnLine('CUSTOMER  :', customerName, totalCols);
+            buffer += this.twoColumnLine('PAY METH  :', paymentMethod, totalCols);
+            if (creditRef) {
+                buffer += this.twoColumnLine('CREDIT REF:', creditRef, totalCols);
+            }
+            if (paymentRef) {
+                buffer += this.twoColumnLine('REF NO    :', paymentRef, totalCols);
+            }
+            buffer += this.twoColumnLine('STATUS    :', (isSettled ? 'FULLY SETTLED' : 'PARTIAL ON-CREDIT'), totalCols);
+            buffer += this.twoColumnLine('DATE      :', paymentDate, totalCols);
+            buffer += this.dividerLine('-', totalCols);
+
+            // 6. Section Header
+            buffer += ESCPOS.ALIGN_CENTER;
+            buffer += 'PAYMENT BREAKDOWN\n';
+            buffer += ESCPOS.ALIGN_LEFT;
+            buffer += this.dividerLine('-', totalCols);
+
+            // 7. Financial Breakdown
+            buffer += this.twoColumnLine('Original Total  :', 'PHP ' + POVoucherRenderer.formatMoney(invoiceTotal), totalCols);
+            buffer += this.twoColumnLine('Previously Paid :', 'PHP ' + POVoucherRenderer.formatMoney(previousPaid), totalCols);
+            buffer += ESCPOS.BOLD_ON;
+            buffer += this.twoColumnLine('AMOUNT PAID NOW :', 'PHP ' + POVoucherRenderer.formatMoney(amountPaidNow), totalCols);
+            buffer += ESCPOS.BOLD_OFF;
+            buffer += this.twoColumnLine('Total to Date   :', 'PHP ' + POVoucherRenderer.formatMoney(totalPaid), totalCols);
+            buffer += this.dividerLine('-', totalCols);
+            buffer += ESCPOS.BOLD_ON;
+            buffer += this.twoColumnLine('REMAINING BAL   :', 'PHP ' + POVoucherRenderer.formatMoney(remainingBalance), totalCols);
+            buffer += ESCPOS.BOLD_OFF;
+            if (!isSettled && data.due_date) {
+                buffer += this.twoColumnLine('TERMS DUE DATE  :', data.due_date + (data.payment_term_days ? ' (' + data.payment_term_days + 'd)' : ''), totalCols);
+            }
+            buffer += this.dividerLine('=', totalCols);
+
+            // 8. Footer
+            buffer += ESCPOS.ALIGN_CENTER;
+            buffer += ESCPOS.BOLD_ON;
+            buffer += '*** SALES INVOICE ***\n';
+            buffer += ESCPOS.BOLD_OFF;
+            buffer += 'THANK YOU FOR YOUR PAYMENT!\n';
+            buffer += 'eConstruction Supply POS\n';
+            buffer += this.dividerLine('=', totalCols);
+
+            // 9. Feed Lines, Buzzer & Cut
+            buffer += ESCPOS.FEED_LINES(4);
+            if (opts.buzzerBeep) buffer += ESCPOS.BUZZER;
+            if (opts.autoCutter) buffer += ESCPOS.CUT_PARTIAL;
+
+            return buffer;
+        },
+
         renderReceipt: function(data, format) {
+            if (data && (data.receipt_type === 'SETTLEMENT' || data.is_settlement === true || data.amount_paid_now !== undefined)) {
+                return this.renderThermalSettlementReceipt(data, format);
+            }
             return this.renderThermalReceipt(data, format);
         },
 
@@ -1002,14 +1353,20 @@
             const opts = Object.assign({}, s, options || {});
             const fmt = format || (opts.paperWidthMm ? String(opts.paperWidthMm) : '58');
 
+            const isSettlement = (dataOrElement && typeof dataOrElement === 'object' && (dataOrElement.receipt_type === 'SETTLEMENT' || dataOrElement.is_settlement === true || dataOrElement.amount_paid_now !== undefined));
+
             // ESC/POS Direct Hardware Stream
             if (opts.printEngine === 'escpos' && dataOrElement && typeof dataOrElement === 'object' && dataOrElement.nodeType === undefined) {
-                const escposData = this.generateESCPOSReceipt(dataOrElement, fmt, opts);
+                const escposData = isSettlement
+                    ? this.generateESCPOSSettlementReceipt(dataOrElement, fmt, opts)
+                    : this.generateESCPOSReceipt(dataOrElement, fmt, opts);
                 this.sendToESCPOSDaemon(escposData, (success) => {
                     if (!success) {
-                        const receiptHtml = this.renderThermalReceipt(dataOrElement, fmt);
+                        const receiptHtml = isSettlement
+                            ? this.renderThermalSettlementReceipt(dataOrElement, fmt)
+                            : this.renderThermalReceipt(dataOrElement, fmt);
                         const html = this.wrapThermalHtml(receiptHtml, fmt);
-                        this.executeIframePrint(html, 'Official Receipt');
+                        this.executeIframePrint(html, isSettlement ? 'Collection Receipt' : 'Official Receipt');
                     }
                 });
                 return;
@@ -1024,9 +1381,11 @@
                 const html = this.wrapThermalHtml(dataOrElement.innerHTML, fmt);
                 this.executeIframePrint(html, 'Official Receipt');
             } else if (dataOrElement && typeof dataOrElement === 'object') {
-                const receiptHtml = this.renderThermalReceipt(dataOrElement, fmt);
+                const receiptHtml = isSettlement
+                    ? this.renderThermalSettlementReceipt(dataOrElement, fmt)
+                    : this.renderThermalReceipt(dataOrElement, fmt);
                 const html = this.wrapThermalHtml(receiptHtml, fmt);
-                this.executeIframePrint(html, 'Official Receipt');
+                this.executeIframePrint(html, isSettlement ? 'Collection Receipt' : 'Official Receipt');
             }
         }
     };
