@@ -780,13 +780,26 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
             }
 
             $amount_tendered = isset($_POST['amount_tendered']) ? floatval($_POST['amount_tendered']) : 0.00;
+            $base_grand_total = $grand_total;
+            $credit_markup_type = isset($_POST['credit_markup_type']) ? trim($_POST['credit_markup_type']) : 'percent';
+            $credit_markup_rate = isset($_POST['credit_markup_rate']) ? floatval($_POST['credit_markup_rate']) : 0.0;
+            $credit_markup_amount = 0.0;
 
             if ($payment_method_raw === 'Check / Terms') {
+                if ($credit_markup_rate > 0 && $base_grand_total > 0) {
+                    if ($credit_markup_type === 'fixed') {
+                        $credit_markup_amount = round($credit_markup_rate, 2);
+                    } else {
+                        $credit_markup_amount = round($base_grand_total * ($credit_markup_rate / 100), 2);
+                    }
+                }
+                $grand_total = $base_grand_total + $credit_markup_amount;
                 $amount_paid = min($grand_total, max(0.0, $amount_tendered));
                 $credit_balance = max(0.0, round($grand_total - $amount_paid, 2));
                 $payment_status = ($credit_balance <= 0.009) ? 'Paid' : 'On Credit';
                 $change_amount = ($credit_balance <= 0.009) ? max(0.0, $amount_tendered - $grand_total) : 0.00;
             } else {
+                $grand_total = $base_grand_total;
                 if (stripos($payment_method_raw, 'Cash') !== false && $grand_total > 0 && $amount_tendered < $grand_total) {
                     $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
                 } else {
@@ -809,7 +822,11 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                 }
                 if ($payment_method_raw === 'Check / Terms') {
                     $tx_info .= ' | Credit Ref #: ' . $credit_reference_no;
-                    $tx_info .= ' | Total: ₱' . number_format($grand_total, 2) . ' | Upfront Paid: ₱' . number_format($amount_paid, 2) . ' | Balance Due: ₱' . number_format($credit_balance, 2);
+                    if ($credit_markup_amount > 0) {
+                        $markup_label = ($credit_markup_type === 'fixed') ? '₱' . number_format($credit_markup_rate, 2) : number_format($credit_markup_rate, 2) . '%';
+                        $tx_info .= ' | Base Total: ₱' . number_format($base_grand_total, 2) . ' | Credit Mark Up: +₱' . number_format($credit_markup_amount, 2) . ' (' . $markup_label . ')';
+                    }
+                    $tx_info .= ' | Total Payable: ₱' . number_format($grand_total, 2) . ' | Upfront Paid: ₱' . number_format($amount_paid, 2) . ' | Balance Due: ₱' . number_format($credit_balance, 2);
                     if (!empty($due_date_str)) {
                         $tx_info .= ' | Due Date: ' . $due_date_str . ' | Terms: ' . $payment_term_days . ' Days';
                     }
@@ -975,6 +992,10 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         'total_discount_savings' => $computed_discount_total,
                         'subtotal' => ($computed_subtotal - $computed_discount_total),
                         'delivery_cost' => $delivery_cost,
+                        'base_grand_total' => $base_grand_total,
+                        'credit_markup_type' => $credit_markup_type,
+                        'credit_markup_rate' => $credit_markup_rate,
+                        'credit_markup_amount' => $credit_markup_amount,
                         'grand_total' => $grand_total,
                         'amount_paid' => $amount_paid,
                         'credit_balance' => $credit_balance,
@@ -1158,16 +1179,29 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
             } else {
                 $subtotal = $net_subtotal;
                 $net_payable = ($subtotal + $delivery_cost) - $total_return_credits;
-                $grand_total = max(0, $net_payable);
+                $base_grand_total = max(0, $net_payable);
                 $refund_due = ($net_payable < 0) ? abs($net_payable) : 0.00;
+
+                $credit_markup_type = isset($_POST['credit_markup_type']) ? trim($_POST['credit_markup_type']) : 'percent';
+                $credit_markup_rate = isset($_POST['credit_markup_rate']) ? floatval($_POST['credit_markup_rate']) : 0.0;
+                $credit_markup_amount = 0.0;
 
                 // Credit terms and upfront payment calculation
                 if ($payment_method_raw === 'Check / Terms') {
+                    if ($credit_markup_rate > 0 && $base_grand_total > 0) {
+                        if ($credit_markup_type === 'fixed') {
+                            $credit_markup_amount = round($credit_markup_rate, 2);
+                        } else {
+                            $credit_markup_amount = round($base_grand_total * ($credit_markup_rate / 100), 2);
+                        }
+                    }
+                    $grand_total = $base_grand_total + $credit_markup_amount;
                     $amount_paid = min($grand_total, max(0.0, $amount_tendered));
                     $credit_balance = max(0.0, round($grand_total - $amount_paid, 2));
                     $payment_status = ($credit_balance <= 0.009) ? 'Paid' : 'On Credit';
                     $change_amount = ($credit_balance <= 0.009) ? max(0.0, $amount_tendered - $grand_total) : 0.00;
                 } else {
+                    $grand_total = $base_grand_total;
                     if (stripos($payment_method_raw, 'Cash') !== false && $grand_total > 0 && $amount_tendered < $grand_total) {
                         $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
                     } else {
@@ -1191,7 +1225,11 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     }
                     if ($payment_method_raw === 'Check / Terms') {
                         $tx_info .= ' | Credit Ref #: ' . $credit_reference_no;
-                        $tx_info .= ' | Total: ₱' . number_format($grand_total, 2) . ' | Upfront Paid: ₱' . number_format($amount_paid, 2) . ' | Balance Due: ₱' . number_format($credit_balance, 2);
+                        if ($credit_markup_amount > 0) {
+                            $markup_label = ($credit_markup_type === 'fixed') ? '₱' . number_format($credit_markup_rate, 2) : number_format($credit_markup_rate, 2) . '%';
+                            $tx_info .= ' | Base Total: ₱' . number_format($base_grand_total, 2) . ' | Credit Mark Up: +₱' . number_format($credit_markup_amount, 2) . ' (' . $markup_label . ')';
+                        }
+                        $tx_info .= ' | Total Payable: ₱' . number_format($grand_total, 2) . ' | Upfront Paid: ₱' . number_format($amount_paid, 2) . ' | Balance Due: ₱' . number_format($credit_balance, 2);
                         if (!empty($due_date_str)) {
                             $tx_info .= ' | Due Date: ' . $due_date_str . ' | Terms: ' . $payment_term_days . ' Days';
                         }
@@ -1569,6 +1607,10 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     'refund_due' => $refund_due,
                     'subtotal' => $subtotal,
                     'delivery_cost' => $delivery_cost,
+                    'base_grand_total' => $base_grand_total,
+                    'credit_markup_type' => $credit_markup_type,
+                    'credit_markup_rate' => $credit_markup_rate,
+                    'credit_markup_amount' => $credit_markup_amount,
                     'grand_total' => $grand_total,
                     'amount_paid' => $amount_paid,
                     'credit_balance' => $credit_balance,
@@ -3186,6 +3228,54 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </div>
                             <input type="hidden" name="payment_term_days" id="posPaymentTermDays" value="15">
 
+                            <!-- Credit Mark Up / Financing Surcharge Section -->
+                            <div style="margin-bottom: 10px; border-top: 1px dashed #fde68a; padding-top: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <label style="font-size: 12.5px; font-weight: 700; color: #92400e; margin: 0;">
+                                        <i class="fa fa-percent"></i> Credit Mark Up / Surcharge:
+                                    </label>
+                                    <!-- Mode Switcher: % Percentage vs ₱ Fixed Amount -->
+                                    <div class="btn-group btn-group-xs" role="group" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                        <button type="button" class="btn btn-default btn-xs active" id="creditMarkupModePct" onclick="setCreditMarkupMode('percent')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #d97706; color: #ffffff; border-color: #b45309;">% Percent</button>
+                                        <button type="button" class="btn btn-default btn-xs" id="creditMarkupModeFixed" onclick="setCreditMarkupMode('fixed')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">₱ Fixed</button>
+                                    </div>
+                                </div>
+
+                                <!-- Quick Preset Buttons (0%, 3%, 5%, 8%, 10%) -->
+                                <div id="creditMarkupPctPresets" class="btn-group btn-group-justified" style="margin-bottom: 6px;">
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn active" id="markupPreset0" onclick="setCreditMarkupPreset(0)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #d97706; color: #fff; border-color: #b45309;">0%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset3" onclick="setCreditMarkupPreset(3)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">3%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset5" onclick="setCreditMarkupPreset(5)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">5%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset8" onclick="setCreditMarkupPreset(8)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">8%</button>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset10" onclick="setCreditMarkupPreset(10)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">10%</button>
+                                    </div>
+                                </div>
+
+                                <!-- Custom Markup Input Group -->
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-addon" id="creditMarkupAddon" style="background: #fef3c7; color: #92400e; font-weight: 800; font-size: 12px; border-color: #fde68a;">
+                                        <i class="fa fa-percent"></i> Rate (%)
+                                    </span>
+                                    <input type="number" step="0.01" min="0" id="posCreditMarkupInput" name="credit_markup_rate" class="form-control input-sm" placeholder="0.00" value="0.00" oninput="onCreditMarkupInputChange()" style="font-weight: 800; color: #92400e; border-color: #fde68a; height: 32px; font-size: 13px;">
+                                    <span class="input-group-addon" id="creditMarkupCalculatedBadge" style="background: #fffbeb; color: #94a3b8; font-weight: 700; font-size: 11.5px; border-color: #fde68a;">
+                                        +₱0.00 Added
+                                    </span>
+                                </div>
+
+                                <!-- Hidden values for backend submission -->
+                                <input type="hidden" name="credit_markup_type" id="posCreditMarkupType" value="percent">
+                                <input type="hidden" name="credit_markup_amount" id="posCreditMarkupAmount" value="0.00">
+                            </div>
+
                             <!-- Upfront Downpayment Presets (0%, 25%, 50%, 100%) -->
                             <div style="margin-bottom: 10px; border-top: 1px dashed #fde68a; padding-top: 8px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -3217,8 +3307,16 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     <strong id="posCreditRefDisplay"><?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?></strong>
                                     <input type="hidden" name="credit_reference_no" id="posCreditRefInput" value="<?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?>">
                                 </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
-                                    <span>Grand Total:</span>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #64748b;">
+                                    <span>Base Cart Total:</span>
+                                    <strong style="color: #334155;" id="posCreditBaseTotalDisplay">₱0.00</strong>
+                                </div>
+                                <div id="posCreditMarkupRow" style="display: none; justify-content: space-between; margin-bottom: 3px; color: #d97706;">
+                                    <span id="posCreditMarkupRowLabel">Credit Mark Up (+0%):</span>
+                                    <strong id="posCreditMarkupDisplay">+₱0.00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569; font-weight: 700;">
+                                    <span>Adjusted Grand Total:</span>
                                     <strong style="color: #0f172a;" id="posCreditGrandTotalDisplay">₱0.00</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #059669;">
@@ -4401,6 +4499,14 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                                 <span style="font-weight: 700;">-₱<?php echo number_format($pos_success_receipt['total_return_credits'], 2); ?></span>
                             </div>
                             <?php endif; ?>
+                            <?php if (!empty($pos_success_receipt['credit_markup_amount']) && $pos_success_receipt['credit_markup_amount'] > 0): 
+                                $m_lbl = ($pos_success_receipt['credit_markup_type'] === 'fixed') ? 'Fixed' : number_format($pos_success_receipt['credit_markup_rate'], 2) . '%';
+                            ?>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #d97706;">
+                                <span><i class="fa fa-percent"></i> Credit Surcharge (<?php echo $m_lbl; ?>):</span>
+                                <span style="font-weight: 700;">+₱<?php echo number_format($pos_success_receipt['credit_markup_amount'], 2); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #0f172a; border-top: 2px dashed #cbd5e1; padding-top: 8px; margin-top: 6px;">
                                 <span>TOTAL INVOICE:</span>
                                 <span style="color: #0f172a; font-size: 16px;">₱<?php echo number_format($pos_success_receipt['grand_total'], 2); ?></span>
@@ -4548,6 +4654,14 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
                         <tr>
                             <td style="text-align: left; padding: 1px 0;">Return Credit:</td>
                             <td style="text-align: right; padding: 1px 0; white-space: nowrap;">-<?php echo number_format($pos_success_receipt['total_return_credits'], 2); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if (!empty($pos_success_receipt['credit_markup_amount']) && $pos_success_receipt['credit_markup_amount'] > 0): 
+                            $m_lbl = ($pos_success_receipt['credit_markup_type'] === 'fixed') ? 'Fixed' : number_format($pos_success_receipt['credit_markup_rate'], 2) . '%';
+                        ?>
+                        <tr>
+                            <td style="text-align: left; padding: 1px 0;">Credit Surcharge (<?php echo $m_lbl; ?>):</td>
+                            <td style="text-align: right; padding: 1px 0; white-space: nowrap;">+<?php echo number_format($pos_success_receipt['credit_markup_amount'], 2); ?></td>
                         </tr>
                         <?php endif; ?>
                         <tr style="font-weight: bold;">
@@ -5830,6 +5944,10 @@ function updatePOSCalculations() {
             proceedBtn.className = 'btn btn-primary btn-block btn-lg';
             proceedBtn.innerHTML = '<i class="fa fa-shopping-cart"></i> Proceed to Checkout';
         }
+
+        if (payMethod === 'Check / Terms') {
+            updateCreditCalculations();
+        }
     }
 }
 
@@ -6458,6 +6576,126 @@ function setCashPreset(amount) {
     updatePOSCalculations();
 }
 
+let posCreditMarkupMode = 'percent'; // 'percent' or 'fixed'
+
+function setCreditMarkupMode(mode) {
+    posCreditMarkupMode = (mode === 'fixed') ? 'fixed' : 'percent';
+    const typeInput = document.getElementById('posCreditMarkupType');
+    if (typeInput) typeInput.value = posCreditMarkupMode;
+
+    const btnPct = document.getElementById('creditMarkupModePct');
+    const btnFixed = document.getElementById('creditMarkupModeFixed');
+    const pctPresets = document.getElementById('creditMarkupPctPresets');
+    const addon = document.getElementById('creditMarkupAddon');
+    const input = document.getElementById('posCreditMarkupInput');
+
+    if (posCreditMarkupMode === 'fixed') {
+        if (btnPct) {
+            btnPct.style.background = '#ffffff';
+            btnPct.style.color = '#78350f';
+            btnPct.style.borderColor = '#cbd5e1';
+            btnPct.classList.remove('active');
+        }
+        if (btnFixed) {
+            btnFixed.style.background = '#d97706';
+            btnFixed.style.color = '#ffffff';
+            btnFixed.style.borderColor = '#b45309';
+            btnFixed.classList.add('active');
+        }
+        if (pctPresets) pctPresets.style.display = 'none';
+        if (addon) addon.innerHTML = '<i class="fa fa-tag"></i> Surcharge (₱)';
+        if (input) {
+            input.placeholder = '0.00';
+            input.step = '1.00';
+        }
+    } else {
+        if (btnPct) {
+            btnPct.style.background = '#d97706';
+            btnPct.style.color = '#ffffff';
+            btnPct.style.borderColor = '#b45309';
+            btnPct.classList.add('active');
+        }
+        if (btnFixed) {
+            btnFixed.style.background = '#ffffff';
+            btnFixed.style.color = '#78350f';
+            btnFixed.style.borderColor = '#cbd5e1';
+            btnFixed.classList.remove('active');
+        }
+        if (pctPresets) pctPresets.style.display = 'flex';
+        if (addon) addon.innerHTML = '<i class="fa fa-percent"></i> Rate (%)';
+        if (input) {
+            input.placeholder = '0.00';
+            input.step = '0.01';
+        }
+    }
+    updateCreditCalculations();
+}
+
+function setCreditMarkupPreset(val) {
+    if (posCreditMarkupMode !== 'percent') {
+        setCreditMarkupMode('percent');
+    }
+    const input = document.getElementById('posCreditMarkupInput');
+    if (input) {
+        input.value = parseFloat(val).toFixed(2);
+    }
+    highlightCreditMarkupPreset(val);
+    updateCreditCalculations();
+}
+
+function highlightCreditMarkupPreset(val) {
+    const presets = [0, 3, 5, 8, 10];
+    presets.forEach(function(p) {
+        const btn = document.getElementById('markupPreset' + p);
+        if (btn) {
+            if (posCreditMarkupMode === 'percent' && Math.abs(parseFloat(val) - p) < 0.01) {
+                btn.style.backgroundColor = '#d97706';
+                btn.style.color = '#ffffff';
+                btn.style.borderColor = '#b45309';
+                btn.classList.add('active');
+            } else {
+                btn.style.backgroundColor = '#ffffff';
+                btn.style.color = '#78350f';
+                btn.style.borderColor = '#cbd5e1';
+                btn.classList.remove('active');
+            }
+        }
+    });
+}
+
+function onCreditMarkupInputChange() {
+    const input = document.getElementById('posCreditMarkupInput');
+    const val = parseFloat(input?.value) || 0;
+    if (posCreditMarkupMode === 'percent') {
+        highlightCreditMarkupPreset(val);
+    }
+    updateCreditCalculations();
+}
+
+function getCreditMarkupAmount(baseGrandTotal) {
+    const method = document.getElementById('posPaymentMethod')?.value || '';
+    if (method !== 'Check / Terms') return 0;
+
+    const input = document.getElementById('posCreditMarkupInput');
+    const val = parseFloat(input?.value) || 0;
+    if (val <= 0 || baseGrandTotal <= 0) return 0;
+
+    if (posCreditMarkupMode === 'fixed') {
+        return Math.round(val * 100) / 100;
+    } else {
+        return Math.round(baseGrandTotal * (val / 100) * 100) / 100;
+    }
+}
+
+function getCreditAdjustedGrandTotal() {
+    const baseTotal = getPOSGrandTotal();
+    const method = document.getElementById('posPaymentMethod')?.value || '';
+    if (method === 'Check / Terms') {
+        return baseTotal + getCreditMarkupAmount(baseTotal);
+    }
+    return baseTotal;
+}
+
 function highlightUpfrontPreset(pct) {
     const presets = [0, 25, 50, 100];
     presets.forEach(function(p) {
@@ -6479,18 +6717,61 @@ function highlightUpfrontPreset(pct) {
 }
 
 function updateCreditCalculations() {
-    const grandTotal = getPOSGrandTotal();
+    const baseTotal = getPOSGrandTotal();
+    const markupAmt = getCreditMarkupAmount(baseTotal);
+    const adjustedGrandTotal = baseTotal + markupAmt;
+
+    // Update hidden credit markup amount
+    const markupAmtInput = document.getElementById('posCreditMarkupAmount');
+    if (markupAmtInput) markupAmtInput.value = markupAmt.toFixed(2);
+
+    // Update Markup Badge
+    const markupBadge = document.getElementById('creditMarkupCalculatedBadge');
+    if (markupBadge) {
+        if (markupAmt > 0) {
+            const inputVal = parseFloat(document.getElementById('posCreditMarkupInput')?.value) || 0;
+            const rateStr = (posCreditMarkupMode === 'fixed') ? 'Fixed' : `${inputVal.toFixed(2)}%`;
+            markupBadge.innerText = `+₱${markupAmt.toFixed(2)} (${rateStr})`;
+            markupBadge.style.color = '#b45309';
+            markupBadge.style.fontWeight = '700';
+        } else {
+            markupBadge.innerText = '+₱0.00 Added';
+            markupBadge.style.color = '#94a3b8';
+            markupBadge.style.fontWeight = '600';
+        }
+    }
+
+    // Update Real-time Credit Breakdown displays
+    const baseEl = document.getElementById('posCreditBaseTotalDisplay');
+    const markupRow = document.getElementById('posCreditMarkupRow');
+    const markupRowLabel = document.getElementById('posCreditMarkupRowLabel');
+    const markupDisplay = document.getElementById('posCreditMarkupDisplay');
+    const gtEl = document.getElementById('posCreditGrandTotalDisplay');
+    const upEl = document.getElementById('posCreditUpfrontDisplay');
+    const balEl = document.getElementById('posCreditBalanceDisplay');
+
+    if (baseEl) baseEl.innerText = '₱' + baseTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    if (markupRow && markupDisplay) {
+        if (markupAmt > 0) {
+            markupRow.style.display = 'flex';
+            const inputVal = parseFloat(document.getElementById('posCreditMarkupInput')?.value) || 0;
+            const rateLabel = (posCreditMarkupMode === 'fixed') ? 'Fixed' : `+${inputVal.toFixed(2)}%`;
+            if (markupRowLabel) markupRowLabel.innerText = `Credit Mark Up (${rateLabel}):`;
+            markupDisplay.innerText = '+₱' + markupAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else {
+            markupRow.style.display = 'none';
+        }
+    }
+
+    if (gtEl) gtEl.innerText = '₱' + adjustedGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const upfrontInput = document.getElementById('posAmountTendered');
     let upfrontVal = parseFloat(upfrontInput?.value) || 0;
     if (upfrontVal < 0) upfrontVal = 0;
     
-    const balance = Math.max(0, grandTotal - upfrontVal);
-    
-    const gtEl = document.getElementById('posCreditGrandTotalDisplay');
-    const upEl = document.getElementById('posCreditUpfrontDisplay');
-    const balEl = document.getElementById('posCreditBalanceDisplay');
-    
-    if (gtEl) gtEl.innerText = '₱' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const balance = Math.max(0, adjustedGrandTotal - upfrontVal);
+
     if (upEl) upEl.innerText = '₱' + upfrontVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (balEl) {
         balEl.innerText = '₱' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -6499,11 +6780,11 @@ function updateCreditCalculations() {
 
     // Dynamic preset matching highlight
     let matchedPct = null;
-    if (grandTotal > 0) {
+    if (adjustedGrandTotal > 0) {
         if (Math.abs(upfrontVal - 0) < 0.009) matchedPct = 0;
-        else if (Math.abs(upfrontVal - (grandTotal * 0.25)) < 0.02) matchedPct = 25;
-        else if (Math.abs(upfrontVal - (grandTotal * 0.50)) < 0.02) matchedPct = 50;
-        else if (Math.abs(upfrontVal - grandTotal) < 0.009) matchedPct = 100;
+        else if (Math.abs(upfrontVal - (adjustedGrandTotal * 0.25)) < 0.02) matchedPct = 25;
+        else if (Math.abs(upfrontVal - (adjustedGrandTotal * 0.50)) < 0.02) matchedPct = 50;
+        else if (Math.abs(upfrontVal - adjustedGrandTotal) < 0.009) matchedPct = 100;
     } else if (upfrontVal === 0) {
         matchedPct = 0;
     }
@@ -6539,7 +6820,7 @@ function updateCreditCalculations() {
 }
 
 function setUpfrontPreset(type) {
-    const grandTotal = getPOSGrandTotal();
+    const effectiveGrandTotal = getCreditAdjustedGrandTotal();
     let pct = 0;
     let amount = 0;
     if (type === 0 || type === '0' || type === 'zero') {
@@ -6547,13 +6828,13 @@ function setUpfrontPreset(type) {
         amount = 0;
     } else if (type === 25 || type === '25') {
         pct = 25;
-        amount = Math.round(grandTotal * 0.25 * 100) / 100;
+        amount = Math.round(effectiveGrandTotal * 0.25 * 100) / 100;
     } else if (type === 50 || type === '50') {
         pct = 50;
-        amount = Math.round(grandTotal * 0.50 * 100) / 100;
+        amount = Math.round(effectiveGrandTotal * 0.50 * 100) / 100;
     } else if (type === 100 || type === '100' || type === 'exact') {
         pct = 100;
-        amount = grandTotal;
+        amount = effectiveGrandTotal;
     }
     const upfrontInput = document.getElementById('posAmountTendered');
     if (upfrontInput) {
