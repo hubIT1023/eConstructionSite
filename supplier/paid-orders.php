@@ -140,6 +140,88 @@ $pending_ship_count = (int)$stmt_ship_pending->fetch(PDO::FETCH_ASSOC)['total_pe
 $stmt_ship_complete = $pdo->prepare("SELECT COUNT(*) as total_complete FROM tbl_payment WHERE supplier_id=? AND (payment_status = 'Paid' OR payment_status = 'Completed') AND shipping_status='Completed'");
 $stmt_ship_complete->execute(array($supplier_id));
 $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_complete'];
+
+// Load all supplier staff / cashiers for mapping
+$supplier_staff_members = [];
+try {
+    $stmt_staff = $pdo->prepare("SELECT id, full_name, email, role FROM tbl_supplier_user WHERE supplier_id = ? ORDER BY id ASC");
+    $stmt_staff->execute(array($supplier_id));
+    $supplier_staff_members = $stmt_staff->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $supplier_staff_members = [];
+}
+
+// Helper: Resolve cashier / staff member responsible for order
+if (!function_exists('resolve_paid_order_cashier')) {
+    function resolve_paid_order_cashier($row, $pdo, &$staff_members = []) {
+        $info = !empty($row['bank_transaction_info']) ? $row['bank_transaction_info'] : '';
+        
+        // 1. Explicit regex checks in bank_transaction_info
+        if (preg_match('/(?:Staff|Cashier|User|Handled by|Processed by):\s*([A-Za-z0-9\.\s\-_&]+?)(?:\||\(|\n|\r|$)/i', $info, $m)) {
+            $name = trim($m[1]);
+            if (!empty($name)) {
+                return ['name' => $name, 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => 'POS Cashier'];
+            }
+        }
+        if (preg_match('/Sent by\s+([^:]+):\s*([A-Za-z0-9\.\s\-_&]+?)(?:\)|\||\n|\r|$)/i', $info, $m)) {
+            $name = trim($m[2]);
+            if (!empty($name)) {
+                return ['name' => $name, 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => 'POS Staff'];
+            }
+        }
+        if (preg_match('/by\s+([A-Za-z0-9\.\s\-_&]+?)\s+on\s+[0-9]{4}-[0-9]{2}-[0-9]{2}/i', $info, $m)) {
+            $name = trim($m[1]);
+            if (!empty($name)) {
+                return ['name' => $name, 'type' => 'credit_settler', 'badge_class' => 'badge-cashier-settle', 'label' => 'Settled By'];
+            }
+        }
+
+        // 2. Check tbl_credit_payments for settlement cashier
+        try {
+            $stmt_cp = $pdo->prepare("SELECT cashier_name FROM tbl_credit_payments WHERE payment_id = ? AND cashier_name IS NOT NULL AND cashier_name != '' ORDER BY id DESC LIMIT 1");
+            $stmt_cp->execute(array($row['payment_id']));
+            $cp = $stmt_cp->fetch(PDO::FETCH_ASSOC);
+            if (!empty($cp['cashier_name'])) {
+                return ['name' => $cp['cashier_name'], 'type' => 'credit_settler', 'badge_class' => 'badge-cashier-settle', 'label' => 'Settled By'];
+            }
+        } catch (Exception $e) {}
+
+        // 3. Check tbl_discount_requests for cashier who requested/processed discounts
+        try {
+            $stmt_dr = $pdo->prepare("SELECT cashier_name, requester_role FROM tbl_discount_requests WHERE payment_id = ? AND cashier_name IS NOT NULL AND cashier_name != '' LIMIT 1");
+            $stmt_dr->execute(array($row['payment_id']));
+            $dr = $stmt_dr->fetch(PDO::FETCH_ASSOC);
+            if (!empty($dr['cashier_name'])) {
+                return ['name' => $dr['cashier_name'], 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => 'POS Cashier'];
+            }
+        } catch (Exception $e) {}
+
+        // 4. Match any active supplier staff names found inside transaction string
+        foreach ($staff_members as $sm) {
+            if (!empty($sm['full_name']) && stripos($info, $sm['full_name']) !== false) {
+                return ['name' => $sm['full_name'], 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => ucwords(strtolower($sm['role'] ?? 'Staff'))];
+            }
+        }
+
+        // 5. Online storefront payments (PayPal, Stripe, Bank Deposit without POS/PO prefix)
+        $is_online = in_array($row['payment_method'], ['PayPal', 'Stripe', 'Bank Deposit']) && strpos($row['payment_id'], 'POS-') === false && strpos($row['payment_id'], 'PO-') === false;
+        if ($is_online) {
+            return ['name' => 'Online Customer', 'type' => 'online', 'badge_class' => 'badge-cashier-online', 'label' => 'Self-Checkout'];
+        }
+
+        // 6. POS Order default to active counter cashier or primary manager
+        if (!empty($staff_members)) {
+            foreach ($staff_members as $sm) {
+                if (in_array(strtoupper(trim($sm['role'])), ['CASHIER', 'EMPLOYEE', 'OPERATOR'])) {
+                    return ['name' => $sm['full_name'], 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => ucwords(strtolower($sm['role']))];
+                }
+            }
+            return ['name' => $staff_members[0]['full_name'], 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => ucwords(strtolower($staff_members[0]['role'] ?? 'Staff'))];
+        }
+
+        return ['name' => 'Counter Cashier', 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => 'Cashier'];
+    }
+}
 ?>
 
 <style>
@@ -148,6 +230,50 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #1e293b;
     padding-bottom: 30px;
+}
+
+/* Cashier Badges */
+.badge-cashier-pos {
+    background: #0284c7;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+}
+.badge-cashier-settle {
+    background: #059669;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
+}
+.badge-cashier-online {
+    background: #64748b;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 1px 2px rgba(100, 116, 139, 0.2);
+}
+.cashier-subtext {
+    font-size: 10.5px;
+    color: #64748b;
+    margin-top: 3px;
+    font-weight: 600;
 }
 
 /* Page Header */
@@ -607,12 +733,13 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                     <thead>
                         <tr>
                             <th style="width: 40px; text-align: center;">#</th>
-                            <th style="width: 200px;">Customer</th>
+                            <th style="width: 190px;">Customer</th>
                             <th>Product Details</th>
-                            <th style="width: 200px;">Payment Information</th>
+                            <th style="width: 190px;">Payment Information</th>
+                            <th style="width: 135px; text-align: center;">Cashier / Staff</th>
                             <th style="width: 110px; text-align: right;">Paid Amount</th>
-                            <th style="width: 130px; text-align: center;">Payment Status</th>
-                            <th style="width: 130px; text-align: center;">Shipping Status</th>
+                            <th style="width: 125px; text-align: center;">Payment Status</th>
+                            <th style="width: 125px; text-align: center;">Shipping Status</th>
                             <th style="width: 60px; text-align: center;">Action</th>
                         </tr>
                     </thead>
@@ -624,6 +751,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                         $result = $statement->fetchAll(PDO::FETCH_ASSOC);							
                         foreach ($result as $row) {
                             $i++;
+                            $cashier_info = resolve_paid_order_cashier($row, $pdo, $supplier_staff_members);
                             ?>
                             <tr class="<?php if($row['payment_status']=='Pending' || $row['payment_status']=='Awaiting for Payment'){echo 'bg-r';}else{echo 'bg-g';} ?>">
                                 <!-- 1. Index -->
@@ -862,6 +990,9 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                     <?php endif; ?>
                                                                     <span style="margin-left: 6px; font-weight: 600;">Method: <?php echo htmlspecialchars($row['payment_method'] ?? 'Purchase Order (PO)'); ?></span>
                                                                 </div>
+                                                                <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">
+                                                                    <i class="fa fa-user" style="width: 14px; color: #0284c7;"></i> <strong>Cashier:</strong> <?php echo htmlspecialchars($cashier_info['name']); ?>
+                                                                </div>
                                                                 <?php if (!empty($s_data['supplier_phone'])): ?>
                                                                     <div style="font-size: 11.5px; color: #64748b;"><i class="fa fa-phone" style="width: 14px;"></i> Tel: <?php echo htmlspecialchars($s_data['supplier_phone']); ?></div>
                                                                 <?php endif; ?>
@@ -963,6 +1094,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                             <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt; margin-bottom: 2px;">
                                                                 <tr><td style="width: 28%; font-weight: bold;">PO NO   :</td><td style="font-weight: bold;"><?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></td></tr>
                                                                 <tr><td style="font-weight: bold;">CUSTOMER:</td><td><?php echo htmlspecialchars($row['customer_name'] ?? 'Walk-in Customer'); ?></td></tr>
+                                                                <tr><td style="font-weight: bold;">CASHIER :</td><td><?php echo htmlspecialchars($cashier_info['name']); ?></td></tr>
                                                                 <tr><td style="font-weight: bold;">STATUS  :</td><td style="font-weight: bold;">PAID</td></tr>
                                                                 <tr><td style="font-weight: bold;">DATE    :</td><td><?php echo date('Y-m-d H:i:s', strtotime($row['payment_date'])); ?></td></tr>
                                                             </table>
@@ -1037,12 +1169,23 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                     </div>
                                 </td>
 
-                                <!-- 5. Paid Amount -->
+                                <!-- 5. Cashier / Staff -->
+                                <td style="text-align: center; vertical-align: top;">
+                                    <span class="badge <?php echo $cashier_info['badge_class']; ?>">
+                                        <i class="fa <?php echo ($cashier_info['type'] === 'online') ? 'fa-globe' : (($cashier_info['type'] === 'credit_settler') ? 'fa-id-badge' : 'fa-user'); ?>"></i>
+                                        <?php echo htmlspecialchars($cashier_info['name']); ?>
+                                    </span>
+                                    <div class="cashier-subtext">
+                                        <?php echo htmlspecialchars($cashier_info['label']); ?>
+                                    </div>
+                                </td>
+
+                                <!-- 6. Paid Amount -->
                                 <td style="text-align: right; vertical-align: top; font-weight: bold; font-size: 13.5px; color: #059669;">
                                     &#8369;<?php echo number_format(floatval($row['paid_amount']), 2); ?>
                                 </td>
 
-                                <!-- 6. Payment Status & Official Receipt Modal -->
+                                <!-- 7. Payment Status & Official Receipt Modal -->
                                 <td style="text-align: center; vertical-align: top;">
                                     <span class="badge-status-paid"><i class="fa fa-check-circle"></i> <?php echo htmlspecialchars($row['payment_status']); ?></span>
                                     <br>
@@ -1148,6 +1291,9 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                  <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">
                                                                      <span class="label" style="background: #059669; font-size: 10.5px; padding: 3px 7px; border-radius: 3px;"><i class="fa fa-credit-card"></i> <?php echo htmlspecialchars($row['payment_method'] ?? 'Cash'); ?></span>
                                                                      <span style="margin-left: 6px; font-weight: 600;">Status: Paid</span>
+                                                                 </div>
+                                                                 <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">
+                                                                     <i class="fa fa-user" style="width: 14px; color: #059669;"></i> <strong>Cashier / Staff:</strong> <?php echo htmlspecialchars($cashier_info['name']); ?>
                                                                  </div>
                                                                  <?php if (!empty($sup_data['supplier_phone'])): ?>
                                                                      <div style="font-size: 11.5px; color: #64748b;"><i class="fa fa-phone" style="width: 14px;"></i> Tel: <?php echo htmlspecialchars($sup_data['supplier_phone']); ?></div>
@@ -1278,6 +1424,7 @@ $complete_ship_count = (int)$stmt_ship_complete->fetch(PDO::FETCH_ASSOC)['total_
                                                                  <tr><td colspan="2" style="font-weight: bold; padding: 1px 0; white-space: nowrap;">P.O. Receipt No:</td></tr>
                                                                  <tr><td colspan="2" style="padding: 0 0 2px 8px; font-weight: bold;">&nbsp;&nbsp;<?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">CUSTOMER:</td><td><?php echo htmlspecialchars($row['customer_name'] ?? 'Walk-in Customer'); ?></td></tr>
+                                                                 <tr><td style="font-weight: bold;">CASHIER :</td><td><?php echo htmlspecialchars($cashier_info['name']); ?></td></tr>
                                                                  <tr><td style="font-weight: bold;">PAY METH:</td><td><?php echo htmlspecialchars($row['payment_method'] ?? 'Cash'); ?> <?php echo $is_credit_row ? '(ON CREDIT)' : '(PAID)'; ?></td></tr>
                                                                  <?php if (!empty($credit_ref_row)): ?>
                                                                  <tr><td style="font-weight: bold;">CREDIT REF:</td><td style="font-weight: bold;"><?php echo htmlspecialchars($credit_ref_row); ?></td></tr>
