@@ -429,6 +429,11 @@ if (!function_exists('resolve_paid_order_cashier')) {
 #example1 tbody tr:hover td {
     background-color: #f8fafc;
 }
+#example1 thead th:nth-child(3),
+#example1 tbody td:nth-child(3) {
+    max-width: 280px;
+    word-break: break-word;
+}
 
 /* DataTables UI Controls Styling */
 .dataTables_wrapper .dataTables_length select {
@@ -734,7 +739,7 @@ if (!function_exists('resolve_paid_order_cashier')) {
                         <tr>
                             <th style="width: 40px; text-align: center;">#</th>
                             <th style="width: 190px;">Customer</th>
-                            <th>Product Details</th>
+                            <th style="width: 250px;">Product Details</th>
                             <th style="width: 190px;">Payment Information</th>
                             <th style="width: 135px; text-align: center;">Cashier / Staff</th>
                             <th style="width: 110px; text-align: right;">Paid Amount</th>
