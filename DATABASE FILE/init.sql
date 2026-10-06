@@ -141,17 +141,21 @@ CREATE TABLE tbl_payment (
     customer_email varchar(255) NOT NULL,
     payment_date varchar(50) NOT NULL,
     txnid varchar(255) NOT NULL,
-    paid_amount INTEGER NOT NULL,
+    paid_amount numeric(10,2) NOT NULL DEFAULT 0.00,
     card_number varchar(50) NOT NULL,
     card_cvv varchar(10) NOT NULL,
     card_month varchar(10) NOT NULL,
     card_year varchar(10) NOT NULL,
     bank_transaction_info text NOT NULL,
-    payment_method varchar(20) NOT NULL,
-    payment_status varchar(25) NOT NULL,
-    shipping_status varchar(20) NOT NULL,
-    payment_id varchar(255) NOT NULL
+    payment_method varchar(100) NOT NULL,
+    payment_status varchar(50) NOT NULL,
+    shipping_status varchar(50) NOT NULL,
+    payment_id varchar(255) NOT NULL,
+    supplier_id INTEGER DEFAULT 1,
+    cashier_id INTEGER,
+    cashier_name varchar(255) DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS idx_payment_cashier_id ON tbl_payment (supplier_id, cashier_id);
 
 DROP TABLE IF EXISTS tbl_photo CASCADE;
 CREATE TABLE tbl_photo (

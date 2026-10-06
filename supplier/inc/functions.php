@@ -379,6 +379,9 @@ if (!function_exists('ensure_supplier_user_schema')) {
             $pdo->exec("ALTER TABLE tbl_payment ALTER COLUMN payment_method TYPE VARCHAR(100)");
             $pdo->exec("ALTER TABLE tbl_payment ALTER COLUMN payment_status TYPE VARCHAR(50)");
             $pdo->exec("ALTER TABLE tbl_payment ALTER COLUMN shipping_status TYPE VARCHAR(50)");
+            $pdo->exec("ALTER TABLE tbl_payment ADD COLUMN IF NOT EXISTS cashier_id INTEGER REFERENCES tbl_supplier_user(id) ON DELETE SET NULL");
+            $pdo->exec("ALTER TABLE tbl_payment ADD COLUMN IF NOT EXISTS cashier_name VARCHAR(255) DEFAULT ''");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_payment_cashier_id ON tbl_payment (supplier_id, cashier_id)");
 
             // Ensure tbl_product pricing and inventory columns
             $pdo->exec("ALTER TABLE tbl_product ADD COLUMN IF NOT EXISTS p_new_price VARCHAR(100)");

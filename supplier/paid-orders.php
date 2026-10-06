@@ -154,6 +154,22 @@ try {
 // Helper: Resolve cashier / staff member responsible for order
 if (!function_exists('resolve_paid_order_cashier')) {
     function resolve_paid_order_cashier($row, $pdo, &$staff_members = []) {
+        // 0. Dedicated cashier_name from tbl_payment
+        if (!empty($row['cashier_name'])) {
+            $c_name = trim($row['cashier_name']);
+            if (strcasecmp($c_name, 'Online Customer') === 0) {
+                return ['name' => 'Online Customer', 'type' => 'online', 'badge_class' => 'badge-cashier-online', 'label' => 'Self-Checkout'];
+            }
+            $c_label = 'POS Cashier';
+            foreach ($staff_members as $sm) {
+                if ((!empty($row['cashier_id']) && $sm['id'] == $row['cashier_id']) || (!empty($sm['full_name']) && strcasecmp($sm['full_name'], $c_name) === 0)) {
+                    $c_label = ucwords(strtolower($sm['role'] ?? 'Cashier'));
+                    break;
+                }
+            }
+            return ['name' => $c_name, 'type' => 'pos_cashier', 'badge_class' => 'badge-cashier-pos', 'label' => $c_label];
+        }
+
         $info = !empty($row['bank_transaction_info']) ? $row['bank_transaction_info'] : '';
         
         // 1. Explicit regex checks in bank_transaction_info

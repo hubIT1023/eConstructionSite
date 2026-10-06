@@ -167,8 +167,9 @@ if ($action === 'hold_order') {
                 customer_id, customer_name, customer_email, payment_date,
                 txnid, paid_amount, card_number, card_cvv, card_month, card_year,
                 bank_transaction_info, payment_method, payment_status,
-                shipping_status, payment_id, supplier_id
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
+                shipping_status, payment_id, supplier_id,
+                cashier_id, cashier_name
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
         ");
         $stmt_pay->execute([
             $final_cust_id,
@@ -183,7 +184,9 @@ if ($action === 'hold_order') {
             'Awaiting for Payment',
             $is_delivery ? 'Pending' : 'Completed',
             $po_code,
-            $supplier_id
+            $supplier_id,
+            $current_user_id ?: null,
+            $current_user_name
         ]);
         $inserted_payment_id = $stmt_pay->fetchColumn();
 

@@ -886,6 +886,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     }
 
                     $saved_card_number = ($payment_method_raw === 'Check / Terms') ? $credit_reference_no : $payment_reference;
+                    $current_cashier_id = isset($_SESSION['supplier_user']['id']) ? (int)$_SESSION['supplier_user']['id'] : null;
+                    $current_cashier_name = isset($_SESSION['supplier_user']['full_name']) ? trim($_SESSION['supplier_user']['full_name']) : 'Cashier';
 
                     $stmt_up_pay = $pdo->prepare("
                         UPDATE tbl_payment SET
@@ -895,6 +897,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                             payment_date = ?,
                             bank_transaction_info = ?,
                             paid_amount = ?,
+                            cashier_id = ?,
+                            cashier_name = ?,
                             shipping_status = CASE WHEN shipping_status = 'Pending' THEN 'Completed' ELSE shipping_status END
                         WHERE (payment_id = ? OR txnid = ?) AND supplier_id = ?
                     ");
@@ -905,6 +909,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         $payment_date,
                         $tx_info,
                         number_format($amount_paid, 2, '.', ''),
+                        $current_cashier_id,
+                        $current_cashier_name,
                         $paying_po_id,
                         $paying_po_id,
                         $supplier_id
@@ -1203,6 +1209,8 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     }
 
                     $saved_card_number = ($payment_method_raw === 'Check / Terms') ? $credit_reference_no : $payment_reference;
+                    $current_cashier_id = isset($_SESSION['supplier_user']['id']) ? (int)$_SESSION['supplier_user']['id'] : null;
+                    $current_cashier_name = !empty($_SESSION['supplier_user']['full_name']) ? trim($_SESSION['supplier_user']['full_name']) : (!empty($_SESSION['supplier_user']['username']) ? trim($_SESSION['supplier_user']['username']) : 'Cashier');
 
                     // Insert into tbl_payment
                     $statement_p = $pdo->prepare("INSERT INTO tbl_payment (
@@ -1221,8 +1229,10 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         payment_status,
                         shipping_status,
                         payment_id,
-                        supplier_id
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id");
+                        supplier_id,
+                        cashier_id,
+                        cashier_name
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id");
 
                     $statement_p->execute(array(
                         $customer_id,
@@ -1240,7 +1250,9 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         $payment_status,
                         ($delivery_type === 'delivery') ? 'Pending' : 'Completed',
                         $payment_id,
-                        $supplier_id
+                        $supplier_id,
+                        $current_cashier_id,
+                        $current_cashier_name
                     ));
 
                     // If sale on credit with upfront deposit, log into tbl_credit_payments

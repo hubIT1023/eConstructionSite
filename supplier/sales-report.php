@@ -281,6 +281,11 @@ try {
 // Helper: Resolve cashier / staff member responsible for order
 if (!function_exists('resolve_order_cashier')) {
     function resolve_order_cashier($ord, &$staff_members = []) {
+        // 0. Dedicated cashier_name from tbl_payment
+        if (!empty($ord['cashier_name'])) {
+            return trim($ord['cashier_name']);
+        }
+
         $info = !empty($ord['bank_transaction_info']) ? $ord['bank_transaction_info'] : '';
         
         // 1. Check "Sent by <Role>: <Staff Name>"
