@@ -6193,8 +6193,10 @@ function submitDiscountRequest() {
     formData.append('requested_discount_amount', amt);
     formData.append('cashier_remarks', remarks);
 
-    fetch('pos-discount-api.php?action=request_discount', {
+    fetch('pos-discount-api.php?action=request_discount&_t=' + Date.now(), {
         method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: formData
     })
     .then(res => res.json())
@@ -6234,8 +6236,10 @@ function cancelItemDiscount(itemId) {
     if (item.discount_request_id && (item.discount_status === 'PENDING' || item.discount_status === 'ESCALATED')) {
         const formData = new FormData();
         formData.append('request_id', item.discount_request_id);
-        fetch('pos-discount-api.php?action=cancel_request', {
+        fetch('pos-discount-api.php?action=cancel_request&_t=' + Date.now(), {
             method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
             body: formData
         }).catch(err => console.error('Cancel request error:', err));
     }
@@ -6256,7 +6260,10 @@ function pollDiscountStatuses() {
         .map(i => i.discount_request_id);
 
     if (pendingReqIds.length > 0) {
-        fetch(`pos-discount-api.php?action=poll_status&request_ids=${encodeURIComponent(pendingReqIds.join(','))}`)
+        fetch(`pos-discount-api.php?action=poll_status&request_ids=${encodeURIComponent(pendingReqIds.join(','))}&_t=${Date.now()}`, {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success' && data.requests) {
@@ -6292,7 +6299,10 @@ function pollDiscountStatuses() {
 }
 
 function pollPendingQueueBadge() {
-    fetch('pos-discount-api.php?action=get_pending_requests')
+    fetch('pos-discount-api.php?action=get_pending_requests&_t=' + Date.now(), {
+        credentials: 'same-origin',
+        cache: 'no-store'
+    })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
@@ -6328,7 +6338,10 @@ function refreshApprovalQueue() {
         </div>
     `;
 
-    fetch('pos-discount-api.php?action=get_pending_requests')
+    fetch('pos-discount-api.php?action=get_pending_requests&_t=' + Date.now(), {
+        credentials: 'same-origin',
+        cache: 'no-store'
+    })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
@@ -6435,8 +6448,10 @@ function approveQueueDiscount(requestId) {
     formData.append('request_id', requestId);
     formData.append('approver_remarks', remarks.trim());
 
-    fetch('pos-discount-api.php?action=approve_discount', {
+    fetch('pos-discount-api.php?action=approve_discount&_t=' + Date.now(), {
         method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: formData
     })
     .then(res => res.json())
@@ -6479,8 +6494,10 @@ function modifyQueueDiscount(requestId, origVal, currPct, currAmt) {
     formData.append('modified_discount_amount', newAmt);
     formData.append('approver_remarks', remarks.trim());
 
-    fetch('pos-discount-api.php?action=modify_discount', {
+    fetch('pos-discount-api.php?action=modify_discount&_t=' + Date.now(), {
         method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: formData
     })
     .then(res => res.json())
@@ -6509,8 +6526,10 @@ function rejectQueueDiscount(requestId) {
     formData.append('request_id', requestId);
     formData.append('approver_remarks', remarks.trim());
 
-    fetch('pos-discount-api.php?action=reject_discount', {
+    fetch('pos-discount-api.php?action=reject_discount&_t=' + Date.now(), {
         method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: formData
     })
     .then(res => res.json())
@@ -10179,12 +10198,29 @@ function submitHoldOrder(printSlip = false) {
     payload.append('delivery_cost', deliveryCost);
     payload.append('hold_note', holdNote);
 
-    fetch('pos-hold-api.php', {
+    fetch('pos-hold-api.php?_t=' + Date.now(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: payload.toString()
     })
-    .then(r => r.json())
+    .then(async r => {
+        const text = await r.text();
+        let res;
+        try {
+            res = JSON.parse(text);
+        } catch (e) {
+            throw new Error('Server returned invalid response (HTTP ' + r.status + '): ' + text.substring(0, 120));
+        }
+        if (!r.ok) {
+            throw new Error(res.message || ('HTTP error ' + r.status));
+        }
+        return res;
+    })
     .then(res => {
         if (btnSilent) btnSilent.disabled = false;
         if (btnPrint) btnPrint.disabled = false;
@@ -10255,8 +10291,28 @@ function loadHeldOrdersList() {
         </div>
     `;
 
-    fetch('pos-hold-api.php?action=list_held_orders')
-    .then(r => r.json())
+    fetch('pos-hold-api.php?action=list_held_orders&_t=' + Date.now(), {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        cache: 'no-store'
+    })
+    .then(async r => {
+        const text = await r.text();
+        let res;
+        try {
+            res = JSON.parse(text);
+        } catch (e) {
+            throw new Error('Server returned invalid response (HTTP ' + r.status + '): ' + text.substring(0, 120));
+        }
+        if (!r.ok) {
+            throw new Error(res.message || ('HTTP error ' + r.status));
+        }
+        return res;
+    })
     .then(res => {
         if (!res.success) {
             container.innerHTML = `
@@ -10370,12 +10426,29 @@ function cancelHeldOrder(poId) {
     payload.append('action', 'cancel_held_order');
     payload.append('po_id', poId);
 
-    fetch('pos-hold-api.php', {
+    fetch('pos-hold-api.php?_t=' + Date.now(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: payload.toString()
     })
-    .then(r => r.json())
+    .then(async r => {
+        const text = await r.text();
+        let res;
+        try {
+            res = JSON.parse(text);
+        } catch (e) {
+            throw new Error('Server returned invalid response (HTTP ' + r.status + '): ' + text.substring(0, 120));
+        }
+        if (!r.ok) {
+            throw new Error(res.message || ('HTTP error ' + r.status));
+        }
+        return res;
+    })
     .then(res => {
         if (!res.success) {
             alert(res.message || 'Failed to cancel held order.');
