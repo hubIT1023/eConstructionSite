@@ -3236,13 +3236,13 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     </label>
                                     <!-- Mode Switcher: % Percentage vs ₱ Fixed Amount -->
                                     <div class="btn-group btn-group-xs" role="group" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                        <button type="button" class="btn btn-default btn-xs active" id="creditMarkupModePct" onclick="setCreditMarkupMode('percent')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #d97706; color: #ffffff; border-color: #b45309;">% Percent</button>
-                                        <button type="button" class="btn btn-default btn-xs" id="creditMarkupModeFixed" onclick="setCreditMarkupMode('fixed')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">₱ Fixed</button>
+                                        <button type="button" class="btn btn-default btn-xs" id="creditMarkupModePct" onclick="setCreditMarkupMode('percent')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">% Percent</button>
+                                        <button type="button" class="btn btn-default btn-xs active" id="creditMarkupModeFixed" onclick="setCreditMarkupMode('fixed')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #d97706; color: #ffffff; border-color: #b45309;">₱ Fixed</button>
                                     </div>
                                 </div>
 
                                 <!-- Quick Preset Buttons (0%, 3%, 5%, 8%, 10%) -->
-                                <div id="creditMarkupPctPresets" class="btn-group btn-group-justified" style="margin-bottom: 6px;">
+                                <div id="creditMarkupPctPresets" class="btn-group btn-group-justified" style="margin-bottom: 6px; display: none;">
                                     <div class="btn-group" role="group">
                                         <button type="button" class="btn btn-default btn-xs credit-markup-btn active" id="markupPreset0" onclick="setCreditMarkupPreset(0)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #d97706; color: #fff; border-color: #b45309;">0%</button>
                                     </div>
@@ -3263,16 +3263,16 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <!-- Custom Markup Input Group -->
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-addon" id="creditMarkupAddon" style="background: #fef3c7; color: #92400e; font-weight: 800; font-size: 12px; border-color: #fde68a;">
-                                        <i class="fa fa-percent"></i> Rate (%)
+                                        <i class="fa fa-tag"></i> Surcharge (₱)
                                     </span>
-                                    <input type="number" step="0.01" min="0" id="posCreditMarkupInput" name="credit_markup_rate" class="form-control input-sm" placeholder="0.00" value="0.00" oninput="onCreditMarkupInputChange()" style="font-weight: 800; color: #92400e; border-color: #fde68a; height: 32px; font-size: 13px;">
+                                    <input type="number" step="1.00" min="0" id="posCreditMarkupInput" name="credit_markup_rate" class="form-control input-sm" placeholder="0.00" value="0.00" oninput="onCreditMarkupInputChange()" style="font-weight: 800; color: #92400e; border-color: #fde68a; height: 32px; font-size: 13px;">
                                     <span class="input-group-addon" id="creditMarkupCalculatedBadge" style="background: #fffbeb; color: #94a3b8; font-weight: 700; font-size: 11.5px; border-color: #fde68a;">
                                         +₱0.00 Added
                                     </span>
                                 </div>
 
                                 <!-- Hidden values for backend submission -->
-                                <input type="hidden" name="credit_markup_type" id="posCreditMarkupType" value="percent">
+                                <input type="hidden" name="credit_markup_type" id="posCreditMarkupType" value="fixed">
                                 <input type="hidden" name="credit_markup_amount" id="posCreditMarkupAmount" value="0.00">
                             </div>
 
@@ -6570,7 +6570,7 @@ function setCashPreset(amount) {
     updatePOSCalculations();
 }
 
-let posCreditMarkupMode = 'percent'; // 'percent' or 'fixed'
+let posCreditMarkupMode = 'fixed'; // 'fixed' or 'percent'
 
 function setCreditMarkupMode(mode) {
     posCreditMarkupMode = (mode === 'fixed') ? 'fixed' : 'percent';
