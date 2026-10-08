@@ -155,7 +155,7 @@ if (!function_exists('calculate_item_financials')) {
 // Helper: Calculate multi-period aggregated metrics (Sales, Cost, Profit, Margins, Orders)
 if (!function_exists('get_period_financial_metrics')) {
     function get_period_financial_metrics($pdo, $supplier_id, $start_dt, $end_dt, &$products_map) {
-        $stmt_pay = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id = ? AND payment_date >= ? AND payment_date <= ?");
+        $stmt_pay = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id = ? AND payment_date >= ? AND payment_date <= ? AND payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID') AND paid_amount > 0");
         $stmt_pay->execute(array($supplier_id, $start_dt, $end_dt));
         $orders = $stmt_pay->fetchAll(PDO::FETCH_ASSOC);
 
@@ -185,12 +185,19 @@ if (!function_exists('get_period_financial_metrics')) {
             $stmt_items->execute(array($ord['payment_id']));
             $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
 
+            $order_capital_cost = 0.0;
             foreach ($items as $it) {
                 $fin = calculate_item_financials($it['product_id'], $it['unit_price'], $it['quantity'], $products_map);
-                $total_cost += $fin['total_capital'];
-                $gross_profit += $fin['profit'];
+                $order_capital_cost += $fin['total_capital'];
                 $units_sold += $fin['qty'];
             }
+
+            // Capital-First Rule: Cash collected is applied to Capital Cost first; excess becomes Realized Profit
+            $order_capital_recovered = min($paid, $order_capital_cost);
+            $order_realized_profit = max(0.0, $paid - $order_capital_cost);
+
+            $total_cost += $order_capital_recovered;
+            $gross_profit += $order_realized_profit;
         }
 
         $refunds_amt = 0.0;
@@ -249,8 +256,8 @@ $metrics_year = get_period_financial_metrics($pdo, $supplier_id, $year_curr_star
 // -------------------------------------------------------------
 // 4. Detailed Data Query for Current Filter Period
 // -------------------------------------------------------------
-// Fetch orders matching date range for this supplier
-$stmt = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id = ? AND payment_date >= ? AND payment_date <= ? ORDER BY id DESC");
+// Fetch orders matching date range for this supplier (excluding cancelled & unpaid held orders)
+$stmt = $pdo->prepare("SELECT * FROM tbl_payment WHERE supplier_id = ? AND payment_date >= ? AND payment_date <= ? AND payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID') AND paid_amount > 0 ORDER BY id DESC");
 $stmt->execute(array($supplier_id, $start_datetime, $end_datetime));
 $sales_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -356,15 +363,15 @@ foreach ($sales_orders as $ord) {
     $ord_items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
 
     $items_subtotal = 0;
-    $order_cost = 0;
-    $order_profit = 0;
+    $order_capital_total = 0;
+    $order_profit_potential = 0;
     $processed_items = [];
 
     foreach ($ord_items as $item) {
         $fin = calculate_item_financials($item['product_id'], $item['unit_price'], $item['quantity'], $products_map);
         $items_subtotal += $fin['subtotal'];
-        $order_cost += $fin['total_capital'];
-        $order_profit += $fin['profit'];
+        $order_capital_total += $fin['total_capital'];
+        $order_profit_potential += $fin['profit'];
         $total_units_sold += $fin['qty'];
 
         $item_entry = array_merge($item, $fin);
@@ -405,19 +412,28 @@ foreach ($sales_orders as $ord) {
         $top_products_monthly[$p_name]['total_profit'] += $fin['profit'];
     }
 
-    $total_gross_cost += $order_cost;
-    $total_gross_profit += $order_profit;
+    // Capital-First Allocation Rule:
+    // Any payment received is credited towards recovering capital first.
+    // If paid amount exceeds total capital cost, the excess is recognized as realized profit.
+    $order_capital_recovered = min($paid_amt, $order_capital_total);
+    $order_realized_profit = max(0.0, $paid_amt - $order_capital_total);
+    $order_capital_at_risk = max(0.0, $order_capital_total - $paid_amt);
+
+    $total_gross_cost += $order_capital_recovered;
+    $total_gross_profit += $order_realized_profit;
 
     $delivery_fee = $paid_amt - $items_subtotal;
     if ($delivery_fee > 0) {
         $total_delivery_collected += $delivery_fee;
     }
 
-    $order_margin = $items_subtotal > 0 ? ($order_profit / $items_subtotal) * 100 : 0;
+    $order_margin = $paid_amt > 0 ? ($order_realized_profit / $paid_amt) * 100 : 0;
     $ord['items'] = $processed_items;
     $ord['items_subtotal'] = $items_subtotal;
-    $ord['order_cost'] = $order_cost;
-    $ord['order_profit'] = $order_profit;
+    $ord['order_cost'] = $order_capital_recovered;
+    $ord['order_capital_total'] = $order_capital_total;
+    $ord['order_capital_at_risk'] = $order_capital_at_risk;
+    $ord['order_profit'] = $order_realized_profit;
     $ord['order_margin'] = $order_margin;
     $ord['delivery_fee'] = max(0, $delivery_fee);
     $processed_orders[] = $ord;
@@ -432,7 +448,7 @@ foreach ($sales_orders as $ord) {
         ];
     }
     $trend_data[$p_date_key]['revenue'] += $paid_amt;
-    $trend_data[$p_date_key]['profit'] += $order_profit;
+    $trend_data[$p_date_key]['profit'] += $order_realized_profit;
     $trend_data[$p_date_key]['orders'] += 1;
 
     // Cashier performance metrics aggregation
@@ -455,7 +471,7 @@ foreach ($sales_orders as $ord) {
     $cashier_metrics[$cashier_name]['orders'] += 1;
     $cashier_metrics[$cashier_name]['units']  += count($processed_items);
     $cashier_metrics[$cashier_name]['revenue']+= $paid_amt;
-    $cashier_metrics[$cashier_name]['profit'] += $order_profit;
+    $cashier_metrics[$cashier_name]['profit'] += $order_realized_profit;
     $cashier_metrics[$cashier_name]['monthly_revenue'][$order_month_num] += $paid_amt;
     $cashier_metrics[$cashier_name]['monthly_orders'][$order_month_num]  += 1;
 
@@ -1436,10 +1452,15 @@ $cashier_avg_tickets = array_column($cashier_metrics, 'avg_ticket');
                                 </td>
                                 <td class="text-right" style="color: #475569;">
                                     &#8369;<?php echo number_format($row['order_cost'], 2); ?>
+                                    <?php if (!empty($row['order_capital_at_risk']) && $row['order_capital_at_risk'] > 0.01): ?>
+                                        <div style="font-size: 10.5px; color: #d97706; font-weight: 700;" title="Unrecovered item capital pending collection">
+                                            (&#8369;<?php echo number_format($row['order_capital_at_risk'], 2); ?> at risk)
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
-                                <td class="text-right" style="font-weight: bold; color: #10b981;">
+                                <td class="text-right" style="font-weight: bold; color: <?php echo ($row['order_profit'] > 0 ? '#10b981' : '#64748b'); ?>;">
                                     +&#8369;<?php echo number_format($row['order_profit'], 2); ?>
-                                    <br><span class="badge badge-success" style="background-color: #10b981; font-size: 10px;"><?php echo number_format($row['order_margin'], 1); ?>%</span>
+                                    <br><span class="badge" style="background-color: <?php echo ($row['order_profit'] > 0 ? '#10b981' : '#94a3b8'); ?>; font-size: 10px;"><?php echo number_format($row['order_margin'], 1); ?>%</span>
                                 </td>
                                 <td class="text-center">
                                     <?php if($row['payment_status'] == 'Paid' || $row['payment_status'] == 'Completed'): ?>

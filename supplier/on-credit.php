@@ -281,6 +281,66 @@ if (!function_exists('parse_invoice_total')) {
     }
 }
 
+// Load catalog product financial map (Capital Price & Markup)
+$products_map = [];
+try {
+    $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE supplier_id = ?");
+    $stmt_prod_map->execute(array($supplier_id));
+    while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
+        $products_map[$prow['p_id']] = $prow;
+    }
+} catch (Exception $e) {
+    try {
+        $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price FROM tbl_product WHERE supplier_id = ?");
+        $stmt_prod_map->execute(array($supplier_id));
+        while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
+            $products_map[$prow['p_id']] = $prow;
+        }
+    } catch (Exception $e2) {}
+}
+
+if (!function_exists('calculate_item_financials')) {
+    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map) {
+        $qty = (int)$quantity;
+        $u_price = (float)$unit_price;
+        $p_id = (int)$product_id;
+        $subtotal = $qty * $u_price;
+        $markup = 20.0;
+        $unit_capital = 0.0;
+
+        if ($p_id > 0 && isset($products_map[$p_id])) {
+            $p = $products_map[$p_id];
+            $m = (isset($p['p_markup']) && $p['p_markup'] !== '') ? (float)$p['p_markup'] : 20.0;
+            if ($m <= 0) $m = 20.0;
+            $markup = $m;
+
+            if (isset($p['p_capital_price']) && (float)$p['p_capital_price'] > 0) {
+                $unit_capital = (float)$p['p_capital_price'];
+            } else {
+                $unit_capital = round($u_price / (1 + ($markup / 100)), 2);
+            }
+        } else {
+            $markup = 20.0;
+            $unit_capital = round($u_price / 1.20, 2);
+        }
+
+        $total_capital = $unit_capital * $qty;
+        $profit = max(0.0, $subtotal - $total_capital);
+        $margin_percent = $subtotal > 0 ? ($profit / $subtotal) * 100 : 0.0;
+
+        return [
+            'qty' => $qty,
+            'unit_price' => $u_price,
+            'subtotal' => $subtotal,
+            'unit_capital' => $unit_capital,
+            'total_capital' => $total_capital,
+            'profit' => $profit,
+            'markup' => $markup,
+            'margin_percent' => $margin_percent
+        ];
+    }
+}
+
 // Fetch all credit accounts for statistics
 $stmt_all_credit = $pdo->prepare("
     SELECT p.*, 
@@ -288,6 +348,7 @@ $stmt_all_credit = $pdo->prepare("
     FROM tbl_payment p 
     WHERE p.supplier_id = ? 
       AND (p.payment_status = 'On Credit' OR p.payment_status = 'Partially Paid' OR p.payment_method LIKE 'Check / Terms%')
+      AND p.payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed')
     ORDER BY p.id DESC
 ");
 $stmt_all_credit->execute([$supplier_id]);
@@ -309,11 +370,34 @@ foreach ($all_credit_records as $rec) {
     $paid_so_far = floatval($rec['paid_amount']);
     $balance = max(0, $inv_total - $paid_so_far);
     $due_date = parse_order_due_date($rec['bank_transaction_info'] ?? '', $rec['payment_date'], $rec['payment_method']);
+
+    // Calculate total item capital cost for this credit order
+    $c_capital_total = 0.0;
+    try {
+        $stmt_c_items = $pdo->prepare("SELECT product_id, unit_price, quantity FROM tbl_order WHERE payment_id = ?");
+        $stmt_c_items->execute([$rec['payment_id']]);
+        $c_items = $stmt_c_items->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($c_items as $ci) {
+            $c_fin = calculate_item_financials($ci['product_id'], $ci['unit_price'], $ci['quantity'], $products_map);
+            $c_capital_total += $c_fin['total_capital'];
+        }
+    } catch (Exception $e) {}
+
+    // Capital-First Allocation:
+    $capital_recovered = min($paid_so_far, $c_capital_total);
+    $profit_realized = max(0.0, $paid_so_far - $c_capital_total);
+    $capital_remaining = max(0.0, $c_capital_total - $paid_so_far);
+    $profit_remaining = max(0.0, $inv_total - $c_capital_total - $profit_realized);
     
     $rec['computed_total'] = $inv_total;
     $rec['computed_paid'] = $paid_so_far;
     $rec['computed_balance'] = $balance;
     $rec['computed_due_date'] = $due_date;
+    $rec['capital_total'] = $c_capital_total;
+    $rec['capital_recovered'] = $capital_recovered;
+    $rec['profit_realized'] = $profit_realized;
+    $rec['capital_remaining'] = $capital_remaining;
+    $rec['profit_remaining'] = $profit_remaining;
 
     $is_overdue = ($balance > 0 && $due_date < $today_str);
     $is_due_this_week = ($balance > 0 && $due_date >= $today_str && $due_date <= $week_ahead_str);
@@ -627,6 +711,11 @@ require_once('header.php');
                         </td>
                         <td style="text-align: right; font-weight: 700; color: #059669;">
                             ₱<?php echo number_format($paid_amt, 2); ?>
+                            <?php if ($paid_amt > 0): ?>
+                                <div style="font-size: 10.5px; color: #047857; font-weight: 600;" title="Capital Recovered: ₱<?php echo number_format($row['capital_recovered'], 2); ?> | Realized Profit: +₱<?php echo number_format($row['profit_realized'], 2); ?>">
+                                    Cap: ₱<?php echo number_format($row['capital_recovered'], 2); ?> | Prof: +₱<?php echo number_format($row['profit_realized'], 2); ?>
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td style="text-align: right;">
                             <?php if ($is_settled): ?>
@@ -635,6 +724,9 @@ require_once('header.php');
                                 <strong style="font-size: 15px; font-weight: 900; color: #dc2626;">
                                     ₱<?php echo number_format($bal_amt, 2); ?>
                                 </strong>
+                                <div style="font-size: 10.5px; color: #b45309; font-weight: 600;" title="Remaining Capital at risk: ₱<?php echo number_format($row['capital_remaining'], 2); ?> | Remaining Profit: ₱<?php echo number_format($row['profit_remaining'], 2); ?>">
+                                    Cap: ₱<?php echo number_format($row['capital_remaining'], 2); ?> | Prof: ₱<?php echo number_format($row['profit_remaining'], 2); ?>
+                                </div>
                             <?php endif; ?>
                         </td>
                         <td style="text-align: center;">
