@@ -752,53 +752,14 @@ body {
 </style>
 
 <!-- ========================================================================= -->
-<!-- 1. TOP UTILITY BAR                                                        -->
-<!-- ========================================================================= -->
-<div style="background: #0f172a; color: #94a3b8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
-    <div class="container" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <div style="display: flex; gap: 16px; align-items: center;">
-            <span><i class="fa fa-phone" style="color: #f59e0b;"></i> Customer Care: <strong>(02) 8888-BUILD</strong></span>
-            <span class="hidden-xs"><i class="fa fa-shield" style="color: #10b981;"></i> 100% Genuine Certified Building Materials</span>
-        </div>
-        <div style="display: flex; gap: 16px; align-items: center;">
-            <a href="request-quote.php" style="color: #f59e0b; font-weight: 700; text-decoration: none;"><i class="fa fa-file-text-o"></i> Request Quote (RFQ)</a>
-            <a href="bulk-orders.php" style="color: #94a3b8; text-decoration: none;"><i class="fa fa-truck"></i> Bulk Freight</a>
-            <a href="supplier/login.php" style="color: #94a3b8; text-decoration: none;"><i class="fa fa-store"></i> Supplier Portal</a>
-            <?php if(isset($_SESSION['customer'])): ?>
-                <a href="dashboard.php" style="color: #60a5fa; font-weight: 700; text-decoration: none;"><i class="fa fa-user"></i> My Account</a>
-            <?php else: ?>
-                <a href="login.php" style="color: #94a3b8; text-decoration: none;"><i class="fa fa-sign-in"></i> Sign In</a>
-                <a href="registration.php" style="color: #94a3b8; text-decoration: none;"><i class="fa fa-user-plus"></i> Register</a>
-            <?php endif; ?>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================================================= -->
-<!-- 2. MAIN MARKETPLACE SEARCH HEADER                                         -->
+<!-- 1. MAIN MARKETPLACE SEARCH HEADER                                         -->
 <!-- ========================================================================= -->
 <div style="background: #ffffff; padding: 16px 0; border-bottom: 1px solid #e2e8f0;">
     <div class="container">
-        <div class="row" style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-            
-            <!-- Logo -->
-            <div class="col-md-3 col-sm-12" style="text-align: left;">
-                <a href="index.php" style="display: inline-block; text-decoration: none;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="background: #2563eb; color: #fff; width: 42px; height: 42px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 22px; box-shadow: 0 2px 6px rgba(37,99,235,0.3);">
-                            <i class="fa fa-building"></i>
-                        </div>
-                        <div>
-                            <span style="font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; display: block; line-height: 1;">eConstruction</span>
-                            <span style="font-size: 11px; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: 1px;">Marketplace</span>
-                        </div>
-                    </div>
-                </a>
-            </div>
-
+        <div class="row">
             <!-- Prominent Search Bar with Autocomplete -->
-            <div class="col-md-6 col-sm-12">
-                <div class="mkt-search-wrapper">
+            <div class="col-md-12" style="padding-left: 15px; padding-right: 15px;">
+                <div class="mkt-search-wrapper" style="max-width: 100%; margin: 0;">
                     <form action="search-result.php" method="GET" class="mkt-search-bar" id="homepageSearchForm" autocomplete="off">
                         <?php $csrf->echoInputField(); ?>
                         <input type="text" name="search_text" id="mktSearchInput" class="form-control mkt-search-input" placeholder="Search cement, deformed rebars, tubular steel, angle bars, paints..." required>
@@ -811,45 +772,7 @@ body {
                     <div id="searchSuggestionsBox"></div>
                 </div>
             </div>
-
-            <!-- Cart & Quick Account CTA -->
-            <div class="col-md-3 col-sm-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 14px;">
-                <a href="cart.php" class="btn btn-default" style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 8px 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #0f172a;">
-                    <i class="fa fa-shopping-cart text-primary" style="font-size: 16px;"></i>
-                    <span>Cart: <strong style="color: #e11d48;">&#8369;<?php 
-                        $cart_total = 0;
-                        if(isset($_SESSION['cart_p_id'])) {
-                            for($i=1;$i<=count($_SESSION['cart_p_id']);$i++) {
-                                $c_qty = isset($_SESSION['cart_p_qty'][$i]) ? $_SESSION['cart_p_qty'][$i] : 1;
-                                $c_prc = isset($_SESSION['cart_p_current_price'][$i]) ? $_SESSION['cart_p_current_price'][$i] : 0;
-                                $cart_total += ($c_qty * $c_prc);
-                            }
-                        }
-                        echo number_format($cart_total, 2);
-                    ?></strong></span>
-                </a>
-            </div>
-
         </div>
-    </div>
-</div>
-
-<!-- ========================================================================= -->
-<!-- 3. CATEGORY NAVIGATION BAR (Direct Links to Categories)                    -->
-<!-- ========================================================================= -->
-<div class="mkt-category-nav hidden-xs">
-    <div class="container">
-        <ul class="mkt-cat-menu">
-            <li class="active"><a href="index.php"><i class="fa fa-home"></i> All Categories</a></li>
-            <li><a href="product-category.php?id=1&type=mid-category"><i class="fa fa-cubes"></i> Steel & Metal</a></li>
-            <li><a href="product-category.php?id=2&type=mid-category"><i class="fa fa-industry"></i> Concrete & Cement</a></li>
-            <li><a href="product-category.php?id=3&type=mid-category"><i class="fa fa-home"></i> Roofing & Wall</a></li>
-            <li><a href="product-category.php?id=5&type=mid-category"><i class="fa fa-wrench"></i> Plumbing & Pipes</a></li>
-            <li><a href="product-category.php?id=6&type=mid-category"><i class="fa fa-bolt"></i> Power Tools</a></li>
-            <li><a href="product-category.php?id=20&type=end-category"><i class="fa fa-paint-brush"></i> Paints</a></li>
-            <li><a href="product-category.php?id=21&type=end-category"><i class="fa fa-square"></i> Plywood & Hardiflex</a></li>
-            <li><a href="suppliers.php"><i class="fa fa-store"></i> All Suppliers</a></li>
-        </ul>
     </div>
 </div>
 
@@ -912,7 +835,7 @@ body {
                     Source structural steel, Portland cement, Schedule 40 pipes, marine plywood, and industrial power tools with instant variant selection and competitive wholesale pricing.
                 </p>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <a href="#discovery-section" class="btn btn-primary btn-sm" style="background: #2563eb; border-color: #2563eb; font-weight: 800; padding: 8px 18px;">
+                    <a href="#section_featured_products" class="btn btn-primary btn-sm" style="background: #2563eb; border-color: #2563eb; font-weight: 800; padding: 8px 18px;">
                         <i class="fa fa-shopping-bag"></i> Browse Products
                     </a>
                     <a href="request-quote.php" class="btn btn-default btn-sm" style="font-weight: 700; padding: 8px 16px;">
@@ -939,7 +862,7 @@ body {
                     <i class="fa fa-truck"></i>
                 </div>
                 <div>
-                    <h5 style="margin: 0 0 2px 0; font-weight: 800; color: #0f172a; font-size: 13.5px;">Bulk Freight Shipping</h5>
+                    <h5 style="margin: 0 0 2px 0; font-weight: 800; color: #0f172a; font-size: 13.5px;">Bulk Delivery</h5>
                     <p style="margin: 0; font-size: 11.5px; color: #64748b;">Flatbed, boom truck, and aggregate site delivery.</p>
                 </div>
             </a>
@@ -1014,49 +937,7 @@ body {
         </div>
     </div>
 
-    <!-- ========================================================================= -->
-    <!-- 6. MARKETPLACE DISCOVERY BAR & SUPPLIER FILTER CONTROLS                   -->
-    <!-- ========================================================================= -->
-    <div id="discovery-section" class="mkt-filter-bar">
-        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <div style="font-size: 14px; font-weight: 800; color: #f59e0b; display: flex; align-items: center; gap: 6px;">
-                <i class="fa fa-filter"></i> Filter by Supplier:
-            </div>
 
-            <!-- Supplier Pills -->
-            <div class="mkt-supplier-pills">
-                <button type="button" class="supplier-pill-btn active" id="pill_supplier_0" onclick="filterBySupplier(0, 'All Suppliers')">
-                    <i class="fa fa-globe"></i> All Suppliers
-                </button>
-                <?php foreach ($all_active_suppliers as $s): ?>
-                    <button type="button" class="supplier-pill-btn" id="pill_supplier_<?php echo $s['supplier_id']; ?>" onclick="filterBySupplier(<?php echo $s['supplier_id']; ?>, '<?php echo htmlspecialchars(addslashes($s['supplier_name'])); ?>')">
-                        <i class="fa fa-store"></i> <?php echo htmlspecialchars($s['supplier_name']); ?> 
-                        <span style="opacity: 0.7; font-size: 11px;">(<?php echo $s['active_products']; ?>)</span>
-                    </button>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <!-- Sorting Selector -->
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-size: 12.5px; margin: 0; color: #cbd5e1; font-weight: normal;">Sort by:</label>
-            <select id="mktSortSelect" class="form-control input-sm" style="background: #1e293b; color: #fff; border: 1px solid #475569; width: 140px; font-weight: 600;" onchange="applySorting(this.value)">
-                <option value="popularity">Popularity</option>
-                <option value="newest">Newest Arrival</option>
-                <option value="price_low">Price: Low to High</option>
-                <option value="price_high">Price: High to Low</option>
-            </select>
-        </div>
-
-        <!-- Active Filter Indicator Badges -->
-        <div class="active-filter-chips" id="activeFilterChipsContainer" style="display: none;">
-            <span style="font-size: 11.5px; color: #94a3b8; font-weight: 600;">Active Filters:</span>
-            <span id="activeSupplierChip" style="display: none;"></span>
-            <span id="activeCategoryChip" style="display: none;"></span>
-            <span id="activeSearchChip" style="display: none;"></span>
-            <a href="javascript:void(0)" onclick="clearAllFilters()" style="color: #f87171; font-size: 11.5px; font-weight: 700; margin-left: 6px; text-decoration: underline;">Clear All</a>
-        </div>
-    </div>
 
     <!-- ========================================================================= -->
     <!-- 7. SPECIAL / FLASH DEALS (Promotional Pricing)                            -->
@@ -1474,8 +1355,11 @@ function applyCategoryFilter(mcatId, catName, ecatId = 0) {
     updateFilterChips(catName);
     executeFilterRequest();
     
-    // Scroll smoothly to discovery section
-    document.getElementById('discovery-section').scrollIntoView({ behavior: 'smooth' });
+    // Scroll smoothly to products section
+    const scrollTarget = document.getElementById('section_featured_products') || document.getElementById('section_special_deals');
+    if (scrollTarget) {
+        scrollTarget.scrollIntoView({ behavior: 'smooth' });
+    }
 }
 
 function applySorting(sortVal) {
@@ -1485,6 +1369,7 @@ function applySorting(sortVal) {
 
 function updateFilterChips(customCatName = '') {
     const container = document.getElementById('activeFilterChipsContainer');
+    if (!container) return;
     const suppChip = document.getElementById('activeSupplierChip');
     const catChip = document.getElementById('activeCategoryChip');
     
@@ -1493,19 +1378,23 @@ function updateFilterChips(customCatName = '') {
     if (currentActiveSupplierId > 0) {
         const activeBtn = document.getElementById(`pill_supplier_${currentActiveSupplierId}`);
         const suppName = activeBtn ? activeBtn.innerText.replace(/\(\d+\)/, '').trim() : 'Supplier';
-        suppChip.innerHTML = `<span class="filter-chip">Supplier: ${suppName} <span class="chip-remove" onclick="filterBySupplier(0, 'All Suppliers')">&times;</span></span>`;
-        suppChip.style.display = 'inline';
+        if (suppChip) {
+            suppChip.innerHTML = `<span class="filter-chip">Supplier: ${suppName} <span class="chip-remove" onclick="filterBySupplier(0, 'All Suppliers')">&times;</span></span>`;
+            suppChip.style.display = 'inline';
+        }
         hasActive = true;
-    } else {
+    } else if (suppChip) {
         suppChip.style.display = 'none';
     }
     
     if (currentActiveMcatId > 0 || currentActiveEcatId > 0 || customCatName !== '') {
         const name = customCatName || 'Category Filter';
-        catChip.innerHTML = `<span class="filter-chip">Category: ${name} <span class="chip-remove" onclick="clearCategoryFilter()">&times;</span></span>`;
-        catChip.style.display = 'inline';
+        if (catChip) {
+            catChip.innerHTML = `<span class="filter-chip">Category: ${name} <span class="chip-remove" onclick="clearCategoryFilter()">&times;</span></span>`;
+            catChip.style.display = 'inline';
+        }
         hasActive = true;
-    } else {
+    } else if (catChip) {
         catChip.style.display = 'none';
     }
     
@@ -1526,7 +1415,8 @@ function clearAllFilters() {
     currentActiveSearch = '';
     
     document.querySelectorAll('.supplier-pill-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('pill_supplier_0').classList.add('active');
+    const defaultPill = document.getElementById('pill_supplier_0');
+    if (defaultPill) defaultPill.classList.add('active');
     
     updateFilterChips();
     executeFilterRequest();

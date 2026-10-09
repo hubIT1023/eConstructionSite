@@ -260,102 +260,173 @@ foreach ($result as $row) {
 	<div id="status"></div>
 </div>-->
 
-<!-- top bar -->
-<div class="top">
+
+
+
+<style>
+.header {
+	background: #ffffff;
+	padding: 12px 0;
+	border-bottom: 1px solid #e2e8f0;
+}
+.header-action-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13.5px;
+	font-weight: 700;
+	color: #1e293b;
+	text-decoration: none;
+	padding: 8px 16px;
+	border: 1.5px solid #cbd5e1;
+	border-radius: 6px;
+	background: #ffffff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	transition: all 0.2s ease;
+	white-space: nowrap;
+	line-height: 1.2;
+}
+.header-action-btn:hover,
+.header-action-btn:focus {
+	color: #2563eb;
+	border-color: #93c5fd;
+	background: #f8fafc;
+	box-shadow: 0 2px 5px rgba(37, 99, 235, 0.08);
+	transform: translateY(-1px);
+	text-decoration: none;
+}
+.header-action-btn.cart-btn {
+	color: #0f172a;
+	border-color: #cbd5e1;
+}
+.header-action-btn.cart-btn:hover {
+	color: #e11d48;
+	border-color: #fca5a5;
+	background: #fff1f2;
+}
+.header-action-btn.cart-btn strong {
+	color: #e11d48;
+	margin-left: 2px;
+}
+.header-user-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 7px 14px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #334155;
+	background: #f1f5f9;
+	border: 1.5px solid #e2e8f0;
+	border-radius: 6px;
+	white-space: nowrap;
+	line-height: 1.2;
+}
+.header-user-chip i {
+	color: #2563eb;
+	font-size: 14px;
+}
+.header-user-name {
+	max-width: 140px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 700;
+	color: #0f172a;
+	display: inline-block;
+	vertical-align: bottom;
+}
+@media (max-width: 991px) {
+	.header .inner {
+		display: flex !important;
+		flex-direction: column !important;
+		align-items: flex-start !important;
+		gap: 12px !important;
+	}
+	.header-links {
+		display: flex !important;
+		flex-wrap: wrap !important;
+		justify-content: flex-start !important;
+		gap: 8px !important;
+		width: 100% !important;
+	}
+}
+</style>
+
+<div class="header">
 	<div class="container">
-		<div class="row">
-			<div class="col-md-6 col-sm-6 col-xs-12">
-				<div class="left">
-					<ul>
-						<!--li><i class="fa fa-phone"></i> <?php //echo $contact_phone; ?></li-->
-						<li><i class="fa fa-envelope-o"></i> <?php echo $contact_email; ?></li>
-					</ul>
-				</div>
+		<div class="row inner" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+			<div class="logo" style="text-align: left;">
+				<a href="index.php"><img src="assets/uploads/<?php echo $logo; ?>" alt="logo image" style="display: inline-block; margin-left: 0;"></a>
 			</div>
-			<div class="col-md-6 col-sm-6 col-xs-12">
-				<div class="right">
-					<ul>
-						<?php
-						$statement = $pdo->prepare("SELECT * FROM tbl_social");
-						$statement->execute();
-						$result = $statement->fetchAll(PDO::FETCH_ASSOC);
-						foreach ($result as $row) {
-							?>
-							<?php if($row['social_url'] != ''): ?>
-							<li><a href="<?php echo $row['social_url']; ?>"><i class="<?php echo $row['social_icon']; ?>"></i></a></li>
-							<?php endif; ?>
-							<?php
-						}
-						?>
-					</ul>
-				</div>
+			<div class="header-links" style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
+				<a href="about.php" class="header-action-btn"><i class="fa fa-info-circle text-primary"></i> About</a>
+				<a href="contact.php" class="header-action-btn"><i class="fa fa-envelope-o text-primary"></i> Contact</a>
+				
+				<?php
+				$is_authenticated_customer = isset($_SESSION['customer']) && !empty($_SESSION['customer']['cust_id']) && ((int)$_SESSION['customer']['cust_id'] > 0);
+				if($is_authenticated_customer):
+				?>
+					<div class="header-user-chip" title="Logged in as <?php echo htmlspecialchars($_SESSION['customer']['cust_name']); ?>">
+						<i class="fa fa-user"></i>
+						<span>Logged in as <strong class="header-user-name"><?php echo htmlspecialchars($_SESSION['customer']['cust_name']); ?></strong></span>
+					</div>
+					<a href="dashboard.php" class="header-action-btn"><i class="fa fa-home text-primary"></i> Dashboard</a>
+				<?php else: ?>
+					<a href="login.php" class="header-action-btn"><i class="fa fa-sign-in text-primary"></i> Login</a>
+					<a href="registration.php" class="header-action-btn"><i class="fa fa-user-plus text-primary"></i> Register</a>
+				<?php endif; ?>
+
+				<?php
+				$header_cart_total = 0.0;
+				if(isset($_SESSION['cart_p_id']) && is_array($_SESSION['cart_p_id'])) {
+					foreach($_SESSION['cart_p_id'] as $k => $pid) {
+						$c_q = isset($_SESSION['cart_p_qty'][$k]) ? floatval($_SESSION['cart_p_qty'][$k]) : 1;
+						$c_p = isset($_SESSION['cart_p_current_price'][$k]) ? floatval($_SESSION['cart_p_current_price'][$k]) : 0;
+						$header_cart_total += ($c_q * $c_p);
+					}
+				}
+				?>
+				<a href="cart.php" class="header-action-btn cart-btn">
+					<i class="fa fa-shopping-cart text-primary"></i>
+					<span>Cart: <strong>&#8369;<?php echo number_format($header_cart_total, 2); ?></strong></span>
+				</a>
 			</div>
 		</div>
 	</div>
 </div>
 
-
-<div class="header">
-	<div class="container">
-		<div class="row inner">
-			<div class="col-md-4 logo">
-				<a href="index.php"><img src="assets/uploads/<?php echo $logo; ?>" alt="logo image"></a>
-			</div>
-			
-			<div class="col-md-5 right">
-				<ul>
-					
-					<?php
-					$is_authenticated_customer = isset($_SESSION['customer']) && !empty($_SESSION['customer']['cust_id']) && ((int)$_SESSION['customer']['cust_id'] > 0);
-					if($is_authenticated_customer) {
-						?>
-						<li><i class="fa fa-user"></i> <?php echo LANG_VALUE_13; ?> <?php echo htmlspecialchars($_SESSION['customer']['cust_name']); ?></li>
-						<li><a href="dashboard.php"><i class="fa fa-home"></i> <?php echo LANG_VALUE_89; ?></a></li>
-						<?php
-					} else {
-						?>
-						<li><a href="login.php"><i class="fa fa-sign-in"></i> <?php echo LANG_VALUE_9; ?></a></li>
-						<li><a href="registration.php"><i class="fa fa-user-plus"></i> <?php echo LANG_VALUE_15; ?></a></li>
-						<?php	
-					}
-					?>
-
-					<li><a href="cart.php"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_18; ?> (<?php  echo LANG_VALUE_1; ?><?php 
-					if(isset($_SESSION['cart_p_id'])) {
-						$table_total_price = 0;
-						$i=0;
-	                    foreach($_SESSION['cart_p_qty'] as $key => $value) 
-	                    {
-	                        $i++;
-	                        $arr_cart_p_qty[$i] = $value;
-	                    }                    $i=0;
-	                    foreach($_SESSION['cart_p_current_price'] as $key => $value) 
-	                    {
-	                        $i++;
-	                        $arr_cart_p_current_price[$i] = $value;
-	                    }
-	                    for($i=1;$i<=count($arr_cart_p_qty);$i++) {
-	                    	$row_total_price = $arr_cart_p_current_price[$i]*$arr_cart_p_qty[$i];
-	                        $table_total_price = $table_total_price + $row_total_price;
-	                    }
-						echo $table_total_price;
-					} else {
-						echo '0.00';
-					}
-					?>)</a></li>
-				</ul>
-			</div>
-			<div class="col-md-3 search-area">
-				<form class="navbar-form navbar-left" role="search" action="search-result.php" method="get">
-					<?php $csrf->echoInputField(); ?>
-					<div class="form-group">
-						<input type="text" class="form-control search-top" placeholder="<?php echo LANG_VALUE_2; ?>" name="search_text">
-					</div>
-					<button type="submit" class="btn btn-danger"><?php echo LANG_VALUE_3; ?></button>
-				</form>
-			</div>
-		</div>
-	</div>
+<div class="top-utility-bar" style="background: #0f172a; color: #94a3b8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 18px; flex-wrap: wrap;">
+            <div class="left" style="float: none;">
+                <ul style="margin: 0; padding: 0; list-style: none;">
+                    <li style="margin-right: 0; list-style: none;"><i class="fa fa-envelope-o"></i> support@econstructionsite.com</li>
+                </ul>
+            </div>
+            <div class="right" style="float: none;">
+                <ul style="margin: 0; padding: 0; list-style: none; display: flex; align-items: center; gap: 6px;">
+                    <?php
+                    $statement = $pdo->prepare("SELECT * FROM tbl_social");
+                    $statement->execute();
+                    $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($result as $row) {
+                        if(!empty($row['social_url'])) {
+                            ?>
+                            <li style="margin: 0; list-style: none;"><a href="<?php echo htmlspecialchars($row['social_url']); ?>" style="color: #94a3b8; width: 22px; height: 22px; line-height: 22px; text-align: center; display: inline-block;"><i class="<?php echo htmlspecialchars($row['social_icon']); ?>"></i></a></li>
+                            <?php
+                        }
+                    }
+                    ?>
+                </ul>
+            </div>
+        </div>
+        <div style="display: flex; gap: 16px; align-items: center;">
+            <a href="request-quote.php" style="color: #f59e0b; font-weight: 700; text-decoration: none;"><i class="fa fa-file-text-o"></i> Request Quote (RFQ)</a>
+            <a href="bulk-orders.php" style="color: #94a3b8; text-decoration: none;"><i class="fa fa-truck"></i> Bulk Freight</a>
+            <a href="supplier/login.php" style="color: #94a3b8; text-decoration: none;"><i class="fa fa-store"></i> Supplier Portal</a>
+        </div>
+    </div>
 </div>
 
 <div class="nav">
@@ -411,9 +482,6 @@ foreach ($result as $row) {
 							<li><a href="deals.php">Deals</a></li>
 							<li><a href="request-quote.php">Request Quote</a></li>
 							<li><a href="bulk-orders.php">Bulk Orders</a></li>
-							<li><a href="about.php">About</a></li>
-							<li><a href="contact.php">Contact</a></li>
-							<li><a href="cart.php">Cart</a></li>
 							<?php if(isset($_SESSION['customer']) && !empty($_SESSION['customer']['cust_id']) && ((int)$_SESSION['customer']['cust_id'] > 0)): ?>
 								<li><a href="dashboard.php">Dashboard</a></li>
 							<?php else: ?>

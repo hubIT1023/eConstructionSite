@@ -34,21 +34,26 @@ $is_approver = is_supplier_approver();
 $is_pos_user = is_cashier_or_operator_role($user_role);
 $user_has_pos = has_pos_access($_SESSION['supplier_user']);
 
-// Query pending created Purchase Orders for current tenant
+// Query pending created Online Orders & Purchase Orders for current tenant
 $sidebar_pending_pos = [];
 if (isset($supplier_id) && $supplier_id > 0) {
     try {
         $stmt_sidebar_po = $pdo->prepare("
-            SELECT payment_id, payment_date, paid_amount, customer_name, customer_email, payment_status, txnid
-            FROM tbl_payment 
-            WHERE supplier_id = ? 
-              AND (payment_status = 'Awaiting for Payment' OR payment_status = 'Pending' OR payment_status = 'UNPAID')
-              AND payment_status != 'Paid'
-              AND payment_status != 'Completed'
-            ORDER BY id DESC
+            SELECT DISTINCT p.id, p.payment_id, p.payment_date, p.paid_amount, p.customer_name, p.customer_email, p.payment_status, p.txnid, p.payment_method
+            FROM tbl_payment p
+            WHERE (
+                p.supplier_id = ? 
+                OR p.payment_id IN (SELECT DISTINCT o.payment_id FROM tbl_order o WHERE o.supplier_id = ?)
+            )
+              AND (p.payment_status = 'Awaiting for Payment' OR p.payment_status = 'Pending' OR p.payment_status = 'UNPAID')
+              AND p.payment_status != 'Paid'
+              AND p.payment_status != 'Completed'
+              AND p.payment_status != 'Cancelled'
+              AND p.payment_status != 'Declined'
+            ORDER BY p.id DESC
             LIMIT 50
         ");
-        $stmt_sidebar_po->execute([$supplier_id]);
+        $stmt_sidebar_po->execute([$supplier_id, $supplier_id]);
         $sidebar_pending_pos = $stmt_sidebar_po->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         $sidebar_pending_pos = [];
@@ -232,7 +237,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 		<header class="main-header">
 
 			<a href="<?php echo $is_admin ? 'index.php' : 'pos.php'; ?>" class="logo">
-				<span class="logo-lg">eCommerce PHP</span>
+				<span class="logo-lg">WebPOS</span>
 			</a>
 
 			<nav class="navbar navbar-static-top">
@@ -495,16 +500,16 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                 <?php endif; ?>
 
                 <?php if (isset($_SESSION['supplier_user'])): ?>
-                    <!-- ACTIVE P.O. (ORDER PROCESSING QUEUE) -->
+                    <!-- ONLINE ORDER (ORDER PROCESSING QUEUE) -->
                     <li class="header" style="color: #f59e0b; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; padding: 14px 15px 8px 15px; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 10px; background: rgba(0,0,0,0.25);">
-                        <i class="fa fa-file-text-o" style="margin-right: 6px; color: #fbbf24;"></i> ACTIVE P.O.
+                        <i class="fa fa-shopping-cart" style="margin-right: 6px; color: #fbbf24;"></i> ONLINE ORDER
                         <span class="pull-right badge bg-yellow" id="sidebar_po_badge_count" style="font-size: 10px; padding: 2px 6px; font-weight: 700;"><?= count($sidebar_pending_pos); ?></span>
                     </li>
                     <li style="padding: 6px 12px 15px 12px;">
                         <?php if (empty($sidebar_pending_pos)): ?>
                             <div style="background: rgba(15,23,42,0.6); border: 1px dashed #334155; border-radius: 8px; padding: 12px 10px; text-align: center; color: #64748b; font-size: 12px;">
                                 <i class="fa fa-check-circle-o" style="font-size: 18px; color: #10b981; display: block; margin-bottom: 4px;"></i>
-                                No pending POs
+                                No pending online orders
                             </div>
                         <?php else: ?>
                             <div class="sidebar-po-list-container" style="max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
@@ -519,9 +524,9 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                                             style="width: 100%; text-align: left; background: #1e293b; border: 1.5px solid #334155; border-radius: 8px; padding: 8px 12px; color: #f8fafc; transition: all 0.2s ease; cursor: pointer; display: block; box-shadow: 0 2px 4px rgba(0,0,0,0.25);"
                                             onmouseover="this.style.background='#334155'; this.style.borderColor='#f59e0b'; this.style.transform='translateY(-1px)';" 
                                             onmouseout="this.style.background='#1e293b'; this.style.borderColor='#334155'; this.style.transform='translateY(0)';"
-                                            title="Click to view read-only PO details">
+                                            title="Click to view online order details">
                                         <div style="font-family: monospace, Consolas, sans-serif; font-size: 12.5px; font-weight: 700; color: #fef08a; letter-spacing: 0.5px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                            <i class="fa fa-file-text-o" style="color: #f59e0b; margin-right: 5px; font-size: 11px;"></i><?= $po_num; ?>
+                                            <i class="fa fa-shopping-cart" style="color: #f59e0b; margin-right: 5px; font-size: 11px;"></i><?= $po_num; ?>
                                         </div>
                                         <div style="font-size: 11.5px; color: #94a3b8; font-weight: 600; margin-top: 3px; display: flex; justify-content: space-between; align-items: center;">
                                             <span><i class="fa fa-calendar-o" style="margin-right: 4px; font-size: 10px;"></i><?= $po_formatted_date; ?></span>
@@ -550,14 +555,14 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
             <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; padding: 18px 24px; border-bottom: 2px solid #f59e0b; display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <div style="background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; border-radius: 8px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; color: #f59e0b; font-size: 20px;">
-                        <i class="fa fa-file-text-o"></i>
+                        <i class="fa fa-shopping-cart"></i>
                     </div>
                     <div>
                         <h4 class="modal-title" id="modalSidebarPOLabel" style="font-weight: 800; font-size: 18px; margin: 0; color: #f8fafc; letter-spacing: 0.3px;">
-                            Purchase Order Details
+                            Online Order Details
                         </h4>
                         <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
-                            <span id="modal_po_num_subtitle" style="font-family: monospace; font-weight: 700; color: #fef08a;">PO-XXXXX</span>
+                            <span id="modal_po_num_subtitle" style="font-family: monospace; font-weight: 700; color: #fef08a;">ORD-XXXXX</span>
                             &nbsp;•&nbsp; <span id="modal_po_date_subtitle">--/--/----</span>
                         </div>
                     </div>
@@ -577,12 +582,12 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                 <!-- Loading State -->
                 <div id="modal_po_loading" style="text-align: center; padding: 40px 20px; display: none;">
                     <i class="fa fa-circle-o-notch fa-spin fa-3x" style="color: #f59e0b;"></i>
-                    <p style="margin-top: 15px; color: #64748b; font-weight: 600;">Loading Purchase Order details...</p>
+                    <p style="margin-top: 15px; color: #64748b; font-weight: 600;">Loading order details...</p>
                 </div>
 
                 <!-- Error State -->
                 <div id="modal_po_error" class="alert alert-danger" style="display: none; border-radius: 8px;">
-                    <i class="fa fa-exclamation-triangle"></i> <span id="modal_po_error_msg">Failed to load PO details.</span>
+                    <i class="fa fa-exclamation-triangle"></i> <span id="modal_po_error_msg">Failed to load order details.</span>
                 </div>
 
                 <!-- PO Voucher Content Container -->
@@ -596,7 +601,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                                     PAYMENT STATUS: <span id="modal_po_status_text">Awaiting for Payment (UNPAID)</span>
                                 </div>
                                 <div style="font-size: 12px; color: #b45309;">
-                                    This purchase order is currently queued for cashier payment processing.
+                                    This online order is currently queued for cashier payment processing.
                                 </div>
                             </div>
                         </div>
@@ -615,7 +620,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                                 <div id="modal_store_contact" style="color: #64748b; font-size: 12.5px; margin-top: 3px;">--</div>
                             </div>
                             <div class="col-sm-6 text-right" style="text-align: right;">
-                                <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">PURCHASE ORDER VOUCHER</div>
+                                <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">ORDER VOUCHER</div>
                                 <div id="modal_po_number_display" style="font-family: monospace; font-size: 20px; font-weight: 800; color: #1e293b; margin: 3px 0;">PO-XXXXXXXX</div>
                                 <div style="font-size: 13px; color: #475569;">Date Created: <strong id="modal_po_datetime_display">--/--/----</strong></div>
                             </div>
@@ -657,7 +662,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                             <div class="col-sm-6">
                                 <div style="background: #f1f5f9; border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 4px; font-size: 12px; color: #475569;">
                                     <strong><i class="fa fa-info-circle"></i> Note for Order Processing:</strong><br>
-                                    Review order items carefully. Present this PO voucher or PO Number to the Cashier for payment collection and official receipt issuance.
+                                    Review order items carefully. Present this Order Voucher or Order / PO Reference to the Cashier for payment collection and official receipt issuance.
                                 </div>
                             </div>
                             <div class="col-sm-6">
@@ -685,17 +690,17 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
             <div class="modal-footer" style="background: #0f172a; padding: 14px 24px; border-top: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
                 <div style="color: #94a3b8; font-size: 12.5px; display: flex; align-items: center; gap: 6px;">
                     <i class="fa fa-shield" style="color: #f59e0b;"></i>
-                    <span>Read-only view • This PO will automatically disappear from the sidebar once marked Paid.</span>
+                    <span>Read-only view • This order will automatically disappear from the sidebar once marked Paid.</span>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600; padding: 8px 16px; border-radius: 6px;">
                         <i class="fa fa-times"></i> Close
                     </button>
                     <button type="button" class="btn btn-warning" onclick="reprintSidebarPOVoucher()" style="font-weight: 800; padding: 8px 18px; border-radius: 6px; background-color: #f59e0b; border-color: #d97706; color: #000; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
-                        <i class="fa fa-print"></i> 🖨️ Reprint PO
+                        <i class="fa fa-print"></i> 🖨️ Print Voucher
                     </button>
-                    <a id="modal_btn_resume_pos" href="pos.php" class="btn btn-success" style="font-weight: 800; padding: 8px 20px; border-radius: 6px; background-color: #16a34a; border-color: #15803d; color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2);" title="Load this Purchase Order into POS terminal to add items or complete payment">
-                        <i class="fa fa-calculator"></i> ⚡ Resume / Pay in POS
+                    <a id="modal_btn_resume_pos" href="pos.php" class="btn btn-success" style="font-weight: 800; padding: 8px 20px; border-radius: 6px; background-color: #16a34a; border-color: #15803d; color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2);" title="Load this Order into POS terminal to add items or complete payment">
+                        <i class="fa fa-calculator"></i> ⚡ Pay / Process in POS
                     </a>
                 </div>
             </div>
