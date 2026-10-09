@@ -489,8 +489,9 @@ foreach ($result as $row) {
 							<?php endif; ?>
 							<li><a href="#" style="color: #F59E0B; font-weight: bold;">Supplier Portal <i class="fa fa-caret-down"></i></a>
 								<ul>
-									<li><a href="supplier/login.php">Supplier Login</a></li>
-									<li><a href="supplier-registration.php">Supplier Registration</a></li>
+									<li><a href="webpos.php"><i class="fa fa-calculator" style="margin-right: 4px;"></i> WebPOS Overview</a></li>
+									<li><a href="supplier/login.php"><i class="fa fa-sign-in" style="margin-right: 4px;"></i> Supplier POS Login</a></li>
+									<li><a href="supplier-registration.php"><i class="fa fa-user-plus" style="margin-right: 4px;"></i> Supplier Registration</a></li>
 								</ul>
 							</li>
 						</ul>
