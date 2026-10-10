@@ -61,16 +61,20 @@ foreach ($result as $row) {
 		$statement1->execute(array($row['payment_id']));
 		$result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
 		foreach ($result1 as $row1) {
-			$statement2 = $pdo->prepare("SELECT * FROM tbl_product WHERE p_id=?");
-			$statement2->execute(array($row1['product_id']));
-			$result2 = $statement2->fetchAll(PDO::FETCH_ASSOC);							
-			foreach ($result2 as $row2) {
-				$p_qty = $row2['p_qty'];
+			$p_id = (int)$row1['product_id'];
+			$item_type = isset($row1['item_type']) ? $row1['item_type'] : 'STANDARD';
+			if ($item_type === 'RETURN_CREDIT' || $p_id <= 0) {
+				continue;
 			}
-			$final = $p_qty+$row1['quantity'];
-
-			$statement = $pdo->prepare("UPDATE tbl_product SET p_qty=? WHERE p_id=?");
-			$statement->execute(array($final,$row1['product_id']));
+			$statement2 = $pdo->prepare("SELECT p_qty FROM tbl_product WHERE p_id=?");
+			$statement2->execute(array($p_id));
+			$row2 = $statement2->fetch(PDO::FETCH_ASSOC);							
+			if ($row2) {
+				$p_qty = (int)$row2['p_qty'];
+				$final = $p_qty + (int)$row1['quantity'];
+				$statement_up = $pdo->prepare("UPDATE tbl_product SET p_qty=? WHERE p_id=?");
+				$statement_up->execute(array($final, $p_id));
+			}
 		}
 		
 		// Deleting data from table

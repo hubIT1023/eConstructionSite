@@ -174,11 +174,17 @@ $is_order_processing_or_operator = is_order_processing_or_operator_role($pos_use
 $pos_success_receipt = null;
 $pos_order_error = null;
 
+// Unique POS checkout idempotency token per sale session
+if (empty($_SESSION['pos_checkout_token'])) {
+    $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
+}
+
 // Explicit cart clear / reset parameter handling
 if (isset($_GET['clear_cart']) || isset($_GET['new_sale']) || isset($_GET['reset_pos'])) {
     unset($_SESSION['pos_cart']);
     unset($_SESSION['supplier_checkout_cart']);
     unset($_SESSION['pos_po_success']);
+    $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
     $active_pos_cart = [];
 }
 
@@ -627,26 +633,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
 
 // Handle POS Order Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_POST['pos_action'] === 'complete_sale') {
-    $paying_po_id = isset($_POST['paying_po_id']) ? trim($_POST['paying_po_id']) : '';
-if (empty($paying_po_id) && !empty($_GET['po_id'])) {
-    $paying_po_id = trim($_GET['po_id']);
-} elseif (empty($paying_po_id) && !empty($_GET['payment_id'])) {
-    $paying_po_id = trim($_GET['payment_id']);
-}
+    $submitted_token = isset($_POST['pos_checkout_token']) ? trim($_POST['pos_checkout_token']) : '';
 
-    if (!empty($paying_po_id)) {
-        // -------------------------------------------------------------
-        // EXISTING PURCHASE ORDER PAYMENT PROCESSING
-        // -------------------------------------------------------------
-        $stmt_pay_check = $pdo->prepare("SELECT * FROM tbl_payment WHERE payment_id = ? AND supplier_id = ? LIMIT 1");
-        $stmt_pay_check->execute([$paying_po_id, $supplier_id]);
-        $existing_payment = $stmt_pay_check->fetch(PDO::FETCH_ASSOC);
-
-        if (!$existing_payment) {
-            $pos_order_error = "Purchase Order (" . htmlspecialchars($paying_po_id) . ") not found or unauthorized.";
-        } elseif (strtolower($existing_payment['payment_status'] ?? '') === 'paid') {
-            $pos_order_error = "This Purchase Order has already been paid and settled.";
+    // Multi-click & network buffering protection: If this token was already processed, retrieve cached receipt cleanly
+    if (!empty($submitted_token) && !empty($_SESSION['pos_last_processed_token']) && $submitted_token === $_SESSION['pos_last_processed_token'] && !empty($_SESSION['pos_last_receipt'])) {
+        if (!empty($_SESSION['pos_last_receipt']['is_po'])) {
+            $pos_po_success_data = $_SESSION['pos_last_receipt'];
         } else {
+            $pos_success_receipt = $_SESSION['pos_last_receipt'];
+        }
+    } else {
+        $paying_po_id = isset($_POST['paying_po_id']) ? trim($_POST['paying_po_id']) : '';
+        if (empty($paying_po_id) && !empty($_GET['po_id'])) {
+            $paying_po_id = trim($_GET['po_id']);
+        } elseif (empty($paying_po_id) && !empty($_GET['payment_id'])) {
+            $paying_po_id = trim($_GET['payment_id']);
+        }
+
+        if (!empty($paying_po_id)) {
+            // -------------------------------------------------------------
+            // EXISTING PURCHASE ORDER PAYMENT PROCESSING
+            // -------------------------------------------------------------
+            $stmt_pay_check = $pdo->prepare("SELECT * FROM tbl_payment WHERE payment_id = ? AND supplier_id = ? LIMIT 1");
+            $stmt_pay_check->execute([$paying_po_id, $supplier_id]);
+            $existing_payment = $stmt_pay_check->fetch(PDO::FETCH_ASSOC);
+
+            if (!$existing_payment) {
+                $pos_order_error = "Purchase Order (" . htmlspecialchars($paying_po_id) . ") not found or unauthorized.";
+            } elseif (strtolower($existing_payment['payment_status'] ?? '') === 'paid') {
+                if (!empty($_SESSION['pos_last_receipt']) && (($_SESSION['pos_last_receipt']['payment_id'] ?? '') === $paying_po_id)) {
+                    $pos_po_success_data = $_SESSION['pos_last_receipt'];
+                } else {
+                    $pos_order_error = "This Purchase Order has already been paid and settled.";
+                }
+            } else {
             // Authoritative line items & calculations (supporting added items upon resumption)
             $cart_submitted_raw = isset($_POST['cart_items']) ? $_POST['cart_items'] : '';
             $submitted_cart = is_string($cart_submitted_raw) ? json_decode($cart_submitted_raw, true) : (is_array($cart_submitted_raw) ? $cart_submitted_raw : []);
@@ -1006,6 +1026,14 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                         'supplier_phone' => $supplier_info['supplier_phone'],
                         'cashier_name' => (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier'))
                     );
+                    $pos_po_success_data['is_po'] = true;
+
+                    // Idempotency token update & receipt cache
+                    if (!empty($submitted_token)) {
+                        $_SESSION['pos_last_processed_token'] = $submitted_token;
+                    }
+                    $_SESSION['pos_last_receipt'] = $pos_po_success_data;
+                    $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
 
                     // Clear temporary session carts
                     unset($_SESSION['pos_cart']);
@@ -1216,8 +1244,41 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                 }
 
                 if (empty($pos_order_error)) {
-                    $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
-                    $payment_date = date('Y-m-d H:i:s');
+                    // Check for rapid duplicate submission within 5 seconds for same supplier, customer and exact paid amount
+                    $is_rapid_dup = false;
+                    $dup_payment_id = '';
+                    try {
+                        $stmt_dup_chk = $pdo->prepare("
+                            SELECT payment_id, payment_date, paid_amount 
+                            FROM tbl_payment 
+                            WHERE supplier_id = ? 
+                              AND customer_name = ? 
+                              AND paid_amount = ? 
+                              AND NULLIF(payment_date, '')::timestamp >= (NOW() - INTERVAL '5 seconds')
+                            ORDER BY id DESC LIMIT 1
+                        ");
+                        $stmt_dup_chk->execute([
+                            $supplier_id,
+                            $customer_name,
+                            number_format($amount_paid, 2, '.', '')
+                        ]);
+                        $dup_row = $stmt_dup_chk->fetch(PDO::FETCH_ASSOC);
+                        if ($dup_row && !empty($dup_row['payment_id'])) {
+                            $is_rapid_dup = true;
+                            $dup_payment_id = $dup_row['payment_id'];
+                        }
+                    } catch (Exception $e) {
+                        $is_rapid_dup = false;
+                    }
+
+                    if ($is_rapid_dup && !empty($_SESSION['pos_last_receipt']) && (($_SESSION['pos_last_receipt']['payment_id'] ?? '') === $dup_payment_id)) {
+                        // Idempotent recovery: use cached receipt to avoid duplicate insertion & stock deduction
+                        $pos_success_receipt = $_SESSION['pos_last_receipt'];
+                        unset($_SESSION['pos_cart']);
+                        unset($_SESSION['supplier_checkout_cart']);
+                    } else {
+                        $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+                        $payment_date = date('Y-m-d H:i:s');
 
                     $tx_info = 'POS Terminal - Method: ' . $payment_method;
                     if (!empty($payment_reference)) {
@@ -1621,10 +1682,20 @@ if (empty($paying_po_id) && !empty($_GET['po_id'])) {
                     'supplier_phone' => $supplier_info['supplier_phone'],
                     'cashier_name' => (!empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier'))
                 );
+                $pos_success_receipt['is_po'] = false;
+
+                // Idempotency token update & receipt cache
+                if (!empty($submitted_token)) {
+                    $_SESSION['pos_last_processed_token'] = $submitted_token;
+                }
+                $_SESSION['pos_last_receipt'] = $pos_success_receipt;
+                $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
 
                 // Clear session cart on complete sale
                 unset($_SESSION['pos_cart']);
                 unset($_SESSION['supplier_checkout_cart']);
+                    }
+                }
             }
         }
     }
@@ -2510,6 +2581,22 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     </div>
 </section>
 
+<!-- Fullscreen Processing Overlay for POS Checkout Submission -->
+<div id="posSubmitProcessingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.78); z-index: 999999; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); align-items: center; justify-content: center;">
+    <div style="background: #1e293b; border: 2px solid #38bdf8; border-radius: 14px; padding: 30px 38px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); max-width: 440px; width: 90%; color: #ffffff;">
+        <div style="margin-bottom: 16px;">
+            <i class="fa fa-spinner fa-spin fa-3x" style="color: #38bdf8;"></i>
+        </div>
+        <h4 style="font-weight: 800; font-size: 19px; margin: 0 0 10px 0; color: #f8fafc; letter-spacing: 0.3px;">
+            Processing Sale &amp; Printing...
+        </h4>
+        <p style="font-size: 13.5px; color: #cbd5e1; margin: 0; line-height: 1.55;">
+            Securing payment, deducting stock &amp; generating official receipt.<br>
+            <strong style="color: #fde047;"><i class="fa fa-hand-paper-o"></i> Please do not refresh or click again.</strong>
+        </p>
+    </div>
+</div>
+
 <section class="content">
     <?php if (!empty($pos_po_error_msg)): ?>
     <div class="alert alert-danger alert-dismissible" style="font-size: 14px; font-weight: bold; border-radius: 6px; margin-bottom: 15px;">
@@ -2914,6 +3001,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
                 <form id="posCheckoutForm" method="POST" action="pos.php<?php echo (!empty($paying_existing_po) && !empty($existing_po_data)) ? ('?po_id=' . urlencode($existing_po_data['payment_id'] ?? $existing_po_data['txnid'])) : ''; ?>" onsubmit="return validatePOSForm()">
                     <input type="hidden" name="pos_action" value="complete_sale">
+                    <input type="hidden" name="pos_checkout_token" value="<?php echo htmlspecialchars($_SESSION['pos_checkout_token'] ?? ''); ?>">
                     <input type="hidden" id="cartItemsInput" name="cart_items" value="<?php echo htmlspecialchars(json_encode(array_values($active_pos_cart))); ?>">
                     <?php if (!empty($paying_existing_po) && !empty($existing_po_data)): ?>
                         <input type="hidden" name="paying_po_id" id="posPayingPoIdInput" value="<?php echo htmlspecialchars($existing_po_data['payment_id'] ?? $existing_po_data['txnid']); ?>">
@@ -7499,7 +7587,14 @@ function clearPOSSearch() {
     filterPOSProducts();
 }
 
+let isPOSFormSubmitting = false;
+
 function validatePOSForm() {
+    if (isPOSFormSubmitting) {
+        console.warn('POS submission already in progress. Ignoring duplicate click.');
+        return false;
+    }
+
     if (cart.length === 0) {
         alert('Please add at least one item to the cart.');
         return false;
@@ -7560,6 +7655,42 @@ function validatePOSForm() {
             return false;
         }
     }
+
+    // Lock form against concurrent multi-clicks & buffer-spam
+    isPOSFormSubmitting = true;
+
+    // Visual feedback on submit button
+    const completeBtn = document.getElementById('posCompleteBtn');
+    if (completeBtn) {
+        completeBtn.style.pointerEvents = 'none';
+        completeBtn.style.opacity = '0.75';
+        completeBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing Sale... Please Wait...';
+        setTimeout(() => {
+            if (completeBtn) completeBtn.disabled = true;
+        }, 10);
+    }
+
+    // Display fullscreen processing overlay
+    const overlay = document.getElementById('posSubmitProcessingOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+    }
+
+    // Safety fallback timeout (25 seconds) in case of network drops
+    setTimeout(() => {
+        if (isPOSFormSubmitting) {
+            isPOSFormSubmitting = false;
+            if (completeBtn) {
+                completeBtn.disabled = false;
+                completeBtn.style.pointerEvents = 'auto';
+                completeBtn.style.opacity = '1';
+                completeBtn.innerHTML = '<i class="fa fa-check-circle"></i> Complete Sale &amp; Print Receipt';
+            }
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        }
+    }, 25000);
 
     return true;
 }

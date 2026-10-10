@@ -1,4 +1,8 @@
-<?php require_once('header.php'); ?>
+<?php 
+require_once('header.php'); 
+$filter_ecat_id = isset($_GET['ecat_id']) ? intval($_GET['ecat_id']) : 0;
+$filter_mcat_id = isset($_GET['mcat_id']) ? intval($_GET['mcat_id']) : 0;
+?>
 
 <section class="content-header">
 	<div class="content-header-left">
@@ -7,12 +11,11 @@
 	<div class="content-header-right">
 		<a href="product-categorization.php" class="btn btn-info btn-sm" style="margin-right:6px;"><i class="fa fa-sitemap"></i> Product Categorization</a>
 		<a href="product-add.php" class="btn btn-primary btn-sm"><i class="fa fa-plus"></i> Add Product</a>
+		<a href="product-export.php<?php echo ($filter_ecat_id > 0) ? '?ecat_id=' . $filter_ecat_id : ''; ?>" onclick="event.preventDefault(); downloadProductsWithFolderPicker(this.href, 'eConstructionSite_Products_<?php echo date('Y-m-d'); ?>.xls');" class="btn btn-success btn-sm" style="margin-left:6px; font-weight:600;" title="Download Products and choose save folder"><i class="fa fa-file-excel-o"></i> Download Products</a>
 	</div>
 </section>
 
 <?php
-$filter_ecat_id = isset($_GET['ecat_id']) ? intval($_GET['ecat_id']) : 0;
-$filter_mcat_id = isset($_GET['mcat_id']) ? intval($_GET['mcat_id']) : 0;
 
 // Fetch all available end categories for filter dropdown
 $stmt_cats = $pdo->prepare("SELECT ec.ecat_id, ec.ecat_name, mc.mcat_name, tc.tcat_name, COUNT(p.p_id) as prod_count
@@ -229,5 +232,49 @@ $available_categories = $stmt_cats->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 </div>
+
+<script>
+async function downloadProductsWithFolderPicker(exportUrl, defaultFileName) {
+    if (!defaultFileName) {
+        defaultFileName = 'eConstructionSite_Products_' + (new Date().toISOString().slice(0, 10)) + '.xls';
+    }
+
+    // Modern Browsers supporting File System Access API (opens native Windows/OS folder and Save As dialog)
+    if (typeof window.showSaveFilePicker === 'function') {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: defaultFileName,
+                types: [{
+                    description: 'Excel Spreadsheet (*.xls)',
+                    accept: { 'application/vnd.ms-excel': ['.xls'] }
+                }]
+            });
+            
+            // Show subtle feedback
+            const response = await fetch(exportUrl, { credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Download failed: ' + response.statusText);
+            const blob = await response.blob();
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return;
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                // User cancelled the file save dialog
+                return;
+            }
+            console.warn('showSaveFilePicker fallback triggered:', err);
+        }
+    }
+
+    // Fallback: Standard browser download prompt
+    const link = document.createElement('a');
+    link.href = exportUrl;
+    link.setAttribute('download', defaultFileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+</script>
 
 <?php require_once('footer.php'); ?>

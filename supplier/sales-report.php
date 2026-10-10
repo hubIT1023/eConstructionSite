@@ -128,11 +128,13 @@ try {
 
 // Helper: Calculate item financials (Revenue, Unit Capital, Total Cost, Profit, Markup)
 if (!function_exists('calculate_item_financials')) {
-    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map) {
-        $qty = (int)$quantity;
+    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map, $item_type = 'STANDARD') {
+        $qty = max(1, (int)$quantity);
         $u_price = (float)$unit_price;
         $p_id = (int)$product_id;
-        $subtotal = $qty * $u_price;
+        $is_return_credit = ($item_type === 'RETURN_CREDIT' || $u_price < 0);
+        $abs_unit_price = abs($u_price);
+        $subtotal = $qty * $abs_unit_price;
         $markup = 20.0;
         $unit_capital = 0.0;
 
@@ -145,27 +147,36 @@ if (!function_exists('calculate_item_financials')) {
             if (isset($p['p_capital_price']) && (float)$p['p_capital_price'] > 0) {
                 $unit_capital = (float)$p['p_capital_price'];
             } else {
-                $unit_capital = round($u_price / (1 + ($markup / 100)), 2);
+                $unit_capital = round($abs_unit_price / (1 + ($markup / 100)), 2);
             }
         } else {
             // Fallback for special orders or unmapped items: default 20% markup
             $markup = 20.0;
-            $unit_capital = round($u_price / 1.20, 2);
+            $unit_capital = round($abs_unit_price / 1.20, 2);
         }
 
         $total_capital = $unit_capital * $qty;
-        $profit = max(0.0, $subtotal - $total_capital);
-        $margin_percent = $subtotal > 0 ? ($profit / $subtotal) * 100 : 0.0;
+        
+        if ($is_return_credit) {
+            $profit = -abs(max(0.0, $subtotal - $total_capital));
+            $subtotal = -$subtotal;
+            $total_capital = -$total_capital;
+        } else {
+            $profit = max(0.0, $subtotal - $total_capital);
+        }
+        $margin_percent = ($abs_unit_price > 0 && $subtotal > 0) ? ($profit / $subtotal) * 100 : 0.0;
 
         return [
             'qty' => $qty,
             'unit_price' => $u_price,
+            'abs_unit_price' => $abs_unit_price,
             'subtotal' => $subtotal,
             'unit_capital' => $unit_capital,
             'total_capital' => $total_capital,
             'profit' => $profit,
             'markup' => $markup,
-            'margin_percent' => $margin_percent
+            'margin_percent' => $margin_percent,
+            'is_return_credit' => $is_return_credit
         ];
     }
 }
@@ -179,10 +190,11 @@ if (!function_exists('get_period_financial_metrics')) {
 
         $returns = [];
         try {
-            $stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.quantity_returned, ri.refund_amount, ri.unit_price as item_unit_price 
+            $stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.quantity_returned, ri.refund_amount, ri.unit_price as item_unit_price, ri.restock_status 
                                        FROM tbl_returns r
                                        JOIN tbl_return_items ri ON r.return_id = ri.return_id
-                                       WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?");
+                                       WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?
+                                         AND r.status IN ('COMPLETED', 'APPROVED', 'REFUNDED')");
             $stmt_ret->execute(array($supplier_id, $start_dt, $end_dt));
             $returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
@@ -199,43 +211,63 @@ if (!function_exists('get_period_financial_metrics')) {
             $paid = (float)$ord['paid_amount'];
             $gross_sales += $paid;
 
-            $stmt_items = $pdo->prepare("SELECT product_id, unit_price, quantity FROM tbl_order WHERE payment_id = ?");
+            $stmt_items = $pdo->prepare("SELECT product_id, unit_price, quantity, item_type FROM tbl_order WHERE payment_id = ?");
             $stmt_items->execute(array($ord['payment_id']));
             $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
 
             $order_capital_cost = 0.0;
             foreach ($items as $it) {
-                $fin = calculate_item_financials($it['product_id'], $it['unit_price'], $it['quantity'], $products_map);
-                $order_capital_cost += $fin['total_capital'];
-                $units_sold += $fin['qty'];
+                $is_rc = (!empty($it['item_type']) && $it['item_type'] === 'RETURN_CREDIT') || (float)$it['unit_price'] < 0;
+                $fin = calculate_item_financials($it['product_id'], (float)$it['unit_price'], $it['quantity'], $products_map, $it['item_type'] ?? 'STANDARD');
+                
+                if ($is_rc) {
+                    // Restocked item capital credited back into store
+                    $order_capital_cost += $fin['total_capital']; // total_capital is negative
+                } else {
+                    $order_capital_cost += $fin['total_capital']; // positive capital for sold goods
+                    $units_sold += $fin['qty'];
+                }
             }
 
-            // Capital-First Rule: Cash collected is applied to Capital Cost first; excess becomes Realized Profit
-            $order_capital_recovered = min($paid, $order_capital_cost);
-            $order_realized_profit = max(0.0, $paid - $order_capital_cost);
+            // Capital-First Rule: Cash collected is applied to net Capital Cost first; excess becomes Realized Profit
+            $order_capital_cost_clean = max(0.0, $order_capital_cost);
+            $order_capital_recovered = min($paid, $order_capital_cost_clean);
+            $order_realized_profit = max(0.0, $paid - $order_capital_cost_clean);
 
             $total_cost += $order_capital_recovered;
             $gross_profit += $order_realized_profit;
         }
 
-        $refunds_amt = 0.0;
+        $standalone_refunds_amt = 0.0;
+        $exchange_credits_amt = 0.0;
         $units_ret = 0;
         $returns_profit_deduction = 0.0;
         foreach ($returns as $ret) {
+            $is_exchange = in_array(trim($ret['refund_method']), ['Store Credit / Exchange', 'In-Register Trade-In', 'Exchange'], true);
             $r_fin = calculate_item_financials($ret['product_id'], $ret['item_unit_price'], $ret['quantity_returned'], $products_map);
-            $refunds_amt += (float)$ret['refund_amount'];
-            $units_ret += (int)$ret['quantity_returned'];
-            $returns_profit_deduction += $r_fin['profit'];
+            
+            if ($is_exchange) {
+                // In-register exchanges are already factored into tbl_payment.paid_amount and the exchange order items.
+                // Do NOT subtract from net sales a second time!
+                $exchange_credits_amt += (float)$ret['refund_amount'];
+            } else {
+                // Standalone Cash/Card/GCash Refund:
+                $standalone_refunds_amt += (float)$ret['refund_amount'];
+                $units_ret += (int)$ret['quantity_returned'];
+                $returns_profit_deduction += $r_fin['profit'];
+            }
         }
 
-        $net_sales = max(0.0, $gross_sales - $refunds_amt);
+        $net_sales = max(0.0, $gross_sales - $standalone_refunds_amt);
         $net_profit = max(0.0, $gross_profit - $returns_profit_deduction);
         $net_units = max(0, $units_sold - $units_ret);
         $margin = $net_sales > 0 ? ($net_profit / $net_sales) * 100 : 0.0;
 
         return [
             'gross_sales' => $gross_sales,
-            'refunds_amt' => $refunds_amt,
+            'refunds_amt' => $standalone_refunds_amt,
+            'exchange_credits_amt' => $exchange_credits_amt,
+            'total_refunds_amt' => ($standalone_refunds_amt + $exchange_credits_amt),
             'net_sales' => $net_sales,
             'total_cost' => $total_cost,
             'gross_profit' => $gross_profit,
@@ -286,6 +318,7 @@ try {
                                FROM tbl_returns r
                                JOIN tbl_return_items ri ON r.return_id = ri.return_id
                                WHERE r.supplier_id = ? AND r.return_date >= ? AND r.return_date <= ?
+                                 AND r.status IN ('COMPLETED', 'APPROVED', 'REFUNDED')
                                ORDER BY r.return_id DESC");
     $stmt_ret->execute(array($supplier_id, $start_datetime, $end_datetime));
     $period_returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
@@ -386,56 +419,64 @@ foreach ($sales_orders as $ord) {
     $processed_items = [];
 
     foreach ($ord_items as $item) {
-        $fin = calculate_item_financials($item['product_id'], $item['unit_price'], $item['quantity'], $products_map);
+        $is_rc = (!empty($item['item_type']) && $item['item_type'] === 'RETURN_CREDIT') || (float)$item['unit_price'] < 0;
+        $fin = calculate_item_financials($item['product_id'], (float)$item['unit_price'], $item['quantity'], $products_map, $item['item_type'] ?? 'STANDARD');
+        
         $items_subtotal += $fin['subtotal'];
-        $order_capital_total += $fin['total_capital'];
+        $order_capital_total += $fin['total_capital']; // Negative for return credits
         $order_profit_potential += $fin['profit'];
-        $total_units_sold += $fin['qty'];
+        
+        if (!$is_rc) {
+            $total_units_sold += $fin['qty'];
+        }
 
         $item_entry = array_merge($item, $fin);
         $processed_items[] = $item_entry;
 
         $p_name = $item['product_name'];
-        if (!isset($top_products[$p_name])) {
-            $top_products[$p_name] = [
-                'name' => $p_name,
-                'qty' => 0,
-                'revenue' => 0,
-                'cost' => 0,
-                'profit' => 0
-            ];
-        }
-        $top_products[$p_name]['qty'] += $fin['qty'];
-        $top_products[$p_name]['revenue'] += $fin['subtotal'];
-        $top_products[$p_name]['cost'] += $fin['total_capital'];
-        $top_products[$p_name]['profit'] += $fin['profit'];
+        if (!$is_rc) {
+            if (!isset($top_products[$p_name])) {
+                $top_products[$p_name] = [
+                    'name' => $p_name,
+                    'qty' => 0,
+                    'revenue' => 0,
+                    'cost' => 0,
+                    'profit' => 0
+                ];
+            }
+            $top_products[$p_name]['qty'] += $fin['qty'];
+            $top_products[$p_name]['revenue'] += $fin['subtotal'];
+            $top_products[$p_name]['cost'] += $fin['total_capital'];
+            $top_products[$p_name]['profit'] += $fin['profit'];
 
-        // Aggregate monthly metrics for top products timeline
-        if (!isset($top_products_monthly[$p_name])) {
-            $top_products_monthly[$p_name] = [
-                'name' => $p_name,
-                'months' => array_fill(1, 12, ['orders' => 0, 'units' => 0, 'revenue' => 0]),
-                'total_orders' => 0,
-                'total_units' => 0,
-                'total_revenue' => 0,
-                'total_profit' => 0
-            ];
+            // Aggregate monthly metrics for top products timeline
+            if (!isset($top_products_monthly[$p_name])) {
+                $top_products_monthly[$p_name] = [
+                    'name' => $p_name,
+                    'months' => array_fill(1, 12, ['orders' => 0, 'units' => 0, 'revenue' => 0]),
+                    'total_orders' => 0,
+                    'total_units' => 0,
+                    'total_revenue' => 0,
+                    'total_profit' => 0
+                ];
+            }
+            $top_products_monthly[$p_name]['months'][$order_month_num]['orders'] += 1;
+            $top_products_monthly[$p_name]['months'][$order_month_num]['units']  += $fin['qty'];
+            $top_products_monthly[$p_name]['months'][$order_month_num]['revenue']+= $fin['subtotal'];
+            $top_products_monthly[$p_name]['total_orders'] += 1;
+            $top_products_monthly[$p_name]['total_units']  += $fin['qty'];
+            $top_products_monthly[$p_name]['total_revenue']+= $fin['subtotal'];
+            $top_products_monthly[$p_name]['total_profit'] += $fin['profit'];
         }
-        $top_products_monthly[$p_name]['months'][$order_month_num]['orders'] += 1;
-        $top_products_monthly[$p_name]['months'][$order_month_num]['units']  += $fin['qty'];
-        $top_products_monthly[$p_name]['months'][$order_month_num]['revenue']+= $fin['subtotal'];
-        $top_products_monthly[$p_name]['total_orders'] += 1;
-        $top_products_monthly[$p_name]['total_units']  += $fin['qty'];
-        $top_products_monthly[$p_name]['total_revenue']+= $fin['subtotal'];
-        $top_products_monthly[$p_name]['total_profit'] += $fin['profit'];
     }
 
     // Capital-First Allocation Rule:
     // Any payment received is credited towards recovering capital first.
     // If paid amount exceeds total capital cost, the excess is recognized as realized profit.
-    $order_capital_recovered = min($paid_amt, $order_capital_total);
-    $order_realized_profit = max(0.0, $paid_amt - $order_capital_total);
-    $order_capital_at_risk = max(0.0, $order_capital_total - $paid_amt);
+    $order_capital_cost_clean = max(0.0, $order_capital_total);
+    $order_capital_recovered = min($paid_amt, $order_capital_cost_clean);
+    $order_realized_profit = max(0.0, $paid_amt - $order_capital_cost_clean);
+    $order_capital_at_risk = max(0.0, $order_capital_cost_clean - $paid_amt);
 
     $total_gross_cost += $order_capital_recovered;
     $total_gross_profit += $order_realized_profit;
@@ -515,19 +556,30 @@ uasort($cashier_metrics, function($a, $b) {
 
 // Returns Calculations
 $total_refunds_amount = 0;
+$total_standalone_refunds = 0;
+$total_exchange_credits = 0;
 $total_units_returned = 0;
 $total_returns_cost = 0;
 $total_returns_profit_deduction = 0;
 
 foreach ($period_returns as $r_row) {
+    $is_exchange = in_array(trim($r_row['refund_method']), ['Store Credit / Exchange', 'In-Register Trade-In', 'Exchange'], true);
     $r_fin = calculate_item_financials($r_row['product_id'], $r_row['item_unit_price'] ?: $r_row['unit_price'], $r_row['quantity_returned'], $products_map);
+    
     $total_refunds_amount += (float)$r_row['item_refund'];
     $total_units_returned += (int)$r_row['quantity_returned'];
-    $total_returns_cost += $r_fin['total_capital'];
-    $total_returns_profit_deduction += $r_fin['profit'];
+    
+    if ($is_exchange) {
+        $total_exchange_credits += (float)$r_row['item_refund'];
+    } else {
+        $total_standalone_refunds += (float)$r_row['item_refund'];
+        $total_returns_cost += $r_fin['total_capital'];
+        $total_returns_profit_deduction += $r_fin['profit'];
+    }
 }
 
-$total_net_revenue = max(0.0, $total_gross_revenue - $total_refunds_amount);
+// Net sales = Gross paid amount collected - Standalone cash/card refunds (since exchanges are already netted out in paid_amount)
+$total_net_revenue = max(0.0, $total_gross_revenue - $total_standalone_refunds);
 $total_net_profit = max(0.0, $total_gross_profit - $total_returns_profit_deduction);
 $net_units_sold = max(0, $total_units_sold - $total_units_returned);
 $period_profit_margin = $total_net_revenue > 0 ? ($total_net_profit / $total_net_revenue) * 100 : 0.0;
@@ -616,7 +668,7 @@ $lb_selected_metric = isset($_GET['lb_metric']) ? $_GET['lb_metric'] : 'orders';
 // Fetch all order line items for the entire leaderboard year
 $stmt_lb_all = $pdo->prepare("
     SELECT p.id as payment_id, p.payment_date, p.paid_amount,
-           o.product_id, o.product_name, o.unit_price, o.quantity
+           o.product_id, o.product_name, o.unit_price, o.quantity, o.item_type
     FROM tbl_payment p
     JOIN tbl_order o ON p.payment_id = o.payment_id
     WHERE p.supplier_id = ? 
@@ -638,6 +690,11 @@ $lb_monthly_raw['all'] = [];
 $lb_order_track = [];
 
 foreach ($lb_all_rows as $lb_row) {
+    // Skip trade-in exchange credit lines from leaderboard
+    if ((!empty($lb_row['item_type']) && $lb_row['item_type'] === 'RETURN_CREDIT') || (float)$lb_row['unit_price'] < 0) {
+        continue;
+    }
+
     $p_date = strtotime($lb_row['payment_date']);
     $m_idx = (int)date('n', $p_date);
     $p_name = $lb_row['product_name'];
@@ -646,7 +703,7 @@ foreach ($lb_all_rows as $lb_row) {
     $u_price = (float)$lb_row['unit_price'];
     $pay_id = $lb_row['payment_id'];
 
-    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map);
+    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map, $lb_row['item_type'] ?? 'STANDARD');
     
     // Category resolution
     $cat_name = 'Building Materials';
@@ -1276,7 +1333,13 @@ $monthly_leaderboard_json = json_encode($monthly_leaderboard_payload);
             <div class="stat-card bg-gradient-red">
                 <i class="fa fa-undo icon-bg"></i>
                 <h3>&#8369;<?php echo number_format($total_refunds_amount, 2); ?></h3>
-                <p>Total Returns & Refunds (<?php echo count($period_returns); ?> items)</p>
+                <p>
+                    <?php if ($total_exchange_credits > 0): ?>
+                        Cash Refund: &#8369;<?php echo number_format($total_standalone_refunds, 2); ?> | Exch: &#8369;<?php echo number_format($total_exchange_credits, 2); ?>
+                    <?php else: ?>
+                        Total Returns & Refunds (<?php echo count($period_returns); ?> items)
+                    <?php endif; ?>
+                </p>
             </div>
         </div>
 
@@ -1666,16 +1729,29 @@ $monthly_leaderboard_json = json_encode($monthly_leaderboard_payload);
                                         <span class="label label-default"><i class="fa fa-ban"></i> Not Restocked</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><span class="label label-default"><?php echo htmlspecialchars($pret['refund_method']); ?></span></td>
+                                <td>
+                                    <?php if ($pret['refund_method'] === 'Store Credit / Exchange' || $pret['refund_method'] === 'In-Register Trade-In'): ?>
+                                        <span class="label label-info" style="background-color: #0284c7;"><i class="fa fa-exchange"></i> In-Register Exchange</span>
+                                    <?php else: ?>
+                                        <span class="label label-default"><?php echo htmlspecialchars($pret['refund_method']); ?></span>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                             <tr style="background: #fef2f2; font-weight: bold;">
-                                <th colspan="8" class="text-right">Total Returns Deducted:</th>
-                                <th class="text-right" style="color: #dc2626; font-size: 14px;">-&#8369;<?php echo number_format($total_refunds_amount, 2); ?></th>
+                                <th colspan="8" class="text-right">Total Standalone Cash Refunds Deducted from Gross Sales:</th>
+                                <th class="text-right" style="color: #dc2626; font-size: 14px;">-&#8369;<?php echo number_format($total_standalone_refunds, 2); ?></th>
                                 <th colspan="4"></th>
                             </tr>
+                            <?php if ($total_exchange_credits > 0): ?>
+                            <tr style="background: #f0f9ff; font-weight: bold;">
+                                <th colspan="8" class="text-right" style="color: #0369a1;">In-Register Exchange / Trade-In Credits (Netted on POS Invoices):</th>
+                                <th class="text-right" style="color: #0284c7; font-size: 14px;">&#8369;<?php echo number_format($total_exchange_credits, 2); ?></th>
+                                <th colspan="4" style="color: #64748b; font-size: 11px;">Already netted against invoice paid amount</th>
+                            </tr>
+                            <?php endif; ?>
                         </tfoot>
                     </table>
                 </div>
@@ -2089,13 +2165,20 @@ $monthly_leaderboard_json = json_encode($monthly_leaderboard_payload);
                                 <th class="text-right" style="color: #10b981; font-size: 15px;">+&#8369;<?php echo number_format($total_gross_profit, 2); ?></th>
                                 <th colspan="2"></th>
                             </tr>
-                            <?php if ($total_refunds_amount > 0): ?>
+                            <?php if ($total_standalone_refunds > 0): ?>
                             <tr style="background: #fef2f2; font-weight: bold;">
-                                <th colspan="7" class="text-right" style="color: #991b1b;">Less Returns & Refunds:</th>
-                                <th class="text-right" style="color: #dc2626; font-size: 14px;">-&#8369;<?php echo number_format($total_refunds_amount, 2); ?></th>
+                                <th colspan="7" class="text-right" style="color: #991b1b;">Less Standalone Cash/Card Refunds:</th>
+                                <th class="text-right" style="color: #dc2626; font-size: 14px;">-&#8369;<?php echo number_format($total_standalone_refunds, 2); ?></th>
                                 <th class="text-right" style="color: #991b1b; font-size: 14px;">-&#8369;<?php echo number_format($total_returns_cost, 2); ?></th>
                                 <th class="text-right" style="color: #dc2626; font-size: 14px;">-&#8369;<?php echo number_format($total_returns_profit_deduction, 2); ?></th>
                                 <th colspan="2"></th>
+                            </tr>
+                            <?php endif; ?>
+                            <?php if ($total_exchange_credits > 0): ?>
+                            <tr style="background: #f0f9ff; font-weight: bold;">
+                                <th colspan="7" class="text-right" style="color: #0369a1;">In-Register Exchange Credits Applied (Netted on Invoices):</th>
+                                <th class="text-right" style="color: #0284c7; font-size: 14px;">&#8369;<?php echo number_format($total_exchange_credits, 2); ?></th>
+                                <th colspan="4" style="color: #64748b; font-size: 11px; font-weight: normal;">Already netted against invoice paid amount</th>
                             </tr>
                             <?php endif; ?>
                             <tr style="background: #f0fdf4; font-weight: bold;">
