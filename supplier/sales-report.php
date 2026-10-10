@@ -1440,10 +1440,18 @@ $monthly_leaderboard_json = json_encode($monthly_leaderboard_payload);
                                             <th style="width: 50px;" class="text-center">Rank</th>
                                             <th>Product Name</th>
                                             <th class="text-center" style="width: 75px;">Movement</th>
-                                            <th class="text-right" style="width: 60px;">Orders</th>
-                                            <th class="text-right" style="width: 60px;">Units</th>
-                                            <th class="text-right" style="width: 95px;">Revenue</th>
-                                            <th class="text-right" style="width: 95px;">Profit</th>
+                                            <th class="text-right" style="width: 75px; cursor: pointer;" onclick="switchLbMetric('orders')" title="Click to rank by Orders (Descending)">
+                                                <span id="thLbOrders">Orders <i class="fa fa-sort-amount-desc text-primary"></i></span>
+                                            </th>
+                                            <th class="text-right" style="width: 75px; cursor: pointer;" onclick="switchLbMetric('units')" title="Click to rank by Units (Descending)">
+                                                <span id="thLbUnits">Units</span>
+                                            </th>
+                                            <th class="text-right" style="width: 95px; cursor: pointer;" onclick="switchLbMetric('revenue')" title="Click to rank by Revenue (Descending)">
+                                                <span id="thLbRevenue">Revenue</span>
+                                            </th>
+                                            <th class="text-right" style="width: 95px; cursor: pointer;" onclick="switchLbMetric('profit')" title="Click to rank by Profit (Descending)">
+                                                <span id="thLbProfit">Profit</span>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody id="lbTableBody">
@@ -2334,19 +2342,20 @@ function renderMonthlyLeaderboard() {
         var dynamicHeight = Math.max(380, displayItems.length * 24 + 60);
         wrapperEl.style.height = dynamicHeight + 'px';
 
-        // Prepare chart labels and values (reverse so #1 is at top of horizontal chart)
-        var chartItems = displayItems.slice().reverse();
+        // Prepare chart labels and values (descending order: #1 at top with longest bar)
+        var chartItems = displayItems.slice();
         var labels = chartItems.map(function(item) {
             var n = item.name;
-            return n.length > 28 ? n.substring(0, 26) + '...' : n;
+            var rankPrefix = '#' + item.rank + ' ';
+            return rankPrefix + (n.length > 25 ? n.substring(0, 23) + '...' : n);
         });
         var values = chartItems.map(function(item) {
             return item[metric] || 0;
         });
         var bgColors = chartItems.map(function(item) {
-            if (item.rank === 1) return 'rgba(245, 158, 11, 0.9)'; // Gold
-            if (item.rank === 2) return 'rgba(148, 163, 184, 0.9)'; // Silver
-            if (item.rank === 3) return 'rgba(217, 119, 6, 0.9)';  // Bronze
+            if (item.rank === 1) return 'rgba(245, 158, 11, 0.95)'; // Gold
+            if (item.rank === 2) return 'rgba(148, 163, 184, 0.95)'; // Silver
+            if (item.rank === 3) return 'rgba(217, 119, 6, 0.95)';  // Bronze
             return 'rgba(2, 132, 199, 0.85)';                     // Blue
         });
 
@@ -2440,6 +2449,16 @@ function switchLbMetric(metric) {
     if (btnRevenue) btnRevenue.className = 'btn ' + (metric === 'revenue' ? 'btn-primary active' : 'btn-default');
     if (btnProfit) btnProfit.className = 'btn ' + (metric === 'profit' ? 'btn-primary active' : 'btn-default');
 
+    var thOrders = document.getElementById('thLbOrders');
+    var thUnits = document.getElementById('thLbUnits');
+    var thRevenue = document.getElementById('thLbRevenue');
+    var thProfit = document.getElementById('thLbProfit');
+
+    if (thOrders) thOrders.innerHTML = 'Orders' + (metric === 'orders' ? ' <i class="fa fa-sort-amount-desc text-primary"></i>' : '');
+    if (thUnits) thUnits.innerHTML = 'Units' + (metric === 'units' ? ' <i class="fa fa-sort-amount-desc text-primary"></i>' : '');
+    if (thRevenue) thRevenue.innerHTML = 'Revenue' + (metric === 'revenue' ? ' <i class="fa fa-sort-amount-desc text-primary"></i>' : '');
+    if (thProfit) thProfit.innerHTML = 'Profit' + (metric === 'profit' ? ' <i class="fa fa-sort-amount-desc text-primary"></i>' : '');
+
     renderMonthlyLeaderboard();
 }
 
@@ -2461,8 +2480,8 @@ function filterLbTable(query) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-    // Initialize Monthly Leaderboard
-    renderMonthlyLeaderboard();
+    // Initialize Monthly Leaderboard in descending order
+    switchLbMetric(window.currentLbMetric || 'orders');
 
     // 2. Payment Method Distribution Chart
     var pmCtx = document.getElementById('paymentMethodChart').getContext('2d');
