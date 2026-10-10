@@ -313,6 +313,7 @@ $sales_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch returns matching date range for this supplier
 $period_returns = [];
+$returns_by_payment_id = [];
 try {
     $stmt_ret = $pdo->prepare("SELECT r.*, ri.product_id, ri.product_name, ri.quantity_returned, ri.refund_amount as item_refund, ri.unit_price as item_unit_price, ri.return_reason, ri.condition, ri.restock_status, ri.sku, ri.item_type, ri.special_order_reference, ri.product_details 
                                FROM tbl_returns r
@@ -322,8 +323,53 @@ try {
                                ORDER BY r.return_id DESC");
     $stmt_ret->execute(array($supplier_id, $start_datetime, $end_datetime));
     $period_returns = $stmt_ret->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($period_returns as $pret) {
+        $p_key = trim($pret['payment_id'] ?? '');
+        if (!empty($p_key)) {
+            if (!isset($returns_by_payment_id[$p_key])) {
+                $returns_by_payment_id[$p_key] = [];
+            }
+            $returns_by_payment_id[$p_key][] = $pret;
+        }
+    }
 } catch (Exception $e) {
     $period_returns = [];
+    $returns_by_payment_id = [];
+}
+
+// Also index returns linked to payments in this period
+if (!empty($sales_orders)) {
+    $p_ids = array_unique(array_filter(array_map(function($o) { return trim($o['payment_id'] ?? ''); }, $sales_orders)));
+    if (!empty($p_ids)) {
+        $in_placeholders = implode(',', array_fill(0, count($p_ids), '?'));
+        try {
+            $stmt_ret_pay = $pdo->prepare("SELECT r.*, ri.product_id, ri.product_name, ri.quantity_returned, ri.refund_amount as item_refund, ri.unit_price as item_unit_price, ri.return_reason, ri.condition, ri.restock_status, ri.sku, ri.item_type, ri.special_order_reference, ri.product_details 
+                                           FROM tbl_returns r
+                                           JOIN tbl_return_items ri ON r.return_id = ri.return_id
+                                           WHERE r.payment_id IN ($in_placeholders) AND r.status IN ('COMPLETED', 'APPROVED', 'REFUNDED')");
+            $stmt_ret_pay->execute(array_values($p_ids));
+            $matched_returns = $stmt_ret_pay->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($matched_returns as $mret) {
+                $p_key = trim($mret['payment_id'] ?? '');
+                if (!empty($p_key)) {
+                    if (!isset($returns_by_payment_id[$p_key])) {
+                        $returns_by_payment_id[$p_key] = [];
+                    }
+                    $exists = false;
+                    foreach ($returns_by_payment_id[$p_key] as $existing_ret) {
+                        if (($existing_ret['return_reference'] ?? '') === ($mret['return_reference'] ?? '') && ($existing_ret['product_name'] ?? '') === ($mret['product_name'] ?? '')) {
+                            $exists = true;
+                            break;
+                        }
+                    }
+                    if (!$exists) {
+                        $returns_by_payment_id[$p_key][] = $mret;
+                    }
+                }
+            }
+        } catch (Exception $e) {}
+    }
 }
 
 // Load all supplier staff / cashiers for mapping
@@ -431,6 +477,7 @@ foreach ($sales_orders as $ord) {
         }
 
         $item_entry = array_merge($item, $fin);
+        $item_entry['is_return_credit'] = $is_rc;
         $processed_items[] = $item_entry;
 
         $p_name = $item['product_name'];
@@ -487,6 +534,18 @@ foreach ($sales_orders as $ord) {
     }
 
     $order_margin = $paid_amt > 0 ? ($order_realized_profit / $paid_amt) * 100 : 0;
+    
+    // Check for associated returns and exchange credits
+    $has_exchange_credit = false;
+    foreach ($processed_items as $p_it) {
+        if (!empty($p_it['is_return_credit'])) {
+            $has_exchange_credit = true;
+            break;
+        }
+    }
+    $ord_pay_key = trim($ord['payment_id'] ?? '');
+    $associated_returns = (!empty($ord_pay_key) && isset($returns_by_payment_id[$ord_pay_key])) ? $returns_by_payment_id[$ord_pay_key] : [];
+
     $ord['items'] = $processed_items;
     $ord['items_subtotal'] = $items_subtotal;
     $ord['order_cost'] = $order_capital_recovered;
@@ -495,6 +554,9 @@ foreach ($sales_orders as $ord) {
     $ord['order_profit'] = $order_realized_profit;
     $ord['order_margin'] = $order_margin;
     $ord['delivery_fee'] = max(0, $delivery_fee);
+    $ord['has_exchange_credit'] = $has_exchange_credit;
+    $ord['associated_returns'] = $associated_returns;
+    $ord['has_standalone_refund'] = !empty($associated_returns);
     $processed_orders[] = $ord;
 
     // Trend grouping by date
@@ -2820,6 +2882,28 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                     </h3>
                 </div>
                 <div class="box-body table-responsive" style="padding: 10px 18px;">
+                    
+                    <!-- Line Item Color Legend Toolbar -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; padding: 8px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;" class="no-print">
+                        <div style="font-size: 12px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa fa-info-circle text-primary"></i> Line Item Color Legend:
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 11.5px;">
+                            <span style="display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; display: inline-block;"></span>
+                                <span style="color: #334155; font-weight: 600;">Standard Purchase</span>
+                            </span>
+                            <span style="display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="width: 10px; height: 10px; border-radius: 50%; background: #ea580c; display: inline-block;"></span>
+                                <span style="color: #c2410c; font-weight: 700;">🟠 In-Register Trade-In / Exchange Credit</span>
+                            </span>
+                            <span style="display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="width: 10px; height: 10px; border-radius: 50%; background: #dc2626; display: inline-block;"></span>
+                                <span style="color: #991b1b; font-weight: 700;">🔴 Standalone Cash / Card Refund</span>
+                            </span>
+                        </div>
+                    </div>
+
                     <table id="example1" class="table table-bordered table-hover table-striped" style="font-size: 13px;">
                         <thead>
                             <tr style="background: #f8fafc;">
@@ -2851,6 +2935,20 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                     <span class="label label-info" style="font-size: 12px;">
                                         <?php echo htmlspecialchars($row['txnid'] ?: $row['payment_id']); ?>
                                     </span>
+                                    <?php if (!empty($row['has_exchange_credit'])): ?>
+                                        <div style="margin-top: 3px;">
+                                            <span class="label" style="background: #ea580c; color: #ffffff; font-size: 9.5px; font-weight: 800; padding: 2px 5px; border-radius: 3px;">
+                                                <i class="fa fa-exchange"></i> EXCHANGE
+                                            </span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row['has_standalone_refund'])): ?>
+                                        <div style="margin-top: 3px;">
+                                            <span class="label label-danger" style="background: #dc2626; color: #ffffff; font-size: 9.5px; font-weight: 800; padding: 2px 5px; border-radius: 3px;">
+                                                <i class="fa fa-undo"></i> HAS REFUND
+                                            </span>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <strong><?php echo htmlspecialchars($row['customer_name']); ?></strong><br>
@@ -2858,14 +2956,60 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                 </td>
                                 <td>
                                     <?php foreach ($order_items as $it): ?>
-                                        <div style="margin-bottom: 3px;">
-                                            <strong><?php echo htmlspecialchars($it['product_name']); ?></strong> 
-                                            &times; <?php echo $it['quantity']; ?>
-                                            <span style="color: #64748b; font-size: 11px;">
-                                                (@ &#8369;<?php echo number_format($it['unit_price'], 2); ?> | Ca: &#8369;<?php echo number_format($it['unit_capital'], 2); ?>)
-                                            </span>
-                                        </div>
+                                        <?php if (!empty($it['is_return_credit'])): ?>
+                                            <!-- 🟠 Option 1: Orange/Amber Highlighting for Trade-In Return Credits -->
+                                            <div style="background: #fff7ed; border: 1px solid #fed7aa; border-left: 3.5px solid #ea580c; border-radius: 5px; padding: 4px 8px; margin-bottom: 4px; box-shadow: 0 1px 2px rgba(234, 88, 12, 0.05);">
+                                                <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px;">
+                                                    <div>
+                                                        <span class="label" style="background: #ea580c; color: #fff; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">
+                                                            <i class="fa fa-exchange"></i> TRADE-IN CREDIT
+                                                        </span>
+                                                        <strong style="color: #9a3412; font-size: 12px; margin-left: 3px;"><?php echo htmlspecialchars($it['product_name']); ?></strong>
+                                                    </div>
+                                                    <span style="font-weight: 800; color: #ea580c; font-size: 11.5px;">
+                                                        -&#8369;<?php echo number_format(abs($it['subtotal'] ?? ($it['quantity'] * $it['unit_price'])), 2); ?>
+                                                    </span>
+                                                </div>
+                                                <div style="color: #c2410c; font-size: 10.5px; margin-top: 2px;">
+                                                    &times; <?php echo abs($it['quantity']); ?> pcs @ -&#8369;<?php echo number_format(abs($it['unit_price']), 2); ?> <span style="font-style: italic; color: #7c2d12;">(Credit netted on invoice)</span>
+                                                </div>
+                                            </div>
+                                        <?php else: ?>
+                                            <!-- Standard Purchased Item -->
+                                            <div style="margin-bottom: 3px;">
+                                                <strong><?php echo htmlspecialchars($it['product_name']); ?></strong> 
+                                                &times; <?php echo $it['quantity']; ?>
+                                                <span style="color: #64748b; font-size: 11px;">
+                                                    (@ &#8369;<?php echo number_format($it['unit_price'], 2); ?> | Ca: &#8369;<?php echo number_format($it['unit_capital'], 2); ?>)
+                                                </span>
+                                            </div>
+                                        <?php endif; ?>
                                     <?php endforeach; ?>
+
+                                    <!-- 🔴 Option 1: Red Highlighting for Associated Standalone Cash/Card Refunds -->
+                                    <?php if (!empty($row['associated_returns'])): ?>
+                                        <?php foreach ($row['associated_returns'] as $ret_entry): ?>
+                                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-left: 3.5px solid #dc2626; border-radius: 5px; padding: 4px 8px; margin-top: 4px; margin-bottom: 3px; box-shadow: 0 1px 2px rgba(220, 38, 38, 0.05);">
+                                                <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px;">
+                                                    <div>
+                                                        <span class="label label-danger" style="background: #dc2626; color: #fff; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">
+                                                            <i class="fa fa-undo"></i> REFUND (<?php echo $ret_entry['quantity_returned']; ?> pcs)
+                                                        </span>
+                                                        <strong style="color: #991b1b; font-size: 12px; margin-left: 3px;"><?php echo htmlspecialchars($ret_entry['product_name']); ?></strong>
+                                                    </div>
+                                                    <span style="font-weight: 800; color: #dc2626; font-size: 11.5px;">
+                                                        -&#8369;<?php echo number_format($ret_entry['item_refund'], 2); ?>
+                                                    </span>
+                                                </div>
+                                                <div style="color: #b91c1c; font-size: 10.5px; margin-top: 2px;">
+                                                    Ref: <strong><?php echo htmlspecialchars($ret_entry['return_reference']); ?></strong> &bull; Method: <?php echo htmlspecialchars($ret_entry['refund_method']); ?>
+                                                    <?php if (!empty($ret_entry['return_reason'])): ?>
+                                                        &bull; Reason: <em><?php echo htmlspecialchars($ret_entry['return_reason']); ?></em>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="text-right">
                                     <?php if($row['delivery_fee'] > 0): ?>
@@ -3010,34 +3154,73 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                                                                 $oit_price = floatval($oit['unit_price'] ?? 0);
                                                                                 $oit_line = floatval($oit['subtotal'] ?? ($oit_qty * $oit_price));
                                                                                 $calc_subtotal += $oit_line;
-                                                                                $unit_label = ($oit_qty > 1 ? 'pcs' : 'pc');
+                                                                                $is_oit_return = !empty($oit['is_return_credit']) || ($oit_price < 0);
+                                                                                $unit_label = ($oit_qty > 1 || $oit_qty < -1 ? 'pcs' : 'pc');
                                                                             ?>
-                                                                            <tr>
-                                                                                <td style="text-align: center; color: #94a3b8; font-weight: 600; vertical-align: middle;"><?php echo $oit_idx; ?></td>
+                                                                            <tr style="<?php echo $is_oit_return ? 'background: #fff7ed;' : ''; ?>">
+                                                                                <td style="text-align: center; color: <?php echo $is_oit_return ? '#ea580c' : '#94a3b8'; ?>; font-weight: 600; vertical-align: middle;"><?php echo $oit_idx; ?></td>
                                                                                 <td style="vertical-align: middle;">
-                                                                                    <div style="font-weight: 700; color: #0f172a;">
+                                                                                    <div style="font-weight: 700; color: <?php echo $is_oit_return ? '#9a3412' : '#0f172a'; ?>;">
+                                                                                        <?php if ($is_oit_return): ?>
+                                                                                            <span class="badge" style="background: #ea580c; color: #fff; font-size: 9.5px; font-weight: 800; padding: 2px 6px; margin-right: 4px; vertical-align: text-top;"><i class="fa fa-exchange"></i> TRADE-IN CREDIT</span>
+                                                                                        <?php endif; ?>
                                                                                         <?php echo htmlspecialchars($oit['product_name'] ?? ''); ?>
                                                                                     </div>
                                                                                     <?php if (!empty($oit['size']) || !empty($oit['color'])): ?>
                                                                                         <div style="margin-top: 3px; display: flex; gap: 4px;">
                                                                                             <?php if (!empty($oit['size']) && $oit['size'] !== '-'): ?>
-                                                                                                <span class="badge" style="background: #f1f5f9; color: #475569; font-size: 10.5px; font-weight: 600;">Size: <?php echo htmlspecialchars($oit['size']); ?></span>
+                                                                                                <span class="badge" style="background: <?php echo $is_oit_return ? '#fed7aa; color: #9a3412' : '#f1f5f9; color: #475569'; ?>; font-size: 10.5px; font-weight: 600;">Size: <?php echo htmlspecialchars($oit['size']); ?></span>
                                                                                             <?php endif; ?>
                                                                                             <?php if (!empty($oit['color']) && $oit['color'] !== '-'): ?>
-                                                                                                <span class="badge" style="background: #f1f5f9; color: #475569; font-size: 10.5px; font-weight: 600;">Color: <?php echo htmlspecialchars($oit['color']); ?></span>
+                                                                                                <span class="badge" style="background: <?php echo $is_oit_return ? '#fed7aa; color: #9a3412' : '#f1f5f9; color: #475569'; ?>; font-size: 10.5px; font-weight: 600;">Color: <?php echo htmlspecialchars($oit['color']); ?></span>
                                                                                             <?php endif; ?>
                                                                                         </div>
                                                                                     <?php endif; ?>
                                                                                 </td>
-                                                                                <td style="text-align: center; font-weight: 700; color: #1e293b; vertical-align: middle;"><?php echo $oit_qty; ?> <span style="font-size: 11px; color: #64748b; font-weight: normal;"><?php echo $unit_label; ?></span></td>
-                                                                                <td style="text-align: right; color: #475569; font-weight: 600; vertical-align: middle;">&#8369;<?php echo number_format($oit_price, 2); ?></td>
-                                                                                <td style="text-align: right; font-weight: 800; color: #0f172a; vertical-align: middle;">&#8369;<?php echo number_format($oit_line, 2); ?></td>
+                                                                                <td style="text-align: center; font-weight: 700; color: <?php echo $is_oit_return ? '#ea580c' : '#1e293b'; ?>; vertical-align: middle;"><?php echo abs($oit_qty); ?> <span style="font-size: 11px; color: #64748b; font-weight: normal;"><?php echo $unit_label; ?></span></td>
+                                                                                <td style="text-align: right; color: <?php echo $is_oit_return ? '#ea580c' : '#475569'; ?>; font-weight: 600; vertical-align: middle;"><?php echo $is_oit_return ? '-&#8369;' . number_format(abs($oit_price), 2) : '&#8369;' . number_format($oit_price, 2); ?></td>
+                                                                                <td style="text-align: right; font-weight: 800; color: <?php echo $is_oit_return ? '#ea580c' : '#0f172a'; ?>; vertical-align: middle;"><?php echo $is_oit_return ? '-&#8369;' . number_format(abs($oit_line), 2) : '&#8369;' . number_format($oit_line, 2); ?></td>
                                                                             </tr>
                                                                             <?php endforeach; ?>
                                                                         </tbody>
                                                                     </table>
                                                                 </div>
                                                             </div>
+
+                                                            <!-- Associated Standalone Refund Records (if any) -->
+                                                            <?php if (!empty($row['associated_returns'])): ?>
+                                                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px;">
+                                                                <div style="font-size: 11.5px; font-weight: 800; text-transform: uppercase; color: #dc2626; margin-bottom: 8px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                                                                    <i class="fa fa-undo"></i> Associated Standalone Return &amp; Refund Records (<?php echo count($row['associated_returns']); ?>)
+                                                                </div>
+                                                                <div class="table-responsive" style="margin-bottom: 0;">
+                                                                    <table class="table" style="margin-bottom: 0; font-size: 12px; background: #ffffff; border-radius: 6px; overflow: hidden;">
+                                                                        <thead>
+                                                                            <tr style="background: #fee2e2; color: #991b1b;">
+                                                                                <th>Return Ref</th>
+                                                                                <th>Item Refunded</th>
+                                                                                <th class="text-center">Qty</th>
+                                                                                <th>Method</th>
+                                                                                <th>Reason</th>
+                                                                                <th class="text-right">Refund Amount</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            <?php foreach ($row['associated_returns'] as $ar): ?>
+                                                                            <tr>
+                                                                                <td style="font-weight: 700; color: #991b1b;"><?php echo htmlspecialchars($ar['return_reference']); ?></td>
+                                                                                <td style="font-weight: 600; color: #0f172a;"><?php echo htmlspecialchars($ar['product_name']); ?></td>
+                                                                                <td class="text-center font-weight-bold" style="color: #dc2626;"><?php echo $ar['quantity_returned']; ?> pcs</td>
+                                                                                <td><span class="badge" style="background: #ef4444; color: #fff; font-size: 10px;"><?php echo htmlspecialchars($ar['refund_method']); ?></span></td>
+                                                                                <td style="color: #64748b; font-style: italic;"><?php echo htmlspecialchars($ar['return_reason'] ?: 'No reason stated'); ?></td>
+                                                                                <td class="text-right" style="font-weight: 800; color: #dc2626;">-&#8369;<?php echo number_format($ar['item_refund'], 2); ?></td>
+                                                                            </tr>
+                                                                            <?php endforeach; ?>
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                            <?php endif; ?>
 
                                                             <!-- Financial Totals Block -->
                                                             <div style="display: flex; justify-content: flex-end;">
@@ -3092,10 +3275,12 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                                                                 $oit_qty = intval($oit['quantity'] ?? 1);
                                                                                 $oit_price = floatval($oit['unit_price'] ?? 0);
                                                                                 $oit_line = floatval($oit['subtotal'] ?? ($oit_qty * $oit_price));
-                                                                                $unit_label = ($oit_qty > 1 ? 'pcs' : 'pc');
+                                                                                $is_oit_return = !empty($oit['is_return_credit']) || ($oit_price < 0);
+                                                                                $unit_label = ($oit_qty > 1 || $oit_qty < -1 ? 'pcs' : 'pc');
                                                                             ?>
                                                                             <tr>
                                                                                 <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">
+                                                                                    <?php if ($is_oit_return): ?>[TRADE-IN RETURN CREDIT] <?php endif; ?>
                                                                                     <?php echo htmlspecialchars($oit['product_name'] ?? ''); ?>
                                                                                     <?php if (!empty($oit['size']) || !empty($oit['color'])): ?>
                                                                                         <div style="font-size: 9pt; font-weight: normal;">
@@ -3107,13 +3292,31 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                                                             </tr>
                                                                             <tr>
                                                                                 <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
-                                                                                    <?php echo $oit_qty; ?> <?php echo $unit_label; ?> @ <?php echo number_format($oit_price, 2); ?>
+                                                                                    <?php echo abs($oit_qty); ?> <?php echo $unit_label; ?> @ <?php echo $is_oit_return ? '-' . number_format(abs($oit_price), 2) : number_format($oit_price, 2); ?>
                                                                                 </td>
                                                                                 <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
-                                                                                    <?php echo number_format($oit_line, 2); ?>
+                                                                                    <?php echo $is_oit_return ? '-' . number_format(abs($oit_line), 2) : number_format($oit_line, 2); ?>
                                                                                 </td>
                                                                             </tr>
                                                                             <?php endforeach; ?>
+
+                                                                            <?php if (!empty($row['associated_returns'])): ?>
+                                                                            <tr>
+                                                                                <td colspan="2" style="text-align: left; padding-top: 6px; font-weight: bold; font-size: 9.5pt; color: #000;">
+                                                                                    -- STANDALONE REFUNDS --
+                                                                                </td>
+                                                                            </tr>
+                                                                            <?php foreach ($row['associated_returns'] as $ar): ?>
+                                                                            <tr>
+                                                                                <td style="text-align: left; padding-left: 8px; font-size: 9pt;">
+                                                                                    [REFUND] <?php echo htmlspecialchars($ar['product_name']); ?> (<?php echo $ar['quantity_returned']; ?> pcs)
+                                                                                </td>
+                                                                                <td style="text-align: right; font-size: 9pt; vertical-align: bottom;">
+                                                                                    -<?php echo number_format($ar['item_refund'], 2); ?>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <?php endforeach; ?>
+                                                                            <?php endif; ?>
                                                                         </tbody>
                                                                     </table>
                                                                     <div style="text-align: center; overflow: hidden; white-space: nowrap;">--------------------------------</div>
@@ -3168,16 +3371,25 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
-                                                                        <?php foreach($order_items as $oit): ?>
-                                                                        <tr>
-                                                                            <td><strong><?php echo htmlspecialchars($oit['product_name']); ?></strong></td>
+                                                                        <?php foreach($order_items as $oit): 
+                                                                            $is_oit_return = !empty($oit['is_return_credit']) || floatval($oit['unit_price'] ?? 0) < 0;
+                                                                        ?>
+                                                                        <tr style="<?php echo $is_oit_return ? 'background: #fff7ed;' : ''; ?>">
+                                                                            <td>
+                                                                                <?php if ($is_oit_return): ?>
+                                                                                    <span class="badge" style="background: #ea580c; color: #fff; font-size: 9px; font-weight: 800; padding: 1px 5px; margin-right: 3px;"><i class="fa fa-exchange"></i> TRADE-IN</span>
+                                                                                <?php endif; ?>
+                                                                                <strong style="<?php echo $is_oit_return ? 'color: #9a3412;' : ''; ?>"><?php echo htmlspecialchars($oit['product_name']); ?></strong>
+                                                                            </td>
                                                                             <td><?php echo htmlspecialchars($oit['size'] ?: '-'); ?></td>
                                                                             <td><?php echo htmlspecialchars($oit['color'] ?: '-'); ?></td>
-                                                                            <td class="text-center font-weight-bold"><?php echo $oit['quantity']; ?></td>
-                                                                            <td class="text-right">&#8369;<?php echo number_format($oit['unit_price'], 2); ?></td>
-                                                                            <td class="text-right text-muted">&#8369;<?php echo number_format($oit['unit_capital'], 2); ?></td>
-                                                                            <td class="text-right font-weight-bold">&#8369;<?php echo number_format($oit['subtotal'], 2); ?></td>
-                                                                            <td class="text-right" style="color: #10b981; font-weight: 800;">+&#8369;<?php echo number_format($oit['profit'], 2); ?></td>
+                                                                            <td class="text-center font-weight-bold" style="<?php echo $is_oit_return ? 'color: #ea580c;' : ''; ?>"><?php echo abs($oit['quantity']); ?></td>
+                                                                            <td class="text-right" style="<?php echo $is_oit_return ? 'color: #ea580c;' : ''; ?>"><?php echo $is_oit_return ? '-&#8369;' . number_format(abs($oit['unit_price']), 2) : '&#8369;' . number_format($oit['unit_price'], 2); ?></td>
+                                                                            <td class="text-right text-muted"><?php echo $is_oit_return ? '-&#8369;' . number_format(abs($oit['unit_capital']), 2) : '&#8369;' . number_format($oit['unit_capital'], 2); ?></td>
+                                                                            <td class="text-right font-weight-bold" style="<?php echo $is_oit_return ? 'color: #ea580c;' : ''; ?>"><?php echo $is_oit_return ? '-&#8369;' . number_format(abs($oit['subtotal']), 2) : '&#8369;' . number_format($oit['subtotal'], 2); ?></td>
+                                                                            <td class="text-right" style="color: <?php echo $is_oit_return ? '#ea580c' : ($oit['profit'] >= 0 ? '#10b981' : '#dc2626'); ?>; font-weight: 800;">
+                                                                                <?php echo ($oit['profit'] >= 0 ? '+&#8369;' : '-&#8369;') . number_format(abs($oit['profit']), 2); ?>
+                                                                            </td>
                                                                         </tr>
                                                                         <?php endforeach; ?>
                                                                         <tr style="font-weight: bold; background: #f0fdf4; font-size: 13px;">
