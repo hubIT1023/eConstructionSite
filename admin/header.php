@@ -122,6 +122,12 @@ if(!isset($_SESSION['user'])) {
 			          </a>
 			        </li>
 
+			        <li class="treeview <?php if( ($cur_page == 'db-setup.php') ) {echo 'active';} ?>">
+			          <a href="db-setup.php">
+			            <i class="fa fa-database" style="color: #f59e0b;"></i> <span>DB Setup</span>
+			          </a>
+			        </li>
+
 					
 			        <li class="treeview <?php if( ($cur_page == 'settings.php') ) {echo 'active';} ?>">
 			          <a href="settings.php">
