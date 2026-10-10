@@ -93,19 +93,37 @@ switch ($filter_type) {
 ensure_supplier_user_schema($pdo);
 $products_map = [];
 try {
-    $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE supplier_id = ?");
+    $stmt_prod_map = $pdo->prepare("
+        SELECT p.p_id, p.p_name, p.p_current_price, p.p_new_price, p.p_capital_price, p.p_markup, p.ecat_id,
+               COALESCE(ec.ecat_name, 'General') as ecat_name,
+               COALESCE(mc.mcat_name, 'Building Materials') as mcat_name,
+               COALESCE(tc.tcat_name, 'Building Materials') as tcat_name
+        FROM tbl_product p
+        LEFT JOIN tbl_end_category ec ON p.ecat_id = ec.ecat_id
+        LEFT JOIN tbl_mid_category mc ON ec.mcat_id = mc.mcat_id
+        LEFT JOIN tbl_top_category tc ON mc.tcat_id = tc.tcat_id
+        WHERE p.supplier_id = ?
+    ");
     $stmt_prod_map->execute(array($supplier_id));
     while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
         $products_map[$prow['p_id']] = $prow;
     }
 } catch (Exception $e) {
     try {
-        $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price FROM tbl_product WHERE supplier_id = ?");
+        $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE supplier_id = ?");
         $stmt_prod_map->execute(array($supplier_id));
         while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
             $products_map[$prow['p_id']] = $prow;
         }
-    } catch (Exception $e2) {}
+    } catch (Exception $e2) {
+        try {
+            $stmt_prod_map = $pdo->prepare("SELECT p_id, p_name, p_current_price FROM tbl_product WHERE supplier_id = ?");
+            $stmt_prod_map->execute(array($supplier_id));
+            while ($prow = $stmt_prod_map->fetch(PDO::FETCH_ASSOC)) {
+                $products_map[$prow['p_id']] = $prow;
+            }
+        } catch (Exception $e3) {}
+    }
 }
 
 // Helper: Calculate item financials (Revenue, Unit Capital, Total Cost, Profit, Markup)
@@ -580,6 +598,202 @@ $cashier_names = array_column($cashier_metrics, 'name');
 $cashier_revenues = array_column($cashier_metrics, 'revenue');
 $cashier_orders = array_column($cashier_metrics, 'orders');
 $cashier_avg_tickets = array_column($cashier_metrics, 'avg_ticket');
+
+// =============================================================
+// 5. Monthly Product Leaderboard Data Aggregation (Top 50 Default)
+// =============================================================
+$lb_year_int = (int)$selected_year;
+if (isset($_GET['lb_year']) && is_numeric($_GET['lb_year'])) {
+    $lb_year_int = (int)$_GET['lb_year'];
+}
+$lb_selected_month = isset($_GET['lb_month']) ? (int)$_GET['lb_month'] : (int)date('n');
+if ($lb_selected_month < 1 || $lb_selected_month > 12) {
+    $lb_selected_month = (int)date('n');
+}
+$lb_selected_topn = isset($_GET['lb_topn']) ? $_GET['lb_topn'] : '50';
+$lb_selected_metric = isset($_GET['lb_metric']) ? $_GET['lb_metric'] : 'orders';
+
+// Fetch all order line items for the entire leaderboard year
+$stmt_lb_all = $pdo->prepare("
+    SELECT p.id as payment_id, p.payment_date, p.paid_amount,
+           o.product_id, o.product_name, o.unit_price, o.quantity
+    FROM tbl_payment p
+    JOIN tbl_order o ON p.payment_id = o.payment_id
+    WHERE p.supplier_id = ? 
+      AND p.payment_date >= ? 
+      AND p.payment_date <= ?
+      AND p.payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID')
+      AND p.paid_amount > 0
+    ORDER BY p.payment_date ASC
+");
+$stmt_lb_all->execute(array($supplier_id, $lb_year_int . '-01-01 00:00:00', $lb_year_int . '-12-31 23:59:59'));
+$lb_all_rows = $stmt_lb_all->fetchAll(PDO::FETCH_ASSOC);
+
+// Structure: $lb_monthly_raw[month_num][product_name] = [...]
+$lb_monthly_raw = [];
+for ($m = 1; $m <= 12; $m++) {
+    $lb_monthly_raw[$m] = [];
+}
+$lb_monthly_raw['all'] = [];
+$lb_order_track = [];
+
+foreach ($lb_all_rows as $lb_row) {
+    $p_date = strtotime($lb_row['payment_date']);
+    $m_idx = (int)date('n', $p_date);
+    $p_name = $lb_row['product_name'];
+    $p_id = (int)$lb_row['product_id'];
+    $qty = (int)$lb_row['quantity'];
+    $u_price = (float)$lb_row['unit_price'];
+    $pay_id = $lb_row['payment_id'];
+
+    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map);
+    
+    // Category resolution
+    $cat_name = 'Building Materials';
+    if ($p_id > 0 && isset($products_map[$p_id])) {
+        $cat_name = !empty($products_map[$p_id]['ecat_name']) ? $products_map[$p_id]['ecat_name'] : 
+                    (!empty($products_map[$p_id]['mcat_name']) ? $products_map[$p_id]['mcat_name'] : 'Building Materials');
+    }
+
+    // Accumulate for specific month and for 'all'
+    foreach ([$m_idx, 'all'] as $tgt_m) {
+        if (!isset($lb_monthly_raw[$tgt_m][$p_name])) {
+            $lb_monthly_raw[$tgt_m][$p_name] = [
+                'id' => $p_id,
+                'name' => $p_name,
+                'category' => $cat_name,
+                'orders' => 0,
+                'units' => 0,
+                'revenue' => 0.0,
+                'cost' => 0.0,
+                'profit' => 0.0,
+                'margin' => 0.0
+            ];
+            $lb_order_track[$tgt_m][$p_name] = [];
+        }
+
+        // Count distinct orders containing this item
+        if (!isset($lb_order_track[$tgt_m][$p_name][$pay_id])) {
+            $lb_order_track[$tgt_m][$p_name][$pay_id] = true;
+            $lb_monthly_raw[$tgt_m][$p_name]['orders'] += 1;
+        }
+
+        $lb_monthly_raw[$tgt_m][$p_name]['units'] += $qty;
+        $lb_monthly_raw[$tgt_m][$p_name]['revenue'] += $fin['subtotal'];
+        $lb_monthly_raw[$tgt_m][$p_name]['cost'] += $fin['total_capital'];
+        $lb_monthly_raw[$tgt_m][$p_name]['profit'] += $fin['profit'];
+    }
+}
+
+// Calculate margins
+foreach ($lb_monthly_raw as $m_key => &$p_list) {
+    foreach ($p_list as &$p_item) {
+        $p_item['margin'] = ($p_item['revenue'] > 0) ? ($p_item['profit'] / $p_item['revenue']) * 100 : 0.0;
+    }
+}
+unset($p_list, $p_item);
+
+// Pre-calculate ranked movement for each month (1..12 and 'all') across 4 metrics
+$monthly_leaderboard_payload = [];
+$metrics_keys = ['orders', 'units', 'revenue', 'profit'];
+
+for ($m = 1; $m <= 12; $m++) {
+    $monthly_leaderboard_payload[$m] = [];
+    $prev_m = ($m > 1) ? ($m - 1) : 12;
+
+    foreach ($metrics_keys as $met) {
+        // Current month list sorted by metric
+        $curr_items = array_values($lb_monthly_raw[$m]);
+        usort($curr_items, function($a, $b) use ($met) {
+            if ($b[$met] == $a[$met]) {
+                return $b['revenue'] <=> $a['revenue'];
+            }
+            return $b[$met] <=> $a[$met];
+        });
+
+        // Previous month ranks
+        $prev_items = array_values($lb_monthly_raw[$prev_m]);
+        usort($prev_items, function($a, $b) use ($met) {
+            if ($b[$met] == $a[$met]) {
+                return $b['revenue'] <=> $a['revenue'];
+            }
+            return $b[$met] <=> $a[$met];
+        });
+        $prev_ranks = [];
+        foreach ($prev_items as $p_rank_idx => $p_obj) {
+            if ($p_obj[$met] > 0) {
+                $prev_ranks[$p_obj['name']] = $p_rank_idx + 1;
+            }
+        }
+
+        // Build ranked item entries with MoM movement
+        $ranked_list = [];
+        $rank_num = 1;
+        foreach ($curr_items as $c_item) {
+            if ($c_item[$met] <= 0 && $c_item['revenue'] <= 0) continue;
+
+            $item_copy = $c_item;
+            $item_copy['rank'] = $rank_num;
+
+            if (isset($prev_ranks[$c_item['name']])) {
+                $p_rank = $prev_ranks[$c_item['name']];
+                $item_copy['prev_rank'] = $p_rank;
+                $diff = $p_rank - $rank_num; // positive means rank improved (e.g. was #5, now #2 -> +3)
+                if ($diff > 0) {
+                    $item_copy['movement_type'] = 'up';
+                    $item_copy['movement_diff'] = $diff;
+                    $item_copy['movement_label'] = '▲ +' . $diff;
+                } elseif ($diff < 0) {
+                    $item_copy['movement_type'] = 'down';
+                    $item_copy['movement_diff'] = abs($diff);
+                    $item_copy['movement_label'] = '▼ -' . abs($diff);
+                } else {
+                    $item_copy['movement_type'] = 'same';
+                    $item_copy['movement_diff'] = 0;
+                    $item_copy['movement_label'] = '― SAME';
+                }
+            } else {
+                $item_copy['prev_rank'] = null;
+                $item_copy['movement_type'] = 'new';
+                $item_copy['movement_diff'] = 0;
+                $item_copy['movement_label'] = '★ NEW';
+            }
+
+            $ranked_list[] = $item_copy;
+            $rank_num++;
+        }
+
+        $monthly_leaderboard_payload[$m][$met] = $ranked_list;
+    }
+}
+
+// Build 'all' for full year summary
+$monthly_leaderboard_payload['all'] = [];
+foreach ($metrics_keys as $met) {
+    $all_items = array_values($lb_monthly_raw['all']);
+    usort($all_items, function($a, $b) use ($met) {
+        if ($b[$met] == $a[$met]) {
+            return $b['revenue'] <=> $a['revenue'];
+        }
+        return $b[$met] <=> $a[$met];
+    });
+    $ranked_all = [];
+    $rank_num = 1;
+    foreach ($all_items as $a_item) {
+        if ($a_item[$met] <= 0 && $a_item['revenue'] <= 0) continue;
+        $item_copy = $a_item;
+        $item_copy['rank'] = $rank_num;
+        $item_copy['prev_rank'] = null;
+        $item_copy['movement_type'] = 'same';
+        $item_copy['movement_diff'] = 0;
+        $item_copy['movement_label'] = '―';
+        $ranked_all[] = $item_copy;
+        $rank_num++;
+    }
+    $monthly_leaderboard_payload['all'][$met] = $ranked_all;
+}
+
+$monthly_leaderboard_json = json_encode($monthly_leaderboard_payload);
 ?>
 
 <!-- Load Chart.js -->
@@ -1077,29 +1291,135 @@ $cashier_avg_tickets = array_column($cashier_metrics, 'avg_ticket');
     </div>
 
     <!-- ========================================================= -->
-    <!-- Visual Charts Analytics Row -->
+    <!-- Most Ordered Products by Month (Leaderboard - Top 50 Default) -->
     <!-- ========================================================= -->
     <div class="row">
-        <!-- Sales & Profit Trend Chart -->
-        <div class="col-md-8">
+        <div class="col-md-12">
+            <div class="box box-primary" style="border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.04); margin-bottom: 25px;">
+                <div class="box-header with-border" style="padding: 12px 18px; background: #ffffff;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h3 class="box-title" style="font-weight: 800; color: #0f172a; font-size: 16px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-trophy text-yellow" style="color: #f59e0b;"></i> Monthly Product Leaderboard (Top Sellers &amp; Rank Movement)
+                            </h3>
+                            <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;" id="monthlyLeaderboardSubtitle">
+                                Top Sellers &amp; Rank Movement for October 2026 (Displaying Top 50 Items)
+                            </div>
+                        </div>
+                        <form method="GET" action="sales-report.php" class="form-inline" id="lbFilterForm" onsubmit="event.preventDefault(); updateMonthlyLeaderboard();">
+                            <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
+                            <?php if ($filter_type == 'year'): ?>
+                                <input type="hidden" name="year" value="<?php echo htmlspecialchars($selected_year); ?>">
+                            <?php endif; ?>
+                            <div class="form-group" style="margin-bottom: 0; margin-right: 4px;">
+                                <select name="lb_month" id="lbMonthSelect" class="form-control input-sm" onchange="updateMonthlyLeaderboard()" style="font-weight: 600;">
+                                    <?php 
+                                    $month_full_names = [
+                                        1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                                        5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                                        9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+                                    ];
+                                    foreach ($month_full_names as $m_num => $m_name): 
+                                    ?>
+                                        <option value="<?php echo $m_num; ?>" <?php if($lb_selected_month == $m_num) echo 'selected'; ?>><?php echo $m_name; ?></option>
+                                    <?php endforeach; ?>
+                                    <option value="all" <?php if(isset($_GET['lb_month']) && $_GET['lb_month'] === 'all') echo 'selected'; ?>>All Months (Full Year)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; margin-right: 4px;">
+                                <input type="number" name="lb_year" id="lbYearInput" value="<?php echo $lb_year_int; ?>" min="2020" max="2035" class="form-control input-sm" style="width: 75px; font-weight: 600;" onchange="updateMonthlyLeaderboard()">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; margin-right: 6px;">
+                                <select name="lb_topn" id="lbTopNSelect" class="form-control input-sm" onchange="updateMonthlyLeaderboard()" style="font-weight: 700; background: #fef3c7; border-color: #fde68a; color: #92400e;">
+                                    <option value="5" <?php if($lb_selected_topn == '5') echo 'selected'; ?>>Top 5</option>
+                                    <option value="10" <?php if($lb_selected_topn == '10') echo 'selected'; ?>>Top 10</option>
+                                    <option value="20" <?php if($lb_selected_topn == '20') echo 'selected'; ?>>Top 20</option>
+                                    <option value="50" <?php if($lb_selected_topn == '50' || empty($lb_selected_topn)) echo 'selected'; ?>>Top 50 (Default)</option>
+                                    <option value="100" <?php if($lb_selected_topn == '100') echo 'selected'; ?>>Top 100</option>
+                                    <option value="all" <?php if($lb_selected_topn == 'all') echo 'selected'; ?>>All Products</option>
+                                </select>
+                            </div>
+                            <div class="btn-group btn-group-sm no-print" role="group" style="margin-right: 6px;">
+                                <button type="button" class="btn btn-primary active" id="btnLbOrders" onclick="switchLbMetric('orders')" title="Rank by Distinct Number of Times Ordered"><i class="fa fa-shopping-cart"></i> Orders</button>
+                                <button type="button" class="btn btn-default" id="btnLbUnits" onclick="switchLbMetric('units')" title="Rank by Total Units Sold"><i class="fa fa-cubes"></i> Units</button>
+                                <button type="button" class="btn btn-default" id="btnLbRevenue" onclick="switchLbMetric('revenue')" title="Rank by Gross Sales Revenue"><i class="fa fa-money"></i> Revenue</button>
+                                <button type="button" class="btn btn-default" id="btnLbProfit" onclick="switchLbMetric('profit')" title="Rank by Realized Gross Profit"><i class="fa fa-line-chart"></i> Profit</button>
+                            </div>
+                            <button type="button" class="btn btn-default btn-sm" onclick="updateMonthlyLeaderboard()"><i class="fa fa-refresh"></i> Refresh</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="box-body" style="padding: 16px 18px;">
+                    <div class="row">
+                        <!-- Left Column: Dynamic Horizontal Bar Chart -->
+                        <div class="col-md-6 col-xs-12">
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+                                <div style="max-height: 480px; overflow-y: auto;">
+                                    <div id="chartLeaderboardWrapper" style="position: relative; width: 100%; height: 460px;">
+                                        <canvas id="chartLeaderboard"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Ranking Table with Sticky Header -->
+                        <div class="col-md-6 col-xs-12">
+                            <div style="margin-bottom: 8px;">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-addon" style="background: #f1f5f9; border-color: #cbd5e1;"><i class="fa fa-search text-muted"></i></span>
+                                    <input type="text" id="lbSearchInput" class="form-control" placeholder="Search product name or category in leaderboard..." onkeyup="filterLbTable(this.value)" style="border-color: #cbd5e1;">
+                                </div>
+                            </div>
+                            <div class="table-responsive" style="max-height: 440px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                <table class="table table-bordered table-striped table-hover" id="tableLeaderboard" style="font-size: 12.5px; margin-bottom: 0;">
+                                    <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                        <tr style="background: #f8fafc; color: #334155;">
+                                            <th style="width: 50px;" class="text-center">Rank</th>
+                                            <th>Product Name</th>
+                                            <th class="text-center" style="width: 75px;">Movement</th>
+                                            <th class="text-right" style="width: 60px;">Orders</th>
+                                            <th class="text-right" style="width: 60px;">Units</th>
+                                            <th class="text-right" style="width: 95px;">Revenue</th>
+                                            <th class="text-right" style="width: 95px;">Profit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="lbTableBody">
+                                        <!-- Rendered via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- Secondary Analytics Row: Profit Contribution & Payment Channels -->
+    <!-- ========================================================= -->
+    <div class="row">
+        <!-- 1. Top Performing Products by Profit Contribution -->
+        <div class="col-md-7 col-xs-12">
             <div class="chart-box">
                 <div class="chart-header">
-                    <span><i class="fa fa-area-chart text-primary"></i> Revenue & Profit Trend (&#8369;)</span>
-                    <span style="font-size: 12px; font-weight: normal; color: #64748b;"><?php echo count($trend_labels); ?> active sales dates</span>
+                    <span><i class="fa fa-trophy text-warning"></i> Top Products by Profit Contribution</span>
+                    <span style="font-size: 12px; font-weight: normal; color: #64748b;">Top 8 Items (Filtered Period)</span>
                 </div>
-                <div style="position: relative; height: 280px;">
-                    <canvas id="revenueProfitTrendChart"></canvas>
+                <div style="position: relative; height: 300px;">
+                    <canvas id="topProductsChart"></canvas>
                 </div>
             </div>
         </div>
 
-        <!-- Payment Method Breakdown Chart -->
-        <div class="col-md-4">
+        <!-- 2. Payment Method Breakdown Chart -->
+        <div class="col-md-5 col-xs-12">
             <div class="chart-box">
                 <div class="chart-header">
                     <span><i class="fa fa-pie-chart text-success"></i> Payment Channels</span>
+                    <span style="font-size: 12px; font-weight: normal; color: #64748b;">Distribution</span>
                 </div>
-                <div style="position: relative; height: 280px;">
+                <div style="position: relative; height: 300px;">
                     <canvas id="paymentMethodChart"></canvas>
                 </div>
             </div>
@@ -1107,24 +1427,10 @@ $cashier_avg_tickets = array_column($cashier_metrics, 'avg_ticket');
     </div>
 
     <!-- ========================================================= -->
-    <!-- Top Products Analytics: Profit Contribution & Monthly Counts / Volume Timeline -->
+    <!-- Top Products Monthly Velocity Timeline & Matrix -->
     <!-- ========================================================= -->
     <div class="row">
-        <!-- 1. Top Performing Products by Profit Contribution -->
-        <div class="col-md-6">
-            <div class="chart-box">
-                <div class="chart-header">
-                    <span><i class="fa fa-trophy text-warning"></i> Top Products by Profit Contribution</span>
-                    <span style="font-size: 12px; font-weight: normal; color: #64748b;">Top 8 Items</span>
-                </div>
-                <div style="position: relative; height: 320px;">
-                    <canvas id="topProductsChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <!-- 2. Top Products Monthly Order Counts & Volume Timeline (Gantt / Multi-Month Velocity) -->
-        <div class="col-md-6">
+        <div class="col-md-12">
             <div class="chart-box">
                 <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
@@ -1823,75 +2129,257 @@ function toggleFilterInputs(val) {
     else if(val === 'custom') $('#group_custom').show();
 }
 
-document.addEventListener("DOMContentLoaded", function() {
-    // 1. Revenue & Profit Trend Chart
-    var trendCtx = document.getElementById('revenueProfitTrendChart').getContext('2d');
-    var trendLabels = <?php echo json_encode(!empty($trend_labels) ? $trend_labels : [date('Y-m-d')]); ?>;
-    var trendRevenues = <?php echo json_encode(!empty($trend_revenues) ? $trend_revenues : [0]); ?>;
-    var trendProfits = <?php echo json_encode(!empty($trend_profits) ? $trend_profits : [0]); ?>;
-    var trendOrders = <?php echo json_encode(!empty($trend_orders_counts) ? $trend_orders_counts : [0]); ?>;
+// Global Leaderboard Data & Controller
+window.monthlyLeaderboardData = <?php echo $monthly_leaderboard_json; ?>;
+window.currentLbMetric = '<?php echo $lb_selected_metric; ?>';
+window.currentLbMonth = '<?php echo $lb_selected_month; ?>';
+window.chartLeaderboardInstance = null;
 
-    new Chart(trendCtx, {
-        type: 'line',
-        data: {
-            labels: trendLabels,
-            datasets: [
-                {
-                    label: 'Gross Revenue (₱)',
-                    data: trendRevenues,
-                    borderColor: '#0284c7',
-                    backgroundColor: 'rgba(2, 132, 199, 0.08)',
-                    fill: true,
-                    tension: 0.3,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Total Profit (₱)',
-                    data: trendProfits,
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                    fill: true,
-                    tension: 0.3,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Orders Count',
-                    data: trendOrders,
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    borderDash: [5, 5],
-                    fill: false,
-                    tension: 0.3,
-                    yAxisID: 'y1'
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderMonthlyLeaderboard() {
+    var monthSelect = document.getElementById('lbMonthSelect');
+    var yearInput = document.getElementById('lbYearInput');
+    var topNSelect = document.getElementById('lbTopNSelect');
+
+    var monthVal = monthSelect ? monthSelect.value : '10';
+    var yearVal = yearInput ? yearInput.value : '2026';
+    var topNVal = topNSelect ? topNSelect.value : '50';
+    var metric = window.currentLbMetric || 'orders';
+
+    var monthData = (window.monthlyLeaderboardData && window.monthlyLeaderboardData[monthVal]) 
+                    ? (window.monthlyLeaderboardData[monthVal][metric] || []) 
+                    : [];
+
+    // Slice according to Top N
+    var displayItems = monthData;
+    if (topNVal !== 'all') {
+        var limit = parseInt(topNVal, 10) || 50;
+        displayItems = monthData.slice(0, limit);
+    }
+
+    // Update Subtitle
+    var monthNames = {
+        '1': 'January', '2': 'February', '3': 'March', '4': 'April',
+        '5': 'May', '6': 'June', '7': 'July', '8': 'August',
+        '9': 'September', '10': 'October', '11': 'November', '12': 'December',
+        'all': 'Full Year'
+    };
+    var metricLabels = {
+        'orders': 'Number of Orders',
+        'units': 'Units Sold',
+        'revenue': 'Gross Revenue (₱)',
+        'profit': 'Gross Profit (₱)'
+    };
+    var subEl = document.getElementById('monthlyLeaderboardSubtitle');
+    if (subEl) {
+        var mText = monthNames[monthVal] || ('Month ' + monthVal);
+        var limitText = (topNVal === 'all') ? 'All Products' : ('Displaying Top ' + topNVal + ' Items');
+        subEl.innerHTML = 'Ranked by <strong>' + (metricLabels[metric] || metric) + '</strong> for ' + mText + ' ' + yearVal + ' (' + limitText + ' &bull; ' + displayItems.length + ' active items)';
+    }
+
+    // Render Table Body
+    var tbody = document.getElementById('lbTableBody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        if (displayItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding: 25px;"><i class="fa fa-info-circle"></i> No sales recorded for ' + (monthNames[monthVal] || 'this month') + ' ' + yearVal + '.</td></tr>';
+        } else {
+            var html = '';
+            for (var i = 0; i < displayItems.length; i++) {
+                var it = displayItems[i];
+                var r = it.rank;
+                var rankBadge = '<span style="font-weight: 700; color: #0284c7;">#' + r + '</span>';
+                if (r === 1) {
+                    rankBadge = '<span class="badge" style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; font-weight: 800;"><i class="fa fa-trophy text-yellow"></i> #1</span>';
+                } else if (r === 2) {
+                    rankBadge = '<span class="badge" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-weight: 800;">#2</span>';
+                } else if (r === 3) {
+                    rankBadge = '<span class="badge" style="background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; font-weight: 800;">#3</span>';
                 }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
+
+                var momBadge = it.movement_badge || '<span class="badge" style="background:#94a3b8; font-size:11px;">―</span>';
+                if (it.movement_type === 'up') {
+                    momBadge = '<span class="badge" style="background:#10b981; font-size:11px;" title="Jumped up ' + it.movement_diff + ' positions from last month"><i class="fa fa-arrow-up"></i> +' + it.movement_diff + '</span>';
+                } else if (it.movement_type === 'down') {
+                    momBadge = '<span class="badge" style="background:#ef4444; font-size:11px;" title="Dropped ' + it.movement_diff + ' positions from last month"><i class="fa fa-arrow-down"></i> -' + it.movement_diff + '</span>';
+                } else if (it.movement_type === 'same') {
+                    momBadge = '<span class="badge" style="background:#94a3b8; font-size:11px;" title="Maintained same rank from last month">― SAME</span>';
+                } else if (it.movement_type === 'new') {
+                    momBadge = '<span class="badge" style="background:#8b5cf6; font-size:11px;" title="New selling product this month"><i class="fa fa-star"></i> NEW</span>';
+                }
+
+                html += '<tr>' +
+                    '<td class="text-center" style="vertical-align: middle;">' + rankBadge + '</td>' +
+                    '<td>' +
+                        '<strong style="color: #0f172a;">' + escapeHtml(it.name) + '</strong><br>' +
+                        '<span class="text-muted" style="font-size: 11px;"><i class="fa fa-tag text-muted"></i> ' + escapeHtml(it.category || 'General') + '</span>' +
+                    '</td>' +
+                    '<td class="text-center" style="vertical-align: middle;">' + momBadge + '</td>' +
+                    '<td class="text-right font-weight-bold" style="vertical-align: middle; color: #0284c7;">' + it.orders.toLocaleString() + '</td>' +
+                    '<td class="text-right font-weight-bold" style="vertical-align: middle;">' + it.units.toLocaleString() + '</td>' +
+                    '<td class="text-right" style="vertical-align: middle; font-weight: 600;">₱' + Number(it.revenue).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
+                    '<td class="text-right text-success font-weight-bold" style="vertical-align: middle; color: #10b981;">+₱' + Number(it.profit).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
+                '</tr>';
+            }
+            tbody.innerHTML = html;
+        }
+    }
+
+    // Render Chart
+    var chartCanvas = document.getElementById('chartLeaderboard');
+    var wrapperEl = document.getElementById('chartLeaderboardWrapper');
+    if (chartCanvas && wrapperEl) {
+        if (window.chartLeaderboardInstance) {
+            window.chartLeaderboardInstance.destroy();
+        }
+
+        if (displayItems.length === 0) {
+            wrapperEl.style.height = '360px';
+            return;
+        }
+
+        // Dynamic height based on number of items (smooth scrolling for top 50)
+        var dynamicHeight = Math.max(380, displayItems.length * 24 + 60);
+        wrapperEl.style.height = dynamicHeight + 'px';
+
+        // Prepare chart labels and values (reverse so #1 is at top of horizontal chart)
+        var chartItems = displayItems.slice().reverse();
+        var labels = chartItems.map(function(item) {
+            var n = item.name;
+            return n.length > 28 ? n.substring(0, 26) + '...' : n;
+        });
+        var values = chartItems.map(function(item) {
+            return item[metric] || 0;
+        });
+        var bgColors = chartItems.map(function(item) {
+            if (item.rank === 1) return 'rgba(245, 158, 11, 0.9)'; // Gold
+            if (item.rank === 2) return 'rgba(148, 163, 184, 0.9)'; // Silver
+            if (item.rank === 3) return 'rgba(217, 119, 6, 0.9)';  // Bronze
+            return 'rgba(2, 132, 199, 0.85)';                     // Blue
+        });
+
+        var metricConfig = {
+            'orders': { label: 'Order Count', color: '#0284c7', prefix: '', suffix: ' orders' },
+            'units': { label: 'Units Sold', color: '#10b981', prefix: '', suffix: ' pcs' },
+            'revenue': { label: 'Gross Revenue', color: '#0284c7', prefix: '₱', suffix: '' },
+            'profit': { label: 'Realized Gross Profit', color: '#10b981', prefix: '₱', suffix: '' }
+        };
+        var activeCfg = metricConfig[metric] || metricConfig['orders'];
+
+        var ctx = chartCanvas.getContext('2d');
+        window.chartLeaderboardInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: activeCfg.label,
+                    data: values,
+                    backgroundColor: bgColors,
+                    borderRadius: 4,
+                    borderWidth: 1,
+                    borderColor: 'rgba(0,0,0,0.05)'
+                }]
             },
-            scales: {
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    ticks: {
-                        callback: function(value) { return '₱' + value.toLocaleString(); }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                var idx = context[0].dataIndex;
+                                var it = chartItems[idx];
+                                return '#' + it.rank + ' ' + it.name;
+                            },
+                            label: function(context) {
+                                var idx = context.dataIndex;
+                                var it = chartItems[idx];
+                                var val = context.parsed.x;
+                                var valStr = activeCfg.prefix + Number(val).toLocaleString(undefined, {minimumFractionDigits: (metric === 'revenue' || metric === 'profit' ? 2 : 0)}) + activeCfg.suffix;
+                                return activeCfg.label + ': ' + valStr;
+                            },
+                            afterBody: function(context) {
+                                var idx = context[0].dataIndex;
+                                var it = chartItems[idx];
+                                return [
+                                    'Category: ' + (it.category || 'General'),
+                                    'Distinct Orders: ' + it.orders.toLocaleString(),
+                                    'Units Sold: ' + it.units.toLocaleString() + ' pcs',
+                                    'Gross Sales: ₱' + Number(it.revenue).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}),
+                                    'Gross Profit: ₱' + Number(it.profit).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (' + Number(it.margin).toFixed(1) + '% margin)',
+                                    'MoM Movement: ' + (it.movement_label || '―')
+                                ];
+                            }
+                        }
                     }
                 },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    grid: { drawOnChartArea: false },
-                    ticks: { precision: 0 }
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(val) {
+                                return activeCfg.prefix + val.toLocaleString() + (activeCfg.suffix ? ' ' + activeCfg.suffix.trim() : '');
+                            }
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            font: { size: 11, weight: '600' }
+                        },
+                        grid: { display: false }
+                    }
                 }
             }
+        });
+    }
+}
+
+function switchLbMetric(metric) {
+    window.currentLbMetric = metric;
+    var btnOrders = document.getElementById('btnLbOrders');
+    var btnUnits = document.getElementById('btnLbUnits');
+    var btnRevenue = document.getElementById('btnLbRevenue');
+    var btnProfit = document.getElementById('btnLbProfit');
+
+    if (btnOrders) btnOrders.className = 'btn ' + (metric === 'orders' ? 'btn-primary active' : 'btn-default');
+    if (btnUnits) btnUnits.className = 'btn ' + (metric === 'units' ? 'btn-primary active' : 'btn-default');
+    if (btnRevenue) btnRevenue.className = 'btn ' + (metric === 'revenue' ? 'btn-primary active' : 'btn-default');
+    if (btnProfit) btnProfit.className = 'btn ' + (metric === 'profit' ? 'btn-primary active' : 'btn-default');
+
+    renderMonthlyLeaderboard();
+}
+
+function updateMonthlyLeaderboard() {
+    renderMonthlyLeaderboard();
+}
+
+function filterLbTable(query) {
+    var q = (query || '').toLowerCase().trim();
+    var rows = document.querySelectorAll('#tableLeaderboard tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+        var text = rows[i].innerText.toLowerCase();
+        if (q === '' || text.indexOf(q) !== -1) {
+            rows[i].style.display = '';
+        } else {
+            rows[i].style.display = 'none';
         }
-    });
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    // Initialize Monthly Leaderboard
+    renderMonthlyLeaderboard();
 
     // 2. Payment Method Distribution Chart
     var pmCtx = document.getElementById('paymentMethodChart').getContext('2d');
