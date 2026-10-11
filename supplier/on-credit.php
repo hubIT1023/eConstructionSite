@@ -978,9 +978,6 @@ require_once('header.php');
                                 <button type="button" class="credit-btn-settle" onclick="openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" title="Record full balance settlement or installment payment">
                                     <i class="fa fa-money"></i> Settle
                                 </button>
-                                <button type="button" class="btn btn-default btn-xs" onclick="openAdjustTermsFromElement(document.getElementById('termsBadge-<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>'))" style="font-weight: 700; padding: 5px 8px; margin-left: 2px; color: #92400e; background: #fef3c7; border: 1px solid #fde68a;" title="Adjust Credit Terms &amp; Due Date">
-                                    <i class="fa fa-calendar"></i> Terms
-                                </button>
                             <?php endif; ?>
                             <button type="button" class="btn btn-default btn-xs" onclick="viewCreditLedger('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $bal_amt; ?>)" style="font-weight: 700; padding: 5px 8px; margin-left: 2px;" title="View payment installment history &amp; ledger">
                                 <i class="fa fa-list-alt"></i> History
