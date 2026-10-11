@@ -1263,11 +1263,6 @@ require_once('header.php');
                                         <div class="modal-footer" style="background: #f1f5f9; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; padding: 10px 18px;">
                                             <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 700; border-radius: 5px;">Close</button>
                                             <div style="display: flex; gap: 8px;">
-                                                <?php if (!$is_settled): ?>
-                                                    <button type="button" class="btn btn-success btn-sm" onclick="$('#po-credit-modal-<?php echo $row['id']; ?>').modal('hide'); openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" style="font-weight: 700; border-radius: 5px; padding: 6px 14px;">
-                                                        <i class="fa fa-money"></i> Settle Balance
-                                                    </button>
-                                                <?php endif; ?>
                                                 <button type="button" class="btn btn-primary btn-sm" onclick="printPOVoucher('<?php echo $row['id']; ?>')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1; border-radius: 5px; padding: 6px 16px;" title="Print Voucher on Thermal Printer">
                                                     <i class="fa fa-print"></i> Print Purchase Order Voucher
                                                 </button>
