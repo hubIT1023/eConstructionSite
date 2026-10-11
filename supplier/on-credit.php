@@ -258,11 +258,11 @@ if (!function_exists('get_credit_aging_badge')) {
 // Helper to extract due date from transaction info or calculate from payment date
 if (!function_exists('parse_order_due_date')) {
     function parse_order_due_date($tx_info, $payment_date, $payment_method) {
-        if (preg_match('/(?:Due Date|Due):s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i', $tx_info, $m)) {
+        if (preg_match('/(?:Due Date|Due)[:\s]+([0-9]{4}-[0-9]{2}-[0-9]{2})/i', $tx_info, $m)) {
             return $m[1];
         }
         $days = 15;
-        if (preg_match('/([0-9]+)s*Days/i', $payment_method . ' ' . $tx_info, $m_d)) {
+        if (preg_match('/([0-9]+)\s*Days/i', $payment_method . ' ' . $tx_info, $m_d)) {
             $days = (int)$m_d[1];
         }
         return date('Y-m-d', strtotime($payment_date . " +$days days"));
@@ -272,12 +272,129 @@ if (!function_exists('parse_order_due_date')) {
 // Helper to parse total invoiced amount
 if (!function_exists('parse_invoice_total')) {
     function parse_invoice_total($row, $items_subtotal) {
-        if (preg_match('/Total:s*₱?([0-9,.]+)/i', $row['bank_transaction_info'] ?? '', $m)) {
+        if (preg_match('/Total:\s*₱?([0-9,.]+)/i', $row['bank_transaction_info'] ?? '', $m)) {
             $v = floatval(str_replace(',', '', $m[1]));
             if ($v > 0) return $v;
         }
         $paid = floatval($row['paid_amount']);
         return max($paid, floatval($items_subtotal));
+    }
+}
+
+// -------------------------------------------------------------
+// AJAX Endpoint: Adjust Credit Terms & Due Date
+// -------------------------------------------------------------
+if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'adjust_credit_terms') {
+    header('Content-Type: application/json');
+    $pay_id = trim($_POST['payment_id'] ?? '');
+    $new_due_date = trim($_POST['due_date'] ?? '');
+    $new_method = trim($_POST['payment_method'] ?? '');
+    $new_check_ref = trim($_POST['card_number'] ?? '');
+    $adj_notes = trim($_POST['adjustment_notes'] ?? '');
+
+    if (empty($pay_id)) {
+        echo json_encode(['success' => false, 'message' => 'Invalid Payment / Invoice ID.']);
+        exit;
+    }
+
+    if (empty($new_due_date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $new_due_date)) {
+        echo json_encode(['success' => false, 'message' => 'Please provide a valid Due Date (YYYY-MM-DD).']);
+        exit;
+    }
+
+    try {
+        $stmt_chk = $pdo->prepare("SELECT * FROM tbl_payment WHERE (payment_id = ? OR txnid = ?) AND supplier_id = ?");
+        $stmt_chk->execute([$pay_id, $pay_id, $supplier_id]);
+        $order_pay = $stmt_chk->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order_pay) {
+            echo json_encode(['success' => false, 'message' => 'Credit account / order not found.']);
+            exit;
+        }
+
+        $old_tx = $order_pay['bank_transaction_info'] ?? '';
+        $old_method = $order_pay['payment_method'] ?? '';
+        $old_due_date = parse_order_due_date($old_tx, $order_pay['payment_date'], $old_method);
+
+        // Calculate term days if method name is empty
+        $order_base_date = date('Y-m-d', strtotime($order_pay['payment_date']));
+        $diff_days = (int)round((strtotime($new_due_date) - strtotime($order_base_date)) / 86400);
+        if (empty($new_method)) {
+            $new_method = "Check / Terms (" . max(1, $diff_days) . " Days)";
+        }
+
+        // Update or inject Due Date into bank_transaction_info
+        if (preg_match('/(?:Due Date|Due)[:\s]+[0-9]{4}-[0-9]{2}-[0-9]{2}/i', $old_tx)) {
+            $updated_tx = preg_replace('/(?:Due Date|Due)[:\s]+[0-9]{4}-[0-9]{2}-[0-9]{2}/i', 'Due: ' . $new_due_date, $old_tx);
+        } else {
+            $updated_tx = ($old_tx ? $old_tx . " | " : "") . "Due: " . $new_due_date;
+        }
+
+        // Append audit entry to bank_transaction_info
+        $log_entry = "\n[Terms Adjusted: " . $old_method . " (Due: " . $old_due_date . ") -> " . $new_method . " (Due: " . $new_due_date . ") by " . $cashier_name . " on " . date('Y-m-d H:i') . (!empty($adj_notes) ? " | Note: " . $adj_notes : "") . "]";
+        $updated_tx .= $log_entry;
+
+        $pdo->beginTransaction();
+
+        $stmt_up = $pdo->prepare("
+            UPDATE tbl_payment 
+            SET payment_method = ?, card_number = ?, bank_transaction_info = ?
+            WHERE id = ? AND supplier_id = ?
+        ");
+        $stmt_up->execute([
+            $new_method,
+            $new_check_ref,
+            $updated_tx,
+            $order_pay['id'],
+            $supplier_id
+        ]);
+
+        // Calculate balance for ledger entry
+        $stmt_items_sum = $pdo->prepare("SELECT COALESCE(SUM(NULLIF(regexp_replace(quantity, '[^0-9.]', '', 'g'), '')::numeric * NULLIF(regexp_replace(unit_price, '[^0-9.-]', '', 'g'), '')::numeric), 0) as items_subtotal FROM tbl_order WHERE payment_id = ? AND supplier_id = ?");
+        $stmt_items_sum->execute([$order_pay['payment_id'], $supplier_id]);
+        $sum_row = $stmt_items_sum->fetch(PDO::FETCH_ASSOC);
+        $items_total = floatval($sum_row['items_subtotal'] ?? 0);
+        $invoice_grand_total = parse_invoice_total($order_pay, $items_total);
+        $current_balance = max(0, $invoice_grand_total - floatval($order_pay['paid_amount']));
+
+        $audit_note = "Terms adjusted from " . $old_method . " (Due: " . date('M d, Y', strtotime($old_due_date)) . ") to " . $new_method . " (Due: " . date('M d, Y', strtotime($new_due_date)) . ")" . (!empty($adj_notes) ? " — " . $adj_notes : "");
+
+        $stmt_cp = $pdo->prepare("
+            INSERT INTO tbl_credit_payments (
+                payment_id, supplier_id, payment_date, amount_paid, payment_method,
+                reference_no, remaining_balance, cashier_name, notes
+            ) VALUES (?, ?, CURRENT_TIMESTAMP, 0.00, ?, ?, ?, ?, ?)
+        ");
+        $stmt_cp->execute([
+            $order_pay['payment_id'],
+            $supplier_id,
+            'Terms Adjustment',
+            $new_check_ref,
+            $current_balance,
+            $cashier_name,
+            $audit_note
+        ]);
+
+        $pdo->commit();
+
+        $is_settled = ($current_balance <= 0.009);
+        $aging_badge = $is_settled ? '<span class="badge" style="background: #d1fae5; color: #065f46;">Fully Paid</span>' : get_credit_aging_badge($new_due_date);
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Credit terms and due date successfully updated to ' . $new_method . ' (Due: ' . date('M d, Y', strtotime($new_due_date)) . ')!',
+            'payment_id' => $order_pay['payment_id'],
+            'payment_method' => $new_method,
+            'card_number' => $new_check_ref,
+            'due_date' => $new_due_date,
+            'formatted_due_date' => date('M d, Y', strtotime($new_due_date)),
+            'aging_badge_html' => $aging_badge
+        ]);
+        exit;
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+        exit;
     }
 }
 
@@ -567,6 +684,49 @@ require_once('header.php');
     background: #15803d;
     color: #fff;
 }
+.credit-terms-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    transition: all 0.2s ease;
+    text-decoration: none !important;
+}
+.credit-terms-pill:hover {
+    background: #fde68a;
+    color: #78350f;
+    border-color: #f59e0b;
+    box-shadow: 0 1px 4px rgba(245, 158, 11, 0.25);
+    transform: translateY(-1px);
+}
+.term-preset-btn {
+    padding: 5px 11px;
+    font-size: 11.5px;
+    font-weight: 700;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    transition: all 0.15s ease;
+}
+.term-preset-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+.term-preset-btn.active {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border-color: #1d4ed8 !important;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.35);
+}
 </style>
 
 <section class="content-header" style="padding-top: 15px; margin-bottom: 15px;">
@@ -588,6 +748,8 @@ require_once('header.php');
 </section>
 
 <section class="content">
+
+    <div id="creditAlertNoticeArea" style="margin-bottom: 15px;"></div>
 
     <!-- KPI Summary Row -->
     <div class="row">
@@ -734,16 +896,39 @@ require_once('header.php');
                                 <strong><?php echo htmlspecialchars($pay_id); ?></strong>
                             </a>
                             <?php if (!empty($row['card_number'])): ?>
-                                <span class="badge" style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 11px; margin-top: 3px; display: inline-block;" title="Credit Reference / Check Number">
+                                <span class="badge" id="checkRefBadge-<?php echo htmlspecialchars($pay_id); ?>" style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 11px; margin-top: 3px; display: inline-block;" title="Credit Reference / Check Number">
                                     <i class="fa fa-tag"></i> <?php echo htmlspecialchars($row['card_number']); ?>
+                                </span>
+                            <?php else: ?>
+                                <span class="badge" id="checkRefBadge-<?php echo htmlspecialchars($pay_id); ?>" style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 11px; margin-top: 3px; display: none;" title="Credit Reference / Check Number">
                                 </span>
                             <?php endif; ?>
                         </td>
                         <td>
                             <div style="font-weight: 700; color: #0f172a; font-size: 12.5px;"><?php echo date('M d, Y', strtotime($row['payment_date'])); ?></div>
-                            <span class="badge" style="background: #fef3c7; color: #92400e; font-size: 10.5px; font-weight: 800;">
-                                <?php echo htmlspecialchars($row['payment_method']); ?>
-                            </span>
+                            <div style="margin-top: 3px;">
+                                <?php if ($is_settled): ?>
+                                    <span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 10.5px; font-weight: 800;">
+                                        <?php echo htmlspecialchars($row['payment_method']); ?>
+                                    </span>
+                                <?php else: ?>
+                                    <a href="javascript:void(0)" class="credit-terms-pill" 
+                                       id="termsBadge-<?php echo htmlspecialchars($pay_id); ?>"
+                                       data-payment-id="<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>"
+                                       data-customer-name="<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>"
+                                       data-order-date="<?php echo date('Y-m-d', strtotime($row['payment_date'])); ?>"
+                                       data-order-date-formatted="<?php echo date('M d, Y', strtotime($row['payment_date'])); ?>"
+                                       data-payment-method="<?php echo htmlspecialchars($row['payment_method'], ENT_QUOTES); ?>"
+                                       data-check-ref="<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>"
+                                       data-due-date="<?php echo htmlspecialchars($due_date, ENT_QUOTES); ?>"
+                                       data-balance="<?php echo (float)$bal_amt; ?>"
+                                       onclick="openAdjustTermsFromElement(this)"
+                                       title="Click to adjust Credit Terms or Due Date">
+                                        <i class="fa fa-pencil" style="font-size: 10px; color: #b45309;"></i>
+                                        <span class="term-badge-text"><?php echo htmlspecialchars($row['payment_method']); ?></span>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td>
                             <strong style="font-size: 13.5px; color: #0f172a; display: block;"><?php echo htmlspecialchars($cust_name); ?></strong>
@@ -777,11 +962,13 @@ require_once('header.php');
                                 </div>
                             <?php endif; ?>
                         </td>
-                        <td style="text-align: center;">
-                            <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 2px;">
+                        <td style="text-align: center;" id="dueDateCell-<?php echo htmlspecialchars($pay_id); ?>">
+                            <div class="due-date-text" style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 2px;">
                                 Due: <?php echo date('M d, Y', strtotime($due_date)); ?>
                             </div>
-                            <?php echo $is_settled ? '<span class="badge" style="background: #d1fae5; color: #065f46;">Fully Paid</span>' : get_credit_aging_badge($due_date); ?>
+                            <div class="aging-badge-container">
+                                <?php echo $is_settled ? '<span class="badge" style="background: #d1fae5; color: #065f46;">Fully Paid</span>' : get_credit_aging_badge($due_date); ?>
+                            </div>
                         </td>
                         <td style="text-align: right; white-space: nowrap;">
                             <button type="button" class="btn btn-info btn-xs" data-toggle="modal" data-target="#po-credit-modal-<?php echo $row['id']; ?>" style="font-weight: 700; padding: 5px 8px; margin-right: 2px;" title="View and print Purchase Order Voucher">
@@ -790,6 +977,9 @@ require_once('header.php');
                             <?php if (!$is_settled): ?>
                                 <button type="button" class="credit-btn-settle" onclick="openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" title="Record full balance settlement or installment payment">
                                     <i class="fa fa-money"></i> Settle
+                                </button>
+                                <button type="button" class="btn btn-default btn-xs" onclick="openAdjustTermsFromElement(document.getElementById('termsBadge-<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>'))" style="font-weight: 700; padding: 5px 8px; margin-left: 2px; color: #92400e; background: #fef3c7; border: 1px solid #fde68a;" title="Adjust Credit Terms &amp; Due Date">
+                                    <i class="fa fa-calendar"></i> Terms
                                 </button>
                             <?php endif; ?>
                             <button type="button" class="btn btn-default btn-xs" onclick="viewCreditLedger('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $bal_amt; ?>)" style="font-weight: 700; padding: 5px 8px; margin-left: 2px;" title="View payment installment history &amp; ledger">
@@ -1108,6 +1298,123 @@ require_once('header.php');
     </div>
 
 </section>
+
+<!-- ============================================================== -->
+<!-- MODAL: Adjust Credit Terms & Due Date -->
+<!-- ============================================================== -->
+<div class="modal fade" id="adjustTermsModal" tabindex="-1" role="dialog" aria-labelledby="adjustTermsModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document" style="max-width: 540px;">
+        <div class="modal-content" style="border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
+            <form id="adjustTermsForm" onsubmit="handleAdjustTermsSubmit(event)">
+                <input type="hidden" name="action" value="adjust_credit_terms">
+                <input type="hidden" name="payment_id" id="adjustTermsPaymentId">
+
+                <div class="modal-header" style="background: #0f172a; color: #fff; padding: 14px 18px;">
+                    <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.9;">&times;</button>
+                    <h4 class="modal-title" id="adjustTermsModalLabel" style="font-weight: 800; font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa fa-calendar-check-o text-warning"></i> Adjust Credit Terms &amp; Due Date
+                    </h4>
+                </div>
+
+                <div class="modal-body" style="padding: 18px 20px; background: #fff;">
+                    <!-- Account Overview Card -->
+                    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                            <span style="color: #64748b;">Invoice / PO #:</span>
+                            <strong style="font-family: monospace; color: #1e3a8a;" id="adjustTermsInvoiceDisplay"></strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                            <span style="color: #64748b;">Customer Name:</span>
+                            <strong style="color: #0f172a;" id="adjustTermsCustomerDisplay"></strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                            <span style="color: #64748b;">Order Date:</span>
+                            <strong style="color: #0f172a;" id="adjustTermsOrderDateDisplay"></strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 800; border-top: 1px dashed #cbd5e1; padding-top: 6px; margin-top: 6px;">
+                            <span style="color: #dc2626;">Outstanding Balance:</span>
+                            <span style="color: #dc2626;" id="adjustTermsBalanceDisplay">₱0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Term Presets -->
+                    <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
+                            <i class="fa fa-clock-o text-primary"></i> Quick Term Presets:
+                        </label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;" id="termPresetsContainer">
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(7)">7 Days</button>
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(15)">15 Days</button>
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(21)">21 Days</button>
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(30)">30 Days</button>
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(45)">45 Days</button>
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(60)">60 Days</button>
+                            <button type="button" class="btn btn-default btn-sm term-preset-btn" onclick="applyTermPreset(90)">90 Days</button>
+                        </div>
+                    </div>
+
+                    <!-- Due Date & Terms Label Inputs -->
+                    <div class="row">
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group" style="margin-bottom: 14px;">
+                                <label style="font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                                    <i class="fa fa-calendar text-danger"></i> Due Date Override:
+                                </label>
+                                <input type="date" name="due_date" id="adjustTermsDueDate" class="form-control" style="height: 38px; font-weight: 700; color: #0f172a;" required onchange="onDueDateManualChange()">
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group" style="margin-bottom: 14px;">
+                                <label style="font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                                    <i class="fa fa-credit-card text-info"></i> Terms / Method Label:
+                                </label>
+                                <input type="text" name="payment_method" id="adjustTermsMethod" class="form-control" style="height: 38px; font-weight: 600;" placeholder="e.g. Check / Terms (30 Days)" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Check / PDC Reference # -->
+                    <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                            <i class="fa fa-tag text-info"></i> Check / PDC Reference # (Optional):
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-addon"><i class="fa fa-id-card-o"></i></span>
+                            <input type="text" name="card_number" id="adjustTermsCheckRef" class="form-control" placeholder="e.g. PDC-20261025-01 / Bank Check #" style="height: 38px;">
+                        </div>
+                    </div>
+
+                    <!-- Adjustment Reason / Note -->
+                    <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                            <i class="fa fa-pencil-square-o text-muted"></i> Reason for Adjustment / Note (Optional):
+                        </label>
+                        <textarea name="adjustment_notes" id="adjustTermsNotes" class="form-control" rows="2" placeholder="e.g. Extended payment terms upon customer request approved by Store Manager" style="font-size: 12.5px; resize: vertical;"></textarea>
+                    </div>
+
+                    <!-- Live Calculation Preview Card -->
+                    <div id="adjustTermsPreviewBox" style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; margin-bottom: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b;">Terms Preview</div>
+                            <div style="font-size: 13.5px; font-weight: 700; color: #0f172a;" id="adjustTermsCalculatedDaysText">--</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b;">Aging Status</div>
+                            <div id="adjustTermsAgingBadgePreview"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                    <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600;">Cancel</button>
+                    <button type="submit" id="adjustTermsSubmitBtn" class="btn btn-primary" style="font-weight: 800; padding: 8px 18px; background: #2563eb; border-color: #1d4ed8;">
+                        <i class="fa fa-save"></i> Save Terms &amp; Due Date
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <!-- ============================================================== -->
 <!-- MODAL: Record Payment / Settle Balance -->
@@ -1469,16 +1776,18 @@ function viewCreditLedger(paymentId, customerName, totalAmt, balanceAmt) {
         `;
 
         res.history.forEach((h, idx) => {
+            const isZeroAdj = (parseFloat(h.amount_paid) === 0);
             html += `
                 <tr>
                     <td style="padding: 10px 12px; font-weight: 700; color: #64748b;">${idx + 1}</td>
                     <td style="padding: 10px 12px;">${escapeHtml(h.payment_date)}</td>
                     <td style="padding: 10px 12px;">
                         <strong>${escapeHtml(h.payment_method)}</strong>
-                        ${h.reference_no ? `<div style="font-size: 11px; color: #64748b;">Ref: ${escapeHtml(h.reference_no)}</div>` : ''}
+                        ${h.reference_no ? `<div style="font-size: 11px; color: #64748b;"><i class="fa fa-tag"></i> Ref: ${escapeHtml(h.reference_no)}</div>` : ''}
+                        ${h.notes ? `<div style="font-size: 11px; color: #0369a1; margin-top: 3px; font-style: italic;"><i class="fa fa-info-circle"></i> ${escapeHtml(h.notes)}</div>` : ''}
                     </td>
-                    <td style="padding: 10px 12px; text-align: right; font-weight: 800; color: #059669;">
-                        ₱${parseFloat(h.amount_paid).toFixed(2)}
+                    <td style="padding: 10px 12px; text-align: right; font-weight: 800; color: ${!isZeroAdj ? '#059669' : '#64748b'};">
+                        ${!isZeroAdj ? '₱' + parseFloat(h.amount_paid).toFixed(2) : '<span class="badge" style="background: #f1f5f9; color: #475569; font-weight: 700;">Terms Update</span>'}
                     </td>
                     <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${parseFloat(h.remaining_balance) > 0 ? '#dc2626' : '#059669'};">
                         ₱${parseFloat(h.remaining_balance).toFixed(2)}
@@ -1506,6 +1815,256 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.innerText = text;
     return div.innerHTML;
+}
+
+// ==============================================================
+// Credit Terms & Due Date Adjustment Handlers
+// ==============================================================
+let currentAdjustTermsOrderDate = '';
+let currentAdjustTermsPaymentId = '';
+
+function openAdjustTermsFromElement(el) {
+    if (!el) return;
+    const data = {
+        payment_id: el.getAttribute('data-payment-id') || '',
+        customer_name: el.getAttribute('data-customer-name') || '',
+        order_date: el.getAttribute('data-order-date') || '',
+        order_date_formatted: el.getAttribute('data-order-date-formatted') || '',
+        payment_method: el.getAttribute('data-payment-method') || '',
+        check_ref: el.getAttribute('data-check-ref') || '',
+        due_date: el.getAttribute('data-due-date') || '',
+        balance: parseFloat(el.getAttribute('data-balance') || 0)
+    };
+    openAdjustTermsModal(data);
+}
+
+function openAdjustTermsModal(data) {
+    currentAdjustTermsPaymentId = data.payment_id;
+    currentAdjustTermsOrderDate = data.order_date;
+
+    document.getElementById('adjustTermsPaymentId').value = data.payment_id;
+    document.getElementById('adjustTermsInvoiceDisplay').innerText = data.payment_id;
+    document.getElementById('adjustTermsCustomerDisplay').innerText = data.customer_name;
+    document.getElementById('adjustTermsOrderDateDisplay').innerText = data.order_date_formatted || data.order_date;
+    document.getElementById('adjustTermsBalanceDisplay').innerText = '₱' + (data.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    
+    document.getElementById('adjustTermsDueDate').value = data.due_date;
+    document.getElementById('adjustTermsMethod').value = data.payment_method;
+    document.getElementById('adjustTermsCheckRef').value = data.check_ref || '';
+    document.getElementById('adjustTermsNotes').value = '';
+
+    // Calculate diff and highlight matching preset if any
+    const diffDays = getDaysDiff(currentAdjustTermsOrderDate, data.due_date);
+    highlightPresetButton(diffDays);
+    updateTermsPreview();
+
+    $('#adjustTermsModal').modal('show');
+}
+
+function applyTermPreset(days) {
+    if (!currentAdjustTermsOrderDate) return;
+    const newDueDateStr = addDaysToDateStr(currentAdjustTermsOrderDate, days);
+    document.getElementById('adjustTermsDueDate').value = newDueDateStr;
+    
+    const currentMethod = document.getElementById('adjustTermsMethod').value;
+    if (!currentMethod || /Check \/ Terms \(\d+\s*Days\)/i.test(currentMethod) || /Terms/i.test(currentMethod)) {
+        document.getElementById('adjustTermsMethod').value = `Check / Terms (${days} Days)`;
+    }
+
+    highlightPresetButton(days);
+    updateTermsPreview();
+}
+
+function onDueDateManualChange() {
+    const dueVal = document.getElementById('adjustTermsDueDate').value;
+    if (!dueVal || !currentAdjustTermsOrderDate) return;
+
+    const diffDays = getDaysDiff(currentAdjustTermsOrderDate, dueVal);
+
+    if (diffDays >= 0) {
+        const currentMethod = document.getElementById('adjustTermsMethod').value;
+        if (!currentMethod || /Check \/ Terms \(\d+\s*Days\)/i.test(currentMethod)) {
+            document.getElementById('adjustTermsMethod').value = `Check / Terms (${diffDays} Days)`;
+        }
+        highlightPresetButton(diffDays);
+    } else {
+        highlightPresetButton(null);
+    }
+
+    updateTermsPreview();
+}
+
+function highlightPresetButton(activeDays) {
+    const buttons = document.querySelectorAll('#termPresetsContainer .term-preset-btn');
+    buttons.forEach(btn => {
+        const text = btn.innerText.replace(/[^0-9]/g, '');
+        if (activeDays !== null && activeDays !== undefined && parseInt(text, 10) === parseInt(activeDays, 10)) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function updateTermsPreview() {
+    const dueVal = document.getElementById('adjustTermsDueDate').value;
+    const previewText = document.getElementById('adjustTermsCalculatedDaysText');
+    const previewBadge = document.getElementById('adjustTermsAgingBadgePreview');
+    if (!dueVal || !currentAdjustTermsOrderDate || !previewText || !previewBadge) return;
+
+    const diffDays = getDaysDiff(currentAdjustTermsOrderDate, dueVal);
+    const agingDays = getAgingFromToday(dueVal);
+
+    const formattedOrderDate = formatShortDate(currentAdjustTermsOrderDate);
+    previewText.innerText = `${diffDays} Day${diffDays === 1 ? '' : 's'} from ${formattedOrderDate}`;
+
+    if (agingDays < 0) {
+        const absDays = Math.abs(agingDays);
+        previewBadge.innerHTML = `<span class="badge" style="background: #ef4444; color: #fff; font-weight: 800;"><i class="fa fa-exclamation-triangle"></i> ${absDays} Day${absDays > 1 ? 's' : ''} Overdue</span>`;
+    } else if (agingDays === 0) {
+        previewBadge.innerHTML = `<span class="badge" style="background: #f59e0b; color: #fff; font-weight: 800;"><i class="fa fa-clock-o"></i> Due Today</span>`;
+    } else if (agingDays <= 7) {
+        previewBadge.innerHTML = `<span class="badge" style="background: #f59e0b; color: #fff; font-weight: 700;"><i class="fa fa-calendar"></i> Due in ${agingDays} Day${agingDays > 1 ? 's' : ''}</span>`;
+    } else {
+        previewBadge.innerHTML = `<span class="badge" style="background: #10b981; color: #fff; font-weight: 700;"><i class="fa fa-calendar-check-o"></i> Due in ${agingDays} Days</span>`;
+    }
+}
+
+function addDaysToDateStr(dateStr, days) {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    d.setDate(d.getDate() + parseInt(days, 10));
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function getDaysDiff(startDateStr, endDateStr) {
+    const p1 = startDateStr.split('-');
+    const p2 = endDateStr.split('-');
+    if (p1.length !== 3 || p2.length !== 3) return 0;
+    const d1 = new Date(parseInt(p1[0], 10), parseInt(p1[1], 10) - 1, parseInt(p1[2], 10));
+    const d2 = new Date(parseInt(p2[0], 10), parseInt(p2[1], 10) - 1, parseInt(p2[2], 10));
+    return Math.round((d2 - d1) / (86400 * 1000));
+}
+
+function getAgingFromToday(dueDateStr) {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return getDaysDiff(todayStr, dueDateStr);
+}
+
+function formatShortDate(dateStr) {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function handleAdjustTermsSubmit(event) {
+    event.preventDefault();
+    const btn = document.getElementById('adjustTermsSubmitBtn');
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
+
+    const formData = new FormData(document.getElementById('adjustTermsForm'));
+
+    fetch('on-credit.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(res => {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+
+        if (!res.success) {
+            alert(res.message || 'Failed to update credit terms.');
+            return;
+        }
+
+        $('#adjustTermsModal').modal('hide');
+
+        const payId = res.payment_id;
+
+        // 1. Update Terms Badge in Date column
+        const badgeEl = document.getElementById('termsBadge-' + payId);
+        if (badgeEl) {
+            badgeEl.setAttribute('data-payment-method', res.payment_method);
+            badgeEl.setAttribute('data-due-date', res.due_date);
+            badgeEl.setAttribute('data-check-ref', res.card_number || '');
+            const badgeText = badgeEl.querySelector('.term-badge-text');
+            if (badgeText) {
+                badgeText.innerText = res.payment_method;
+            }
+            // Flash animation
+            badgeEl.style.transition = 'all 0.3s ease';
+            badgeEl.style.backgroundColor = '#bbf7d0';
+            badgeEl.style.color = '#166534';
+            badgeEl.style.borderColor = '#86efac';
+            setTimeout(() => {
+                badgeEl.style.backgroundColor = '#fef3c7';
+                badgeEl.style.color = '#92400e';
+                badgeEl.style.borderColor = '#fde68a';
+            }, 1800);
+        }
+
+        // 2. Update Due Date and Aging badge
+        const dueCell = document.getElementById('dueDateCell-' + payId);
+        if (dueCell) {
+            const dueText = dueCell.querySelector('.due-date-text');
+            const agingCont = dueCell.querySelector('.aging-badge-container');
+            if (dueText) dueText.innerText = 'Due: ' + res.formatted_due_date;
+            if (agingCont) agingCont.innerHTML = res.aging_badge_html;
+            
+            // Flash animation
+            dueCell.style.transition = 'background-color 0.4s ease';
+            dueCell.style.backgroundColor = '#f0fdf4';
+            setTimeout(() => { dueCell.style.backgroundColor = ''; }, 1800);
+        }
+
+        // 3. Update Check Ref badge in Invoice column
+        const refEl = document.getElementById('checkRefBadge-' + payId);
+        if (refEl) {
+            if (res.card_number && res.card_number.trim() !== '') {
+                refEl.innerHTML = '<i class="fa fa-tag"></i> ' + escapeHtml(res.card_number);
+                refEl.style.display = 'inline-block';
+            }
+        }
+
+        // 4. Show sleek dismissible banner notice
+        showTermsNotice(res.message || 'Credit terms updated successfully!', 'success');
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+        alert('Network error: ' + err.message);
+    });
+}
+
+function showTermsNotice(msg, type) {
+    const area = document.getElementById('creditAlertNoticeArea');
+    if (!area) return;
+    const isSuccess = (type === 'success');
+    const alertHtml = `
+        <div class="alert alert-${isSuccess ? 'success' : 'danger'} alert-dismissible" style="border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); font-size: 13.5px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 12px 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa ${isSuccess ? 'fa-check-circle' : 'fa-exclamation-triangle'}" style="font-size: 17px;"></i>
+                <span>${escapeHtml(msg)}</span>
+            </div>
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close" style="opacity: 0.8; font-size: 20px; line-height: 1;">&times;</button>
+        </div>
+    `;
+    area.innerHTML = alertHtml;
+    setTimeout(() => {
+        const el = area.querySelector('.alert');
+        if (el) {
+            $(el).fadeOut(600, function() { area.innerHTML = ''; });
+        }
+    }, 4500);
 }
 
 if (typeof window.printPOVoucher !== 'function') {
