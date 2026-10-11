@@ -28,6 +28,7 @@ $supplier_id = (int)$_SESSION['supplier_user']['supplier_id'];
 $user_role_raw = isset($_SESSION['supplier_user']['role']) ? $_SESSION['supplier_user']['role'] : 'USER';
 $user_role = normalize_supplier_role($user_role_raw);
 $can_adjust_terms = is_admin_or_manager_role($user_role);
+$is_supplier_admin = ($user_role === 'ADMIN');
 $cashier_name = !empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier');
 
 // Schema Migration Helper for Credit Payments Ledger
@@ -406,6 +407,60 @@ if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' &
     }
 }
 
+// -------------------------------------------------------------
+// AJAX Endpoint: Update Customer Name (Supplier Admin Only)
+// -------------------------------------------------------------
+if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_customer_name') {
+    header('Content-Type: application/json');
+    if (!$is_supplier_admin) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Permission denied. Only Supplier Admin is authorized to edit customer names.'
+        ]);
+        exit;
+    }
+    $pay_id = trim($_POST['payment_id'] ?? '');
+    $new_name = trim($_POST['customer_name'] ?? '');
+
+    if (empty($pay_id)) {
+        echo json_encode(['success' => false, 'message' => 'Invalid Payment / Invoice ID.']);
+        exit;
+    }
+
+    if (empty($new_name)) {
+        $new_name = 'Walk-in Customer';
+    }
+
+    try {
+        $stmt_chk = $pdo->prepare("SELECT id, payment_id, customer_name, bank_transaction_info FROM tbl_payment WHERE (payment_id = ? OR txnid = ?) AND supplier_id = ?");
+        $stmt_chk->execute([$pay_id, $pay_id, $supplier_id]);
+        $order_pay = $stmt_chk->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order_pay) {
+            echo json_encode(['success' => false, 'message' => 'Credit account / order not found.']);
+            exit;
+        }
+
+        $old_name = $order_pay['customer_name'];
+        $log_entry = "\n[Customer Name Edited: " . $old_name . " -> " . $new_name . " by " . $cashier_name . " (Supplier Admin) on " . date('Y-m-d H:i') . "]";
+        $updated_tx = ($order_pay['bank_transaction_info'] ?? '') . $log_entry;
+
+        $stmt_up = $pdo->prepare("UPDATE tbl_payment SET customer_name = ?, bank_transaction_info = ? WHERE id = ? AND supplier_id = ?");
+        $stmt_up->execute([$new_name, $updated_tx, $order_pay['id'], $supplier_id]);
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Customer name updated to "' . $new_name . '"!',
+            'payment_id' => $order_pay['payment_id'],
+            'customer_name' => $new_name
+        ]);
+        exit;
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
 // Load catalog product financial map (Capital Price & Markup)
 $products_map = [];
 try {
@@ -735,6 +790,13 @@ require_once('header.php');
     border-color: #1d4ed8 !important;
     box-shadow: 0 1px 3px rgba(37, 99, 235, 0.35);
 }
+.inline-customer-view:hover .inline-edit-trigger {
+    color: #0284c7 !important;
+}
+.inline-customer-view:hover .cust-name-text {
+    color: #0369a1 !important;
+    text-decoration: underline dotted #94a3b8;
+}
 </style>
 
 <section class="content-header" style="padding-top: 15px; margin-bottom: 15px;">
@@ -943,7 +1005,33 @@ require_once('header.php');
                             </div>
                         </td>
                         <td>
-                            <strong style="font-size: 13.5px; color: #0f172a; display: block;"><?php echo htmlspecialchars($cust_name); ?></strong>
+                            <?php if ($is_supplier_admin): ?>
+                                <div class="inline-customer-wrap" id="custNameWrap-<?php echo htmlspecialchars($pay_id); ?>">
+                                    <div class="inline-customer-view" id="custNameDisplay-<?php echo htmlspecialchars($pay_id); ?>" style="display: flex; align-items: center; gap: 6px;">
+                                        <strong class="cust-name-text" style="font-size: 13.5px; color: #0f172a; display: inline-block; cursor: pointer;" onclick="startInlineCustomerEdit('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>')" title="Supplier Admin: Click to edit customer name">
+                                            <?php echo htmlspecialchars($cust_name); ?>
+                                        </strong>
+                                        <button type="button" class="btn btn-link btn-xs inline-edit-trigger" onclick="startInlineCustomerEdit('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>')" title="Supplier Admin: Edit Customer Name" style="padding: 0 4px; color: #94a3b8; font-size: 11px; text-decoration: none; border: none; background: transparent;">
+                                            <i class="fa fa-pencil"></i>
+                                        </button>
+                                    </div>
+                                    <div class="inline-customer-edit" id="custNameEdit-<?php echo htmlspecialchars($pay_id); ?>" style="display: none; margin-bottom: 2px;">
+                                        <div class="input-group input-group-sm" style="max-width: 220px;">
+                                            <input type="text" class="form-control cust-name-input" id="custNameInput-<?php echo htmlspecialchars($pay_id); ?>" value="<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>" placeholder="Customer name..." style="height: 28px; font-size: 12.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px 0 0 4px; border: 1.5px solid #0284c7;" onkeydown="handleCustomerNameKeyDown(event, '<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>')">
+                                            <span class="input-group-btn">
+                                                <button type="button" class="btn btn-success btn-xs" id="custNameSaveBtn-<?php echo htmlspecialchars($pay_id); ?>" onclick="saveInlineCustomerName('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>')" style="height: 28px; padding: 2px 8px;" title="Save Customer Name (Enter)">
+                                                    <i class="fa fa-check"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-default btn-xs" onclick="cancelInlineCustomerEdit('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>')" style="height: 28px; padding: 2px 7px;" title="Cancel (Esc)">
+                                                    <i class="fa fa-times"></i>
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php else: ?>
+                                <strong style="font-size: 13.5px; color: #0f172a; display: block;"><?php echo htmlspecialchars($cust_name); ?></strong>
+                            <?php endif; ?>
                             <?php if (!empty($cust_phone)): ?>
                                 <div style="font-size: 11.5px; color: #64748b;"><i class="fa fa-phone"></i> <?php echo htmlspecialchars($cust_phone); ?></div>
                             <?php endif; ?>
@@ -2071,6 +2159,133 @@ function showTermsNotice(msg, type) {
             $(el).fadeOut(600, function() { area.innerHTML = ''; });
         }
     }, 4500);
+}
+
+// ==============================================================
+// Inline Customer Name Edit Handlers (Supplier Admin Only)
+// ==============================================================
+function startInlineCustomerEdit(payId) {
+    const isSupplierAdmin = <?php echo $is_supplier_admin ? 'true' : 'false'; ?>;
+    if (!isSupplierAdmin) {
+        alert('Permission denied. Only Supplier Admin is authorized to edit customer names.');
+        return;
+    }
+    const displayEl = document.getElementById('custNameDisplay-' + payId);
+    const editEl = document.getElementById('custNameEdit-' + payId);
+    const inputEl = document.getElementById('custNameInput-' + payId);
+
+    if (displayEl && editEl && inputEl) {
+        displayEl.style.display = 'none';
+        editEl.style.display = 'block';
+        inputEl.focus();
+        inputEl.select();
+    }
+}
+
+function cancelInlineCustomerEdit(payId) {
+    const displayEl = document.getElementById('custNameDisplay-' + payId);
+    const editEl = document.getElementById('custNameEdit-' + payId);
+    const inputEl = document.getElementById('custNameInput-' + payId);
+
+    if (displayEl && editEl && inputEl) {
+        const textEl = displayEl.querySelector('.cust-name-text');
+        if (textEl) {
+            inputEl.value = textEl.innerText.trim();
+        }
+        editEl.style.display = 'none';
+        displayEl.style.display = 'flex';
+    }
+}
+
+function handleCustomerNameKeyDown(event, payId) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        saveInlineCustomerName(payId);
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelInlineCustomerEdit(payId);
+    }
+}
+
+function saveInlineCustomerName(payId) {
+    const isSupplierAdmin = <?php echo $is_supplier_admin ? 'true' : 'false'; ?>;
+    if (!isSupplierAdmin) {
+        alert('Permission denied. Only Supplier Admin is authorized to edit customer names.');
+        return;
+    }
+
+    const inputEl = document.getElementById('custNameInput-' + payId);
+    const saveBtn = document.getElementById('custNameSaveBtn-' + payId);
+    if (!inputEl) return;
+
+    const newName = inputEl.value.trim();
+    if (!newName) {
+        alert('Customer name cannot be empty.');
+        inputEl.focus();
+        return;
+    }
+
+    let origBtnContent = '';
+    if (saveBtn) {
+        origBtnContent = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'update_customer_name');
+    formData.append('payment_id', payId);
+    formData.append('customer_name', newName);
+
+    fetch('on-credit.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = origBtnContent;
+        }
+
+        if (!res.success) {
+            alert(res.message || 'Failed to update customer name.');
+            return;
+        }
+
+        const displayEl = document.getElementById('custNameDisplay-' + payId);
+        const editEl = document.getElementById('custNameEdit-' + payId);
+        if (displayEl && editEl) {
+            const textEl = displayEl.querySelector('.cust-name-text');
+            if (textEl) {
+                textEl.innerText = res.customer_name;
+                textEl.style.transition = 'color 0.3s ease';
+                textEl.style.color = '#059669';
+                setTimeout(() => { textEl.style.color = '#0f172a'; }, 1800);
+            }
+            editEl.style.display = 'none';
+            displayEl.style.display = 'flex';
+        }
+
+        // Update data-customer-name attribute on terms badge
+        const termsBadge = document.getElementById('termsBadge-' + payId);
+        if (termsBadge) {
+            termsBadge.setAttribute('data-customer-name', res.customer_name);
+        }
+
+        // Update customer name inside PO modal if rendered
+        const poModalCustomerEls = document.querySelectorAll('#po-credit-modal-' + payId + ' .po-customer-name, [data-po-customer="' + payId + '"]');
+        poModalCustomerEls.forEach(el => { el.innerText = res.customer_name; });
+
+        showTermsNotice(res.message || 'Customer name updated successfully!', 'success');
+    })
+    .catch(err => {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = origBtnContent;
+        }
+        alert('Network error: ' + err.message);
+    });
 }
 
 if (typeof window.printPOVoucher !== 'function') {
