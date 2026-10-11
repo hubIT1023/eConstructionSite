@@ -436,10 +436,46 @@ foreach ($all_credit_records as $rec) {
 
     $filtered_records[] = $rec;
 }
+
+// Fetch current supplier details for voucher receipts
+$stmt_sup = $pdo->prepare("SELECT * FROM tbl_supplier WHERE supplier_id = ?");
+$stmt_sup->execute([$supplier_id]);
+$current_supplier_data = $stmt_sup->fetch(PDO::FETCH_ASSOC) ?: [];
+
 require_once('header.php');
 ?>
 
 <style>
+.credit-po-trigger {
+    text-decoration: none !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    color: #0369a1 !important;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+.credit-po-trigger:hover {
+    background: #0284c7 !important;
+    color: #ffffff !important;
+    border-color: #0284c7 !important;
+    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.28);
+    transform: translateY(-1px);
+}
+.credit-po-trigger strong {
+    font-family: monospace;
+    font-size: 13.5px;
+    color: inherit;
+    font-weight: 800;
+}
+.credit-po-trigger i {
+    font-size: 12px;
+    color: inherit;
+}
 .credit-kpi-card {
     background: #ffffff;
     border-radius: 8px;
@@ -678,13 +714,25 @@ require_once('header.php');
                         $bal_amt = $row['computed_balance'];
                         $due_date = $row['computed_due_date'];
                         $is_settled = ($bal_amt <= 0.009);
+
+                        // Fetch order items for Purchase Order Modal
+                        $stmt_items = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id = ? ORDER BY id ASC");
+                        $stmt_items->execute([$pay_id]);
+                        $order_items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+
+                        // Extract delivery fee if recorded
+                        $row_delivery_fee = 0;
+                        if (preg_match('/Delivery (?:Fee|Cost):\s*₱?([0-9.]+)/i', $row['bank_transaction_info'] ?? '', $m_del)) {
+                            $row_delivery_fee = floatval($m_del[1]);
+                        }
                     ?>
                     <tr id="creditRow-<?php echo htmlspecialchars($pay_id); ?>">
                         <td style="color: #64748b; font-weight: 700;"><?php echo $row_idx; ?></td>
                         <td>
-                            <strong style="font-family: monospace; font-size: 13.5px; color: #1e3a8a; display: block;">
-                                <?php echo htmlspecialchars($pay_id); ?>
-                            </strong>
+                            <a href="#" data-toggle="modal" data-target="#po-credit-modal-<?php echo $row['id']; ?>" class="credit-po-trigger" title="Click to view &amp; print Purchase Order Voucher">
+                                <i class="fa fa-file-text-o"></i>
+                                <strong><?php echo htmlspecialchars($pay_id); ?></strong>
+                            </a>
                             <?php if (!empty($row['card_number'])): ?>
                                 <span class="badge" style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 11px; margin-top: 3px; display: inline-block;" title="Credit Reference / Check Number">
                                     <i class="fa fa-tag"></i> <?php echo htmlspecialchars($row['card_number']); ?>
@@ -736,6 +784,9 @@ require_once('header.php');
                             <?php echo $is_settled ? '<span class="badge" style="background: #d1fae5; color: #065f46;">Fully Paid</span>' : get_credit_aging_badge($due_date); ?>
                         </td>
                         <td style="text-align: right; white-space: nowrap;">
+                            <button type="button" class="btn btn-info btn-xs" data-toggle="modal" data-target="#po-credit-modal-<?php echo $row['id']; ?>" style="font-weight: 700; padding: 5px 8px; margin-right: 2px;" title="View and print Purchase Order Voucher">
+                                <i class="fa fa-file-text-o"></i> PO Voucher
+                            </button>
                             <?php if (!$is_settled): ?>
                                 <button type="button" class="credit-btn-settle" onclick="openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" title="Record full balance settlement or installment payment">
                                     <i class="fa fa-money"></i> Settle
@@ -744,6 +795,296 @@ require_once('header.php');
                             <button type="button" class="btn btn-default btn-xs" onclick="viewCreditLedger('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $bal_amt; ?>)" style="font-weight: 700; padding: 5px 8px; margin-left: 2px;" title="View payment installment history &amp; ledger">
                                 <i class="fa fa-list-alt"></i> History
                             </button>
+
+                            <!-- ============================================================== -->
+                            <!-- Purchase Order Modal for Credit Account -->
+                            <!-- ============================================================== -->
+                            <div id="po-credit-modal-<?php echo $row['id']; ?>" class="modal fade" role="dialog" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-lg" style="max-width: 750px; margin-top: 30px; text-align: left;">
+                                    <div class="modal-content" style="border-radius: 10px; overflow: hidden; border: none; box-shadow: 0 15px 40px rgba(0,0,0,0.2);">
+                                        
+                                        <!-- Modern Modal Header -->
+                                        <div class="modal-header-modern" style="background: #0284c7; display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; color: #ffffff;">
+                                            <h4 class="modal-title" style="margin: 0; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #ffffff;">
+                                                <i class="fa fa-file-text-o"></i> Customer Purchase Order Voucher — <span style="font-family: monospace; font-size: 17px;"><?php echo htmlspecialchars($row['txnid'] ?: $pay_id); ?></span>
+                                            </h4>
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <button type="button" class="btn btn-xs btn-default" onclick="printPOVoucher('<?php echo $row['id']; ?>')" style="background: #ffffff; color: #0284c7; font-weight: 700; border: none; border-radius: 5px; padding: 6px 14px; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                                    <i class="fa fa-print"></i> Print Voucher
+                                                </button>
+                                                <button type="button" class="close" data-dismiss="modal" aria-hidden="true" style="color: #ffffff; opacity: 0.9; font-size: 24px; margin: 0; line-height: 1;">&times;</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="modal-body" style="padding: 18px 20px; background: #f8fafc;">
+                                            <!-- Status & Overview Bar -->
+                                            <div style="background: <?php echo $is_settled ? '#ecfdf5' : '#fffbeb'; ?>; border: 1.5px solid <?php echo $is_settled ? '#a7f3d0' : '#fde68a'; ?>; border-radius: 8px; padding: 12px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                                <div style="display: flex; align-items: center; gap: 10px;">
+                                                    <span class="label" style="background: <?php echo $is_settled ? '#059669' : '#d97706'; ?>; color: #ffffff; font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 4px; text-transform: uppercase;">
+                                                        <i class="fa <?php echo $is_settled ? 'fa-check-circle' : 'fa-clock-o'; ?>"></i> <?php echo $is_settled ? 'PAID / SETTLED' : 'ON CREDIT'; ?>
+                                                    </span>
+                                                    <span style="font-size: 12.5px; color: <?php echo $is_settled ? '#065f46' : '#78350f'; ?>; font-weight: 600;">
+                                                        <?php echo $is_settled ? 'Account fully settled' : 'Credit Account &bull; Terms Due: ' . date('M d, Y', strtotime($due_date)); ?>
+                                                    </span>
+                                                </div>
+                                                <div style="font-size: 12px; color: #64748b; font-weight: 600;">
+                                                    <i class="fa fa-calendar"></i> <?php echo date('M d, Y h:i A', strtotime($row['payment_date'])); ?>
+                                                </div>
+                                            </div>
+
+                                            <!-- 2-Column Info Cards -->
+                                            <div class="row" style="margin-bottom: 18px;">
+                                                <div class="col-sm-6 col-xs-12" style="margin-bottom: 10px;">
+                                                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; height: 100%;">
+                                                        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 8px; letter-spacing: 0.5px;">
+                                                            <i class="fa fa-user"></i> Customer Information
+                                                        </div>
+                                                        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
+                                                            <?php echo htmlspecialchars($cust_name); ?>
+                                                        </div>
+                                                        <?php if (!empty($cust_phone)): ?>
+                                                            <div style="font-size: 12px; color: #475569;"><i class="fa fa-phone" style="width: 14px; color: #0284c7;"></i> <?php echo htmlspecialchars($cust_phone); ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($row['customer_address'])): ?>
+                                                            <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;"><i class="fa fa-map-marker" style="width: 14px; color: #ef4444;"></i> <?php echo htmlspecialchars($row['customer_address']); ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($row['customer_email'])): ?>
+                                                            <div style="font-size: 12px; color: #475569; margin-top: 2px;"><i class="fa fa-envelope" style="width: 14px; color: #0284c7;"></i> <?php echo htmlspecialchars($row['customer_email']); ?></div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                                <div class="col-sm-6 col-xs-12" style="margin-bottom: 10px;">
+                                                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; height: 100%;">
+                                                        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 8px; letter-spacing: 0.5px;">
+                                                            <i class="fa fa-building-o"></i> Store &amp; Fulfillment
+                                                        </div>
+                                                        <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
+                                                            <?php echo htmlspecialchars(!empty($current_supplier_data['supplier_name']) ? $current_supplier_data['supplier_name'] : 'SAM & INRI CONSTRUCTION SUPPLY'); ?>
+                                                        </div>
+                                                        <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">
+                                                            <span class="label" style="background: #0284c7; font-size: 10.5px; padding: 3px 7px; border-radius: 3px;"><i class="fa fa-credit-card"></i> <?php echo htmlspecialchars($row['payment_method'] ?? 'On Credit / Terms'); ?></span>
+                                                        </div>
+                                                        <?php if (!empty($current_supplier_data['supplier_phone'])): ?>
+                                                            <div style="font-size: 11.5px; color: #64748b;"><i class="fa fa-phone" style="width: 14px;"></i> Tel: <?php echo htmlspecialchars($current_supplier_data['supplier_phone']); ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($row['card_number'])): ?>
+                                                            <div style="font-size: 11.5px; color: #0369a1; margin-top: 2px;"><i class="fa fa-tag" style="width: 14px;"></i> Ref / Check: <?php echo htmlspecialchars($row['card_number']); ?></div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Ordered Items Table -->
+                                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 18px;">
+                                                <div style="padding: 10px 16px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">
+                                                    <i class="fa fa-shopping-cart"></i> Ordered Items (<?php echo count($order_items); ?>)
+                                                </div>
+                                                <div class="table-responsive" style="margin-bottom: 0;">
+                                                    <table class="table table-hover" style="margin-bottom: 0; font-size: 13px;">
+                                                        <thead style="background: #f8fafc;">
+                                                            <tr>
+                                                                <th style="width: 40px; text-align: center; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0;">#</th>
+                                                                <th style="color: #475569; font-weight: 700; border-bottom: 1px solid #e2e8f0;">Item Description</th>
+                                                                <th style="width: 80px; text-align: center; color: #475569; font-weight: 700; border-bottom: 1px solid #e2e8f0;">Qty</th>
+                                                                <th style="width: 110px; text-align: right; color: #475569; font-weight: 700; border-bottom: 1px solid #e2e8f0;">Unit Price</th>
+                                                                <th style="width: 120px; text-align: right; color: #475569; font-weight: 700; border-bottom: 1px solid #e2e8f0;">Subtotal</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php 
+                                                            $calc_subtotal = 0;
+                                                            $oit_idx = 0;
+                                                            foreach ($order_items as $oit): 
+                                                                $oit_idx++;
+                                                                $oit_qty = intval($oit['quantity'] ?? 1);
+                                                                $oit_price = floatval($oit['unit_price'] ?? 0);
+                                                                $oit_line = floatval($oit['subtotal'] ?? ($oit_qty * $oit_price));
+                                                                $calc_subtotal += $oit_line;
+                                                                $is_oit_return = !empty($oit['is_return_credit']) || ($oit_price < 0);
+                                                                $unit_label = ($oit_qty > 1 || $oit_qty < -1 ? 'pcs' : 'pc');
+                                                            ?>
+                                                            <tr style="<?php echo $is_oit_return ? 'background: #fff7ed;' : ''; ?>">
+                                                                <td style="text-align: center; color: <?php echo $is_oit_return ? '#ea580c' : '#94a3b8'; ?>; font-weight: 600; vertical-align: middle;"><?php echo $oit_idx; ?></td>
+                                                                <td style="vertical-align: middle;">
+                                                                    <div style="font-weight: 700; color: <?php echo $is_oit_return ? '#9a3412' : '#0f172a'; ?>;">
+                                                                        <?php if ($is_oit_return): ?>
+                                                                            <span class="badge" style="background: #ea580c; color: #fff; font-size: 9.5px; font-weight: 800; padding: 2px 6px; margin-right: 4px; vertical-align: text-top;"><i class="fa fa-exchange"></i> TRADE-IN CREDIT</span>
+                                                                        <?php endif; ?>
+                                                                        <?php echo htmlspecialchars($oit['product_name'] ?? ''); ?>
+                                                                    </div>
+                                                                    <?php if (!empty($oit['size']) || !empty($oit['color'])): ?>
+                                                                        <div style="margin-top: 3px; display: flex; gap: 4px;">
+                                                                            <?php if (!empty($oit['size']) && $oit['size'] !== '-'): ?>
+                                                                                <span class="badge" style="background: <?php echo $is_oit_return ? '#fed7aa; color: #9a3412' : '#f1f5f9; color: #475569'; ?>; font-size: 10.5px; font-weight: 600;">Size: <?php echo htmlspecialchars($oit['size']); ?></span>
+                                                                            <?php endif; ?>
+                                                                            <?php if (!empty($oit['color']) && $oit['color'] !== '-'): ?>
+                                                                                <span class="badge" style="background: <?php echo $is_oit_return ? '#fed7aa; color: #9a3412' : '#f1f5f9; color: #475569'; ?>; font-size: 10.5px; font-weight: 600;">Color: <?php echo htmlspecialchars($oit['color']); ?></span>
+                                                                            <?php endif; ?>
+                                                                        </div>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td style="text-align: center; font-weight: 700; color: <?php echo $is_oit_return ? '#ea580c' : '#1e293b'; ?>; vertical-align: middle;"><?php echo abs($oit_qty); ?> <span style="font-size: 11px; color: #64748b; font-weight: normal;"><?php echo $unit_label; ?></span></td>
+                                                                <td style="text-align: right; color: <?php echo $is_oit_return ? '#ea580c' : '#475569'; ?>; font-weight: 600; vertical-align: middle;"><?php echo $is_oit_return ? '-₱' . number_format(abs($oit_price), 2) : '₱' . number_format($oit_price, 2); ?></td>
+                                                                <td style="text-align: right; font-weight: 800; color: <?php echo $is_oit_return ? '#ea580c' : '#0f172a'; ?>; vertical-align: middle;"><?php echo $is_oit_return ? '-₱' . number_format(abs($oit_line), 2) : '₱' . number_format($oit_line, 2); ?></td>
+                                                            </tr>
+                                                            <?php endforeach; ?>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            <!-- Financial Totals Block -->
+                                            <div style="display: flex; justify-content: flex-end; margin-bottom: 18px;">
+                                                <div style="width: 100%; max-width: 360px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px;">
+                                                    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 6px;">
+                                                        <span>Items Subtotal:</span>
+                                                        <span style="font-weight: 700; color: #0f172a;">₱<?php echo number_format($calc_subtotal, 2); ?></span>
+                                                    </div>
+                                                    <?php if ($row_delivery_fee > 0): ?>
+                                                    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 6px;">
+                                                        <span>Delivery Fee:</span>
+                                                        <span style="font-weight: 600; color: #0f172a;">₱<?php echo number_format($row_delivery_fee, 2); ?></span>
+                                                    </div>
+                                                    <?php endif; ?>
+                                                    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 6px; border-top: 1px dashed #e2e8f0; padding-top: 6px;">
+                                                        <span>Total Invoice Amount:</span>
+                                                        <span style="font-weight: 700; color: #0f172a;">₱<?php echo number_format($total_amt, 2); ?></span>
+                                                    </div>
+                                                    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #059669; margin-bottom: 6px;">
+                                                        <span>Paid to Date:</span>
+                                                        <span style="font-weight: 700;">₱<?php echo number_format($paid_amt, 2); ?></span>
+                                                    </div>
+                                                    <div style="border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 6px; display: flex; justify-content: space-between; align-items: baseline;">
+                                                        <span style="font-size: 14px; font-weight: 800; color: <?php echo $is_settled ? '#059669' : '#dc2626'; ?>;">OUTSTANDING BALANCE:</span>
+                                                        <span style="font-size: 18px; font-weight: 800; color: <?php echo $is_settled ? '#059669' : '#dc2626'; ?>;">₱<?php echo number_format($bal_amt, 2); ?></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Customer Acknowledgment Box for Credit Terms -->
+                                            <div style="background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; font-size: 12px; color: #475569;">
+                                                <div style="font-weight: 700; color: #1e293b; margin-bottom: 4px;">Credit Terms &amp; Acknowledgment:</div>
+                                                <div>I hereby acknowledge receipt of the above merchandise in good order and condition, and agree to settle the balance of <strong>₱<?php echo number_format($bal_amt, 2); ?></strong> on or before <strong><?php echo date('M d, Y', strtotime($due_date)); ?></strong>.</div>
+                                                <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+                                                    <div style="border-top: 1px solid #64748b; width: 45%; text-align: center; padding-top: 4px; font-size: 11px;">
+                                                        Customer Signature / Date
+                                                    </div>
+                                                    <div style="border-top: 1px solid #64748b; width: 45%; text-align: center; padding-top: 4px; font-size: 11px;">
+                                                        Authorized Store Representative
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Hidden Silent Thermal Print Element -->
+                                            <div id="po-printable-thermal-<?php echo $row['id']; ?>" style="display: none;">
+                                                <div style="font-family: 'Courier New', Consolas, monospace; font-size: 11pt; line-height: 1.25; color: #000; text-align: left;">
+                                                    <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
+                                                    <div style="text-align: center;">
+                                                        <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase;"><?php echo htmlspecialchars(!empty($current_supplier_data['supplier_name']) ? strtoupper($current_supplier_data['supplier_name']) : 'SAM & INRI CONSTRUCTION SUPPLY'); ?></div>
+                                                        <?php if (!empty($current_supplier_data['supplier_address'])): ?>
+                                                            <div style="font-size: 9.5pt;"><?php echo htmlspecialchars($current_supplier_data['supplier_address']); ?></div>
+                                                        <?php endif; ?>
+                                                        <div style="font-size: 10pt;">Tel: <?php echo htmlspecialchars(!empty($current_supplier_data['supplier_phone']) ? $current_supplier_data['supplier_phone'] : '09612735733'); ?></div>
+                                                        <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px;">PURCHASE ORDER VOUCHER</div>
+                                                        <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase;"><?php echo $is_settled ? '(PAID / SETTLED)' : '(ON CREDIT / TERMS)'; ?></div>
+                                                    </div>
+                                                    <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
+                                                    <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt; margin-bottom: 2px;">
+                                                        <tr><td style="width: 28%; font-weight: bold;">PO NO   :</td><td style="font-weight: bold;"><?php echo htmlspecialchars($row['txnid'] ?: $pay_id); ?></td></tr>
+                                                        <tr><td style="font-weight: bold;">CUSTOMER:</td><td><?php echo htmlspecialchars($cust_name); ?></td></tr>
+                                                        <?php if (!empty($cust_phone)): ?>
+                                                        <tr><td style="font-weight: bold;">PHONE   :</td><td><?php echo htmlspecialchars($cust_phone); ?></td></tr>
+                                                        <?php endif; ?>
+                                                        <tr><td style="font-weight: bold;">TERMS   :</td><td><?php echo htmlspecialchars($row['payment_method']); ?></td></tr>
+                                                        <tr><td style="font-weight: bold;">DUE DATE:</td><td style="font-weight: bold;"><?php echo date('Y-m-d', strtotime($due_date)); ?></td></tr>
+                                                        <tr><td style="font-weight: bold;">DATE    :</td><td><?php echo date('Y-m-d H:i:s', strtotime($row['payment_date'])); ?></td></tr>
+                                                    </table>
+                                                    <div style="text-align: center; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+                                                    <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt;">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="text-align: left; width: 68%;">ITEM DESCRIPTION</th>
+                                                                <th style="text-align: right; width: 32%;">AMOUNT</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php foreach ($order_items as $oit): 
+                                                                $oit_qty = intval($oit['quantity'] ?? 1);
+                                                                $oit_price = floatval($oit['unit_price'] ?? 0);
+                                                                $oit_line = floatval($oit['subtotal'] ?? ($oit_qty * $oit_price));
+                                                                $is_oit_return = !empty($oit['is_return_credit']) || ($oit_price < 0);
+                                                                $unit_label = ($oit_qty > 1 || $oit_qty < -1 ? 'pcs' : 'pc');
+                                                            ?>
+                                                            <tr>
+                                                                <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">
+                                                                    <?php if ($is_oit_return): ?>[TRADE-IN RETURN CREDIT] <?php endif; ?>
+                                                                    <?php echo htmlspecialchars($oit['product_name'] ?? ''); ?>
+                                                                    <?php if (!empty($oit['size']) || !empty($oit['color'])): ?>
+                                                                        <div style="font-size: 9pt; font-weight: normal;">
+                                                                            <?php if (!empty($oit['size']) && $oit['size'] !== '-') echo 'Size: ' . htmlspecialchars($oit['size']) . ' '; ?>
+                                                                            <?php if (!empty($oit['color']) && $oit['color'] !== '-') echo 'Color: ' . htmlspecialchars($oit['color']); ?>
+                                                                        </div>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td style="text-align: left; padding-left: 8px; padding-bottom: 3px;">
+                                                                    <?php echo abs($oit_qty); ?> <?php echo $unit_label; ?> @ <?php echo $is_oit_return ? '-' . number_format(abs($oit_price), 2) : number_format($oit_price, 2); ?>
+                                                                </td>
+                                                                <td style="text-align: right; padding-bottom: 3px; white-space: nowrap; vertical-align: bottom;">
+                                                                    <?php echo $is_oit_return ? '-' . number_format(abs($oit_line), 2) : number_format($oit_line, 2); ?>
+                                                                </td>
+                                                            </tr>
+                                                            <?php endforeach; ?>
+                                                        </tbody>
+                                                    </table>
+                                                    <div style="text-align: center; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+                                                    <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt; margin: 2px 0;">
+                                                        <tr><td>Subtotal:</td><td style="text-align: right;"><?php echo number_format($calc_subtotal, 2); ?></td></tr>
+                                                        <?php if ($row_delivery_fee > 0): ?>
+                                                        <tr><td>Delivery Fee:</td><td style="text-align: right;"><?php echo number_format($row_delivery_fee, 2); ?></td></tr>
+                                                        <?php endif; ?>
+                                                        <tr style="font-weight: bold;"><td>Total Invoiced:</td><td style="text-align: right;">PHP <?php echo number_format($total_amt, 2); ?></td></tr>
+                                                        <tr><td>Paid to Date:</td><td style="text-align: right;">PHP <?php echo number_format($paid_amt, 2); ?></td></tr>
+                                                        <tr style="font-weight: bold; font-size: 1.08em;"><td style="font-size: 1.05em;">BALANCE DUE:</td><td style="text-align: right; font-size: 1.05em;">PHP <?php echo number_format($bal_amt, 2); ?></td></tr>
+                                                    </table>
+                                                    <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
+                                                    <div style="text-align: left; font-size: 9pt; line-height: 1.25; margin: 4px 0;">
+                                                        <div>Terms Due: <?php echo date('Y-m-d', strtotime($due_date)); ?></div>
+                                                        <div style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 3px; text-align: center;">Customer Signature</div>
+                                                    </div>
+                                                    <div style="text-align: center; overflow: hidden; white-space: nowrap;">--------------------------------</div>
+                                                    <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
+                                                        <?php if ($is_settled): ?>
+                                                            <div style="font-weight: bold;">*** ACCOUNT SETTLED ***</div>
+                                                        <?php else: ?>
+                                                            <div style="font-weight: bold; font-size: 10.5pt; letter-spacing: 0.5px;">*** CREDIT PURCHASE ORDER ***</div>
+                                                        <?php endif; ?>
+                                                        <div style="margin-top: 3px;">Thank you for your business!</div>
+                                                        <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+                                                    </div>
+                                                    <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+
+                                        <div class="modal-footer" style="background: #f1f5f9; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+                                            <button type="button" class="btn btn-default btn-sm" data-dismiss="modal" style="font-weight: 700; border-radius: 5px;">Close</button>
+                                            <div style="display: flex; gap: 8px;">
+                                                <?php if (!$is_settled): ?>
+                                                    <button type="button" class="btn btn-success btn-sm" onclick="$('#po-credit-modal-<?php echo $row['id']; ?>').modal('hide'); openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" style="font-weight: 700; border-radius: 5px; padding: 6px 14px;">
+                                                        <i class="fa fa-money"></i> Settle Balance
+                                                    </button>
+                                                <?php endif; ?>
+                                                <button type="button" class="btn btn-primary btn-sm" onclick="printPOVoucher('<?php echo $row['id']; ?>')" style="font-weight: 700; background-color: #0284c7; border-color: #0369a1; border-radius: 5px; padding: 6px 16px;" title="Print Voucher on Thermal Printer">
+                                                    <i class="fa fa-print"></i> Print Purchase Order Voucher
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -1158,6 +1499,29 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.innerText = text;
     return div.innerHTML;
+}
+
+if (typeof window.printPOVoucher !== 'function') {
+    window.printPOVoucher = function(poId, format) {
+        const fmt = format || '58';
+        const thermalEl = document.getElementById('po-printable-thermal-' + poId) ||
+                          document.getElementById('po-printable-voucher-' + poId);
+        if (window.POVoucherRenderer && typeof window.POVoucherRenderer.print === 'function' && thermalEl) {
+            window.POVoucherRenderer.print(thermalEl, fmt);
+            return;
+        }
+        if (thermalEl) {
+            const printWin = window.open('', '_blank', 'width=450,height=600');
+            if (printWin) {
+                printWin.document.write('<html><head><title>Print Purchase Order Voucher</title><style>body{font-family:monospace;font-size:12px;padding:15px;}</style></head><body>' + thermalEl.innerHTML + '</body></html>');
+                printWin.document.close();
+                printWin.focus();
+                setTimeout(function() { printWin.print(); printWin.close(); }, 350);
+            } else {
+                window.print();
+            }
+        }
+    };
 }
 </script>
 
