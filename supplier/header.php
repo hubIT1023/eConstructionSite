@@ -8,8 +8,8 @@ if (session_status() === PHP_SESSION_NONE) {
         'cookie_samesite' => 'Lax'
     ]);
 }
-include("inc/config.php");
-include("inc/functions.php");
+include_once("inc/config.php");
+include_once("inc/functions.php");
 ensure_supplier_user_schema($pdo);
 include("inc/CSRF_Protect.php");
 $csrf = new CSRF_Protect();

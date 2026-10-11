@@ -64,10 +64,14 @@ $dbuser = getenv('DB_USER') ?: 'ecom_admin';
 $dbpass = getenv('DB_PASS') ?: '#Adm1n_0WN3R';
 
 // Defining base url
-define("BASE_URL", "");
+if (!defined("BASE_URL")) {
+    define("BASE_URL", "");
+}
 
 // Getting Admin url
-define("ADMIN_URL", BASE_URL . "admin" . "/");
+if (!defined("ADMIN_URL")) {
+    define("ADMIN_URL", BASE_URL . "admin" . "/");
+}
 
 try {
 	$pdo = new PDO("pgsql:host={$dbhost};port=5432;dbname={$dbname}", $dbuser, $dbpass);
