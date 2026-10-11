@@ -971,15 +971,12 @@ require_once('header.php');
                             </div>
                         </td>
                         <td style="text-align: right; white-space: nowrap;">
-                            <button type="button" class="btn btn-info btn-xs" data-toggle="modal" data-target="#po-credit-modal-<?php echo $row['id']; ?>" style="font-weight: 700; padding: 5px 8px; margin-right: 2px;" title="View and print Purchase Order Voucher">
-                                <i class="fa fa-file-text-o"></i> PO Voucher
-                            </button>
                             <?php if (!$is_settled): ?>
                                 <button type="button" class="credit-btn-settle" onclick="openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" title="Record full balance settlement or installment payment">
                                     <i class="fa fa-money"></i> Settle
                                 </button>
                             <?php endif; ?>
-                            <button type="button" class="btn btn-default btn-xs" onclick="viewCreditLedger('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $bal_amt; ?>)" style="font-weight: 700; padding: 5px 8px; margin-left: 2px;" title="View payment installment history &amp; ledger">
+                            <button type="button" class="btn btn-default btn-xs" onclick="viewCreditLedger('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $bal_amt; ?>)" style="font-weight: 700; padding: 5px 8px;" title="View payment installment history &amp; ledger">
                                 <i class="fa fa-list-alt"></i> History
                             </button>
 
