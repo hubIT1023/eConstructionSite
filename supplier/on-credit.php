@@ -27,6 +27,7 @@ if (!isset($_SESSION['supplier_user'])) {
 $supplier_id = (int)$_SESSION['supplier_user']['supplier_id'];
 $user_role_raw = isset($_SESSION['supplier_user']['role']) ? $_SESSION['supplier_user']['role'] : 'USER';
 $user_role = normalize_supplier_role($user_role_raw);
+$can_adjust_terms = is_admin_or_manager_role($user_role);
 $cashier_name = !empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier');
 
 // Schema Migration Helper for Credit Payments Ledger
@@ -286,6 +287,13 @@ if (!function_exists('parse_invoice_total')) {
 // -------------------------------------------------------------
 if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'adjust_credit_terms') {
     header('Content-Type: application/json');
+    if (!$can_adjust_terms) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Permission denied. Only Supplier Admin and Store Manager are authorized to adjust credit terms and due dates.'
+        ]);
+        exit;
+    }
     $pay_id = trim($_POST['payment_id'] ?? '');
     $new_due_date = trim($_POST['due_date'] ?? '');
     $new_method = trim($_POST['payment_method'] ?? '');
@@ -911,7 +919,7 @@ require_once('header.php');
                                     <span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 10.5px; font-weight: 800;">
                                         <?php echo htmlspecialchars($row['payment_method']); ?>
                                     </span>
-                                <?php else: ?>
+                                <?php elseif ($can_adjust_terms): ?>
                                     <a href="javascript:void(0)" class="credit-terms-pill" 
                                        id="termsBadge-<?php echo htmlspecialchars($pay_id); ?>"
                                        data-payment-id="<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>"
@@ -923,10 +931,14 @@ require_once('header.php');
                                        data-due-date="<?php echo htmlspecialchars($due_date, ENT_QUOTES); ?>"
                                        data-balance="<?php echo (float)$bal_amt; ?>"
                                        onclick="openAdjustTermsFromElement(this)"
-                                       title="Click to adjust Credit Terms or Due Date">
+                                       title="Click to adjust Credit Terms or Due Date (Admin / Manager)">
                                         <i class="fa fa-pencil" style="font-size: 10px; color: #b45309;"></i>
                                         <span class="term-badge-text"><?php echo htmlspecialchars($row['payment_method']); ?></span>
                                     </a>
+                                <?php else: ?>
+                                    <span class="badge" id="termsBadge-<?php echo htmlspecialchars($pay_id); ?>" style="background: #fef3c7; color: #92400e; font-size: 10.5px; font-weight: 800; padding: 4px 8px; border: 1px solid #fde68a;" title="Credit Terms: <?php echo htmlspecialchars($row['payment_method']); ?> (Admin/Manager authorization required to adjust)">
+                                        <span class="term-badge-text"><?php echo htmlspecialchars($row['payment_method']); ?></span>
+                                    </span>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -1828,6 +1840,11 @@ function openAdjustTermsFromElement(el) {
 }
 
 function openAdjustTermsModal(data) {
+    const canUserAdjustTerms = <?php echo $can_adjust_terms ? 'true' : 'false'; ?>;
+    if (!canUserAdjustTerms) {
+        alert('Permission denied. Only Supplier Admin and Store Manager are authorized to adjust credit terms and due dates.');
+        return;
+    }
     currentAdjustTermsPaymentId = data.payment_id;
     currentAdjustTermsOrderDate = data.order_date;
 
