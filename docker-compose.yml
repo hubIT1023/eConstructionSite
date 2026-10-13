@@ -41,5 +41,25 @@ services:
     depends_on:
       - db
 
+  erp:
+    container_name: econstructionsite-erp
+    image: node:20-alpine
+    restart: always
+    working_dir: /app/erp
+    volumes:
+      - .:/app
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=${ERP_PORT:-4000}
+      - DB_HOST=${ERP_DB_HOST:-db}
+      - DB_PORT=${ERP_DB_PORT:-5432}
+      - DB_NAME=${ERP_DB_NAME:-ecomDB}
+      - DB_USER=${ERP_DB_USER:-erp_service_user}
+      - DB_PASS=${ERP_DB_PASS:-erp_local_secret}
+    command: sh -c "npm install && node server.js"
+    depends_on:
+      - db
+
 volumes:
   pgdata_const:

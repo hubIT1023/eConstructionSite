@@ -34,6 +34,12 @@ $is_approver = is_supplier_approver();
 $is_pos_user = is_cashier_or_operator_role($user_role);
 $user_has_pos = has_pos_access($_SESSION['supplier_user']);
 
+// Share logged-in tenant/user context via localhost cookies so ERP (port 4000) always points to the logged-in tenant
+@setcookie('erp_supplier_id', (string)$supplier_id, time() + 604800, '/', '', false, false);
+@setcookie('erp_supplier_name', (string)($_SESSION['supplier_user']['supplier_name'] ?? ''), time() + 604800, '/', '', false, false);
+@setcookie('erp_user_name', (string)($_SESSION['supplier_user']['full_name'] ?? 'Supplier Admin'), time() + 604800, '/', '', false, false);
+@setcookie('erp_user_role', (string)get_role_display_name($user_role), time() + 604800, '/', '', false, false);
+
 // Query pending created Online Orders & Purchase Orders for current tenant
 $sidebar_pending_pos = [];
 if (isset($supplier_id) && $supplier_id > 0) {
@@ -237,7 +243,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 		<header class="main-header">
 
 			<a href="<?php echo $is_admin ? 'index.php' : 'pos.php'; ?>" class="logo">
-				<span class="logo-lg">WebPOS</span>
+				<span class="logo-lg"><?php echo $is_admin ? 'eConstruct Hub' : 'WebPOS'; ?></span>
 			</a>
 
 			<nav class="navbar navbar-static-top">
@@ -257,6 +263,25 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                 <!-- Top Bar User Information Area -->
 				<div class="navbar-custom-menu">
 					<ul class="nav navbar-nav">
+                        <?php if ($is_admin): 
+                            $req_host_raw = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                            $req_host_only = explode(':', $req_host_raw)[0];
+                            $erp_host = in_array($req_host_only, ['localhost', '127.0.0.1']) ? 'localhost' : $req_host_only;
+                            $erp_switch_url = 'http://' . $erp_host . ':4000/?supplier_id=' . (int)$supplier_id 
+                                . '&user_name=' . urlencode($_SESSION['supplier_user']['full_name'] ?? 'Supplier Admin') 
+                                . '&role=' . urlencode(get_role_display_name($user_role));
+                        ?>
+                        <li style="display: inline-block; vertical-align: middle; padding: 9px 10px;">
+                            <div style="display: inline-flex; align-items: center; background: #0b0f17; border: 1px solid #334155; border-radius: 999px; padding: 3px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);" title="Switch between POS (localhost:9090) and ERP (localhost:4000)">
+                                <a href="index.php" style="padding: 4px 14px; font-size: 12px; font-weight: 800; color: #ffffff; background: linear-gradient(135deg, #2563eb, #1d4ed8); border: 1px solid #60a5fa; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; line-height: 1.2; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+                                    <i class="fa fa-calculator"></i> POS
+                                </a>
+                                <a href="<?php echo htmlspecialchars($erp_switch_url); ?>" style="padding: 4px 14px; font-size: 12px; font-weight: 800; color: #94a3b8; background: transparent; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; line-height: 1.2; transition: all 0.2s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#94a3b8'">
+                                    <i class="fa fa-line-chart" style="color: #10b981;"></i> ERP
+                                </a>
+                            </div>
+                        </li>
+                        <?php endif; ?>
 						<li class="dropdown user user-menu">
 							<a href="#" class="dropdown-toggle" data-toggle="dropdown">
 								<i class="fa fa-user" style="color: white; float: left; margin-top: 3px; margin-right: 5px;"></i>

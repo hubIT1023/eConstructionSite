@@ -1,7 +1,9 @@
 <?php require_once('header.php'); ?>
+<?php require_once('inc/erp_admin_helper.php'); ?>
 
 <?php
 if(!isset($_REQUEST['id'])) {
+
 	header('location: supplier.php');
 	exit;
 }
@@ -52,6 +54,9 @@ if(isset($_POST['form_edit_supplier'])) {
             $statement_usr->execute(array($supplier_id));
         }
 
+        // Save ERP Entitlements if submitted
+        erp_save_tenant_entitlements($pdo, $supplier_id, $_POST);
+
         $success_message = "Supplier SaaS configuration, POS user limit, and storage quota updated successfully!";
         // Reload storage stats
         $storage_stats = get_tenant_storage_stats($pdo, $supplier_id);
@@ -70,6 +75,9 @@ if (!$supplier) {
 
 $current_max_users = isset($supplier['max_pos_users']) && (int)$supplier['max_pos_users'] > 0 ? (int)$supplier['max_pos_users'] : 3;
 $current_max_storage = isset($supplier['max_storage_mb']) && (int)$supplier['max_storage_mb'] > 0 ? (int)$supplier['max_storage_mb'] : 2048;
+
+// Fetch ERP Entitlements
+$erp_entitlement = erp_get_tenant_entitlements($pdo, $supplier_id);
 ?>
 
 <section class="content-header">
@@ -181,6 +189,73 @@ $current_max_storage = isset($supplier['max_storage_mb']) && (int)$supplier['max
                                 </select>
                             </div>
                         </div>
+
+                        <hr style="border-top: 2px dashed #cbd5e1; margin: 30px 0 20px 0;">
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label" style="color: #0284c7; font-size: 15px;">
+                                <i class="fa fa-cubes"></i> ERP Module Controls
+                            </label>
+                            <div class="col-sm-8" style="padding-top: 5px;">
+                                <span class="badge" style="background-color: #0284c7; font-size: 12px;">SaaS Add-on Provisioning</span>
+                                <?php if (!empty($erp_entitlement['erp_enabled'])): ?>
+                                    <a href="<?php echo ERP_LOCAL_URL; ?>/?supplier_id=<?php echo $supplier_id; ?>" target="_blank" class="btn btn-info btn-xs pull-right" style="font-weight: 600;">
+                                        <i class="fa fa-external-link"></i> Launch Tenant ERP Dashboard
+                                    </a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="erp_enabled" class="col-sm-3 control-label">Enable ERP Access</label>
+                            <div class="col-sm-8">
+                                <label style="font-weight: normal; margin-top: 7px;">
+                                    <input type="checkbox" name="erp_enabled" value="1" <?php if (!empty($erp_entitlement['erp_enabled'])) echo 'checked'; ?>>
+                                    <strong>Activate ERP for this store</strong> (Allows tenant to access financial ledger, expense tracking, and P&L analytics).
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="erp_plan" class="col-sm-3 control-label">ERP Subscription Tier</label>
+                            <div class="col-sm-8">
+                                <select class="form-control" name="erp_plan">
+                                    <option value="Standard" <?php if ($erp_entitlement['erp_plan'] == 'Standard') echo 'selected'; ?>>Standard (Managerial P&L + OPEX Tracking)</option>
+                                    <option value="Professional" <?php if ($erp_entitlement['erp_plan'] == 'Professional') echo 'selected'; ?>>Professional (Standard + Sales Incentives & Fees)</option>
+                                    <option value="Enterprise" <?php if ($erp_entitlement['erp_plan'] == 'Enterprise') echo 'selected'; ?>>Enterprise (Full Double-Entry GL + Multi-Warehouse)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">Included Modules</label>
+                            <div class="col-sm-8" style="padding-top: 7px;">
+                                <label style="display: block; font-weight: normal; margin-bottom: 5px;">
+                                    <input type="checkbox" name="has_accounting" value="1" <?php if (!empty($erp_entitlement['has_accounting'])) echo 'checked'; ?>>
+                                    General Ledger & Double-Entry Accounting
+                                </label>
+                                <label style="display: block; font-weight: normal; margin-bottom: 5px;">
+                                    <input type="checkbox" name="has_opex_tracking" value="1" <?php if (!empty($erp_entitlement['has_opex_tracking'])) echo 'checked'; ?>>
+                                    Store OPEX Tracker (Rent, Electricity, Base Salaries, Delivery)
+                                </label>
+                                <label style="display: block; font-weight: normal; margin-bottom: 5px;">
+                                    <input type="checkbox" name="has_sales_incentives" value="1" <?php if (!empty($erp_entitlement['has_sales_incentives'])) echo 'checked'; ?>>
+                                    Cashier Sales Commission & Bank Fee Reconciliation
+                                </label>
+                                <label style="display: block; font-weight: normal;">
+                                    <input type="checkbox" name="has_multi_warehouse" value="1" <?php if (!empty($erp_entitlement['has_multi_warehouse'])) echo 'checked'; ?>>
+                                    Multi-Warehouse Inventory Control
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max_cost_centers" class="col-sm-3 control-label">Max Cost Centers / Branches</label>
+                            <div class="col-sm-8">
+                                <input type="number" min="1" max="20" class="form-control" name="max_cost_centers" value="<?php echo htmlspecialchars($erp_entitlement['max_cost_centers']); ?>">
+                                <small class="text-muted">Maximum number of store branches or cost centers this tenant can configure.</small>
+                            </div>
+                        </div>
+                        <hr style="border-top: 1px solid #e2e8f0; margin: 20px 0;">
 
                         <div class="form-group">
                             <div class="col-sm-offset-3 col-sm-8">

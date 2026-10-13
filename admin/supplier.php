@@ -1,4 +1,6 @@
 <?php require_once('header.php'); ?>
+<?php require_once('inc/erp_admin_helper.php'); ?>
+<?php $erp_map = erp_get_all_entitlements_map($pdo); ?>
 
 <section class="content-header">
 	<div class="content-header-left">
@@ -58,6 +60,13 @@
                                         ?>
                                         <span class="label label-warning" style="background-color: #F59E0B; font-weight: bold;"><?php echo htmlspecialchars($row['supplier_plan']); ?></span><br>
                                         <small style="color: #64748b; font-weight: 600;"><i class="fa fa-users"></i> <?php echo $pos_count; ?> / <?php echo $max_u; ?> POS Users</small>
+                                        <div style="margin-top: 4px;">
+                                            <?php if (!empty($erp_map[$row['supplier_id']]['enabled'])): ?>
+                                                <span class="label" style="background-color: #0284c7; font-weight: bold;"><i class="fa fa-cubes"></i> ERP: <?php echo htmlspecialchars($erp_map[$row['supplier_id']]['plan']); ?></span>
+                                            <?php else: ?>
+                                                <span class="label" style="background-color: #94a3b8;"><i class="fa fa-ban"></i> ERP: Inactive</span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
 									<td style="min-width: 170px;">
                                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
@@ -78,7 +87,7 @@
 									<td><strong><?php echo htmlspecialchars($row['supplier_commission']); ?>%</strong></td>
 									<td>
                                         <?php if($row['supplier_status'] == 'Active'): ?>
-                                            <span class="label label-success">Active</span>
+                                             <span class="label label-success">Active</span>
                                         <?php elseif($row['supplier_status'] == 'Pending'): ?>
                                             <span class="label label-warning">Pending Review</span>
                                         <?php else: ?>
@@ -88,6 +97,9 @@
 									<td><?php echo date('d M Y', strtotime($row['created_at'])); ?></td>
 									<td>										
 										<a href="supplier-edit.php?id=<?php echo $row['supplier_id']; ?>" class="btn btn-primary btn-xs">Edit / Plan</a>
+                                        <?php if (!empty($erp_map[$row['supplier_id']]['enabled'])): ?>
+                                            <a href="<?php echo ERP_LOCAL_URL; ?>/?supplier_id=<?php echo $row['supplier_id']; ?>" target="_blank" class="btn btn-info btn-xs" title="Launch Tenant ERP Dashboard"><i class="fa fa-external-link"></i> ERP</a>
+                                        <?php endif; ?>
 									</td>
 								</tr>
 								<?php

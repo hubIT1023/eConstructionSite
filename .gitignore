@@ -6,6 +6,8 @@
 .env
 .env.*
 *.env
+!.env.example
+!.env*.example
 
 # Application Logs & Runtime Files
 *.log
@@ -24,11 +26,14 @@ droplet_*.txt
 *.tar.gz
 *.sql.gz
 *.bak
+*.bak_*
+*.dump
 *.backup
 backups/
 
-# Vendor Dependencies (if Composer is added later)
+# Vendor & Node Dependencies
 /vendor/
+node_modules/
 
 # Temporary & Cache Directories
 /cache/

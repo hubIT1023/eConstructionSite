@@ -90,14 +90,19 @@ fi
 log "Step 5: Verifying file and upload permissions..."
 chmod -R 775 "${APP_DIR}/assets/uploads" 2>/dev/null || true
 
+# 5b. Start or update ERP Tenant Hub container
+log "Step 5b: Ensuring ERP Tenant Hub container is running..."
+docker compose up -d erp 2>/dev/null || docker-compose up -d erp 2>/dev/null || true
+
 # 6. Post-deployment Health Check
 log "Step 6: Running health checks..."
-sleep 2
+sleep 3
 
 HTTP_LOCAL=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9090/ || echo "000")
 HTTP_PUBLIC=$(curl -s -k -o /dev/null -w "%{http_code}" https://econstruction-supply.site/ || echo "000")
+HTTP_ERP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/health || echo "000")
 
-log "Health check response: Local port 9090: [${HTTP_LOCAL}], Public domain: [${HTTP_PUBLIC}]"
+log "Health check response: Local POS port 9090: [${HTTP_LOCAL}], Public domain: [${HTTP_PUBLIC}], Local ERP port 4000: [${HTTP_ERP}]"
 
 if [ "${HTTP_LOCAL}" != "200" ] && [ "${HTTP_LOCAL}" != "302" ]; then
     log "HEALTH CHECK FAILED on local port 9090 (Status: ${HTTP_LOCAL})! INITIATING AUTOMATIC ROLLBACK..."

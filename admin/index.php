@@ -1,4 +1,5 @@
 <?php require_once('header.php'); ?>
+<?php require_once('inc/erp_admin_helper.php'); ?>
 
 <section class="content-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
 	<h1>SaaS Platform Administration Dashboard</h1>
@@ -10,6 +11,8 @@
 
 <?php
 // SaaS stats
+$erp_stats = erp_get_platform_stats($pdo);
+
 $statement = $pdo->prepare("SELECT * FROM tbl_supplier");
 $statement->execute();
 $total_suppliers = $statement->rowCount();
@@ -133,6 +136,64 @@ $total_quotes = $statement->rowCount();
             </div>
 		  </div>
 		  
+		  <!-- ERP & Financial Intelligence Overview Row -->
+		  <div class="row" style="margin-top: 15px;">
+		    <div class="col-md-12">
+		      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">
+		        <h4 style="margin: 0; color: #1e293b; font-weight: 700;"><i class="fa fa-pie-chart text-info"></i> ERP & Financial Intelligence Module Controls</h4>
+		        <a href="<?php echo ERP_LOCAL_URL; ?>" target="_blank" class="btn btn-info btn-xs" style="font-weight: 600;"><i class="fa fa-external-link"></i> Launch ERP Engine</a>
+		      </div>
+		    </div>
+
+            <div class="col-lg-3 col-xs-6">
+              <div class="small-box" style="background-color: #0284c7 !important; color: white;">
+                <div class="inner">
+                  <h3><?php echo $erp_stats['total_erp_active']; ?></h3>
+                  <p>ERP-Subscribed Tenants</p>
+                </div>
+                <div class="icon">
+                  <i class="fa fa-cubes" style="color: rgba(255,255,255,0.2);"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-3 col-xs-6">
+              <div class="small-box" style="background-color: #0d9488 !important; color: white;">
+                <div class="inner">
+                  <h3><?php echo $erp_stats['total_synced_orders']; ?></h3>
+                  <p>Synced POS Orders</p>
+                </div>
+                <div class="icon">
+                  <i class="fa fa-database" style="color: rgba(255,255,255,0.2);"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-3 col-xs-6">
+              <div class="small-box" style="background-color: #475569 !important; color: white;">
+                <div class="inner">
+                  <h3>₱<?php echo number_format($erp_stats['total_bank_fees_tracked'], 2); ?></h3>
+                  <p>Tracked Merchant/Bank Fees</p>
+                </div>
+                <div class="icon">
+                  <i class="fa fa-credit-card" style="color: rgba(255,255,255,0.2);"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-3 col-xs-6">
+              <div class="small-box" style="background-color: #64748b !important; color: white;">
+                <div class="inner">
+                  <h3>₱<?php echo number_format($erp_stats['total_opex_tracked'], 2); ?></h3>
+                  <p>Tracked Operating Expenses</p>
+                </div>
+                <div class="icon">
+                  <i class="fa fa-money" style="color: rgba(255,255,255,0.2);"></i>
+                </div>
+              </div>
+            </div>
+		  </div>
+
 </section>
 
 <?php require_once('footer.php'); ?>
