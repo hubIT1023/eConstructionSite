@@ -480,7 +480,7 @@ try {
 }
 
 if (!function_exists('calculate_item_financials')) {
-    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map) {
+    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map, $order_item = null) {
         $qty = (int)$quantity;
         $u_price = (float)$unit_price;
         $p_id = (int)$product_id;
@@ -488,20 +488,42 @@ if (!function_exists('calculate_item_financials')) {
         $markup = 20.0;
         $unit_capital = 0.0;
 
-        if ($p_id > 0 && isset($products_map[$p_id])) {
-            $p = $products_map[$p_id];
-            $m = (isset($p['p_markup']) && $p['p_markup'] !== '') ? (float)$p['p_markup'] : 20.0;
-            if ($m <= 0) $m = 20.0;
-            $markup = $m;
-
-            if (isset($p['p_capital_price']) && (float)$p['p_capital_price'] > 0) {
-                $unit_capital = (float)$p['p_capital_price'];
-            } else {
-                $unit_capital = round($u_price / (1 + ($markup / 100)), 2);
+        // 1. Prioritize transaction-time snapshot capital_price / markup_amount stored on tbl_order
+        if (is_array($order_item)) {
+            if (isset($order_item['capital_price']) && $order_item['capital_price'] !== null && (float)$order_item['capital_price'] > 0) {
+                $unit_capital = (float)$order_item['capital_price'];
+                $markup = (isset($order_item['markup_amount']) && $order_item['markup_amount'] !== null)
+                    ? (float)$order_item['markup_amount']
+                    : max(0.0, round($u_price - $unit_capital, 2));
+            } elseif (!empty($order_item['product_details']) && preg_match('/Capital:\s*₱?([0-9,.]+)\s*\|\s*Mark-Up:\s*₱?([0-9,.]+)/i', $order_item['product_details'], $ro_m)) {
+                $unit_capital = (float)str_replace(',', '', $ro_m[1]);
+                $markup = (float)str_replace(',', '', $ro_m[2]);
             }
-        } else {
-            $markup = 20.0;
-            $unit_capital = round($u_price / 1.20, 2);
+        }
+
+        // 2. Fallback for legacy rows where snapshot capital_price was not yet populated
+        if ($unit_capital <= 0) {
+            if ($p_id > 0 && isset($products_map[$p_id])) {
+                $p = $products_map[$p_id];
+                $m = (isset($p['p_markup']) && $p['p_markup'] !== '') ? (float)preg_replace('/[^0-9.]/', '', strval($p['p_markup'])) : 20.0;
+                if ($m <= 0) $m = 20.0;
+                $markup = $m;
+
+                $p_cap = isset($p['p_capital_price']) ? (float)preg_replace('/[^0-9.]/', '', strval($p['p_capital_price'])) : 0.0;
+                $p_cur = isset($p['p_current_price']) ? (float)preg_replace('/[^0-9.]/', '', strval($p['p_current_price'])) : 0.0;
+
+                if ($p_cap > 0 && abs($u_price - $p_cur) < 0.01) {
+                    $unit_capital = $p_cap;
+                } elseif ($p_cap > 0 && $p_cur > 0) {
+                    // Product price changed after this historical sale; scale capital proportionally to historical unit_price
+                    $unit_capital = round($u_price * ($p_cap / $p_cur), 2);
+                } else {
+                    $unit_capital = round($u_price / (1 + ($markup / 100)), 2);
+                }
+            } else {
+                $markup = 20.0;
+                $unit_capital = round($u_price / 1.20, 2);
+            }
         }
 
         $total_capital = $unit_capital * $qty;
@@ -551,14 +573,14 @@ foreach ($all_credit_records as $rec) {
     $balance = max(0, $inv_total - $paid_so_far);
     $due_date = parse_order_due_date($rec['bank_transaction_info'] ?? '', $rec['payment_date'], $rec['payment_method']);
 
-    // Calculate total item capital cost for this credit order
+    // Calculate total item capital cost for this credit order using locked transaction-time snapshots
     $c_capital_total = 0.0;
     try {
-        $stmt_c_items = $pdo->prepare("SELECT product_id, unit_price, quantity FROM tbl_order WHERE payment_id = ?");
+        $stmt_c_items = $pdo->prepare("SELECT product_id, unit_price, quantity, capital_price, markup_amount, product_details FROM tbl_order WHERE payment_id = ?");
         $stmt_c_items->execute([$rec['payment_id']]);
         $c_items = $stmt_c_items->fetchAll(PDO::FETCH_ASSOC);
         foreach ($c_items as $ci) {
-            $c_fin = calculate_item_financials($ci['product_id'], $ci['unit_price'], $ci['quantity'], $products_map);
+            $c_fin = calculate_item_financials($ci['product_id'], $ci['unit_price'], $ci['quantity'], $products_map, $ci);
             $c_capital_total += $c_fin['total_capital'];
         }
     } catch (Exception $e) {}
@@ -952,6 +974,28 @@ require_once('header.php');
                         $stmt_items->execute([$pay_id]);
                         $order_items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
 
+                        // Extract Option 1 (Rule 1A) Batch Rollover items if present
+                        $order_rollover_items = [];
+                        foreach ($order_items as $oit_chk) {
+                            $raw_det_chk = $oit_chk['product_details'] ?? '';
+                            if (preg_match('/\[Option 1 Batch Rollover:\s*Old Q=(\d+)\s*@\s*₱([0-9.]+)\s*->\s*New Batch NQ=(\d+)\s*@\s*₱([0-9.]+)\s*\|\s*Capital:\s*₱([0-9.]+)\s*\|\s*Mark-Up:\s*₱([0-9.]+)\s*\|\s*Profit:\s*₱([0-9.]+)\]/i', $raw_det_chk, $rm_chk)) {
+                                $ro_q_ord = max(1, intval($oit_chk['quantity'] ?? 1));
+                                $order_rollover_items[] = [
+                                    'name' => $oit_chk['product_name'] ?? 'Item',
+                                    'qty' => $ro_q_ord,
+                                    'old_qty' => intval($rm_chk[1]),
+                                    'old_price' => floatval($rm_chk[2]),
+                                    'new_qty' => intval($rm_chk[3]),
+                                    'new_price' => floatval($rm_chk[4]),
+                                    'unit_capital' => floatval($rm_chk[5]),
+                                    'unit_markup' => floatval($rm_chk[6]),
+                                    'total_profit' => floatval($rm_chk[7]),
+                                    'total_capital' => round(floatval($rm_chk[5]) * $ro_q_ord, 2),
+                                    'unit_profit' => round(floatval($rm_chk[7]) / $ro_q_ord, 2)
+                                ];
+                            }
+                        }
+
                         // Extract delivery fee if recorded
                         $row_delivery_fee = 0;
                         if (preg_match('/Delivery (?:Fee|Cost):\s*₱?([0-9.]+)/i', $row['bank_transaction_info'] ?? '', $m_del)) {
@@ -965,6 +1009,13 @@ require_once('header.php');
                                 <i class="fa fa-file-text-o"></i>
                                 <strong><?php echo htmlspecialchars($pay_id); ?></strong>
                             </a>
+                            <?php if (!$is_settled && !empty($order_rollover_items)): ?>
+                                <div style="margin-top: 3px;">
+                                    <span class="badge" style="background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; font-size: 9.5px; font-weight: 800; padding: 2px 6px;" title="Option 1 (Rule 1A): Low Stock (&lt; 3) &amp; New Batch Price Rollover Applied">
+                                        <i class="fa fa-bell" style="color: #d97706;"></i> RULE 1A ROLLOVER
+                                    </span>
+                                </div>
+                            <?php endif; ?>
                             <?php if (!empty($row['card_number'])): ?>
                                 <span class="badge" id="checkRefBadge-<?php echo htmlspecialchars($pay_id); ?>" style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 11px; margin-top: 3px; display: inline-block;" title="Credit Reference / Check Number">
                                     <i class="fa fa-tag"></i> <?php echo htmlspecialchars($row['card_number']); ?>
@@ -1164,6 +1215,34 @@ require_once('header.php');
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            <?php if (!$is_settled && !empty($order_rollover_items)): ?>
+                                            <!-- Option 1 (Rule 1A): Pre-Payment Notification / Alert for Cashier & Admin -->
+                                            <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-left: 5px solid #d97706; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
+                                                    <div style="font-size: 11.5px; font-weight: 800; color: #92400e; text-transform: uppercase;">
+                                                        <i class="fa fa-bell" style="color: #d97706;"></i> Pre-Payment Alert (Cashier &amp; Admin): Option 1 — Low Stock (&lt; 3) &amp; New Batch Price Rollover
+                                                    </div>
+                                                    <span class="label" style="background: #d97706; color: #fff; font-size: 9.5px; font-weight: 800; padding: 2px 6px;">INTERNAL COST &amp; PROFIT NOTICE</span>
+                                                </div>
+                                                <?php foreach ($order_rollover_items as $ori): ?>
+                                                <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 5px; padding: 6px 10px; margin-bottom: 4px; font-size: 11.5px;">
+                                                    <div style="font-weight: 800; color: #0f172a; margin-bottom: 3px;">
+                                                        <?php echo htmlspecialchars($ori['name']); ?>
+                                                        <span style="color: #b45309; font-weight: 700; font-size: 10.5px;">
+                                                            (Qty: <?php echo $ori['qty']; ?> pcs | Old Stock: <?php echo $ori['old_qty']; ?> + New Batch: <?php echo $ori['new_qty']; ?> &rarr; Merged: <?php echo ($ori['old_qty'] + $ori['new_qty']); ?> pcs)
+                                                        </span>
+                                                    </div>
+                                                    <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px;">
+                                                        <span>Selling Price: <strike style="color:#94a3b8;">&#8369;<?php echo number_format($ori['old_price'], 2); ?></strike> &rarr; <strong style="color:#1d4ed8;">&#8369;<?php echo number_format($ori['new_price'], 2); ?></strong></span>
+                                                        <span>Capital Price (Ca): <strong>&#8369;<?php echo number_format($ori['unit_capital'], 2); ?></strong> (Total: &#8369;<?php echo number_format($ori['total_capital'], 2); ?>)</span>
+                                                        <span>Mark-Up Amt: <strong style="color:#b45309;">+&#8369;<?php echo number_format($ori['unit_markup'], 2); ?>/u</strong></span>
+                                                        <span>Net Profit Amt: <strong style="color:#059669;">+&#8369;<?php echo number_format($ori['total_profit'], 2); ?></strong> (&#8369;<?php echo number_format($ori['unit_profit'], 2); ?>/u)</span>
+                                                    </div>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            <?php endif; ?>
 
                                             <!-- Ordered Items Table -->
                                             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 10px;">

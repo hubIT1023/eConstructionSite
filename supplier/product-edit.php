@@ -124,6 +124,43 @@ if(isset($_POST['form1'])) {
             }            
         }
 
+        // 0. Lock any existing historical tbl_order rows for this product with its pre-edit capital & markup before applying product price changes
+        try {
+            $pre_sell = floatval(preg_replace('/[^0-9.]/', '', strval($product['p_current_price'] ?? '0')));
+            $pre_cap = floatval(preg_replace('/[^0-9.]/', '', strval($product['p_capital_price'] ?? '0')));
+            if ($pre_cap <= 0 && $pre_sell > 0) {
+                $pre_cap = round($pre_sell / 1.20, 2);
+            }
+            if ($pre_cap > 0) {
+                $stmt_lock_hist = $pdo->prepare("
+                    UPDATE tbl_order
+                    SET capital_price = CASE
+                            WHEN ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) > 0
+                                 AND ? > 0
+                                 AND ABS(ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) - ?) >= 0.01
+                            THEN ROUND(ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) * LEAST(? / NULLIF(?, 0), 0.95), 2)
+                            ELSE ?
+                        END,
+                        markup_amount = GREATEST(0, ROUND(
+                            ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) - (
+                                CASE
+                                    WHEN ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) > 0
+                                         AND ? > 0
+                                         AND ABS(ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) - ?) >= 0.01
+                                    THEN ROUND(ABS(CAST(NULLIF(regexp_replace(CAST(unit_price AS TEXT), '[^0-9.-]', '', 'g'), '') AS NUMERIC)) * LEAST(? / NULLIF(?, 0), 0.95), 2)
+                                    ELSE ?
+                                END
+                            ), 2))
+                    WHERE product_id = ? AND (capital_price IS NULL OR capital_price <= 0)
+                ");
+                $stmt_lock_hist->execute(array(
+                    $pre_sell, $pre_sell, $pre_cap, $pre_sell, $pre_cap,
+                    $pre_sell, $pre_sell, $pre_cap, $pre_sell, $pre_cap,
+                    (int)$_REQUEST['id']
+                ));
+            }
+        } catch (Exception $e_lock_hist) {}
+
         // 1. Authoritative existing values from DB record & inputs
         $existing_c_price = floatval(preg_replace('/[^0-9.]/', '', strval($product['p_current_price'])));
         $orig_q = max(0, intval(preg_replace('/[^0-9]/', '', strval($_POST['p_qty']))));
@@ -147,12 +184,13 @@ if(isset($_POST['form1'])) {
             $n_price_val = $default_n_price;
         }
 
-        // 4. Evaluate Price Rules (with Manual Override Support):
+        // 4. Evaluate Price Rules (with Manual Override & NQ Hold Support):
         // If supplier clicked "APPLY NEW PRICE" -> $final_current_price_val = $n_price_val directly
         // Otherwise strictly evaluate sequential order:
         // Priority Rule 4: If C is empty / <= 0 -> C = N
-        // Priority Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
-        // Priority Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
+        // Priority Rule 1A (Option 1): Q < 3 AND NQ > 0 AND N > C -> C = N (Critical Low Stock < 3 & Higher Batch Price Rollover)
+        // Priority Rule 1B (Hold Rule): Q >= 3 AND NQ > 0 -> C = C (Hold NQ & New Price until Q is ordered down to < 3)
+        // Priority Rule 2: C > N AND Q >= 3 -> C = C (Price Protection)
         // Priority Rule 3: Else (all other cases) -> C = C (Default Selling Price)
         $is_override = (isset($_POST['p_price_override']) && $_POST['p_price_override'] === '1');
 
@@ -160,18 +198,14 @@ if(isset($_POST['form1'])) {
             $final_current_price_val = $n_price_val; // Manual Override: Bypasses Price Rule calculation
         } elseif ($existing_c_price <= 0) {
             $final_current_price_val = $n_price_val; // Rule 4: if C = empty, C = N
-        } elseif ($orig_q < 6 && $orig_nq > 5) {
-            $final_current_price_val = $n_price_val; // Rule 1: Low Stock Replenishment
-        } elseif ($existing_c_price > $n_price_val && $orig_q > 5) {
-            $final_current_price_val = $existing_c_price; // Rule 2: Price Protection
+        } elseif ($orig_q < 3 && $orig_nq > 0 && $n_price_val > $existing_c_price) {
+            $final_current_price_val = $n_price_val; // Rule 1A (Option 1): Critical Low Stock < 3 & New Batch Higher Price Rollover
         } else {
-            $final_current_price_val = $existing_c_price; // Rule 3: Default Selling Price
+            $final_current_price_val = $existing_c_price; // Hold Rule (Q >= 3) / Price Protection / Default Selling Price
         }
 
-        // 5. Evaluate Inventory Quantity Update Rule
-        // Strictly: IF Q < 2 AND NQ > 1 -> Q = Q + NQ, NQ = 0
-        // Otherwise (Q >= 2 or NQ <= 1) -> Q = Q, NQ = NQ
-        if ($orig_q < 2 && $orig_nq > 1) {
+        // 5. Evaluate Inventory Quantity Update Rule (NQ Hold Rule: NQ only moves into Q when Q < 3)
+        if ($orig_q < 3 && $orig_nq > 0) {
             $final_q_val = $orig_q + $orig_nq;
             $final_nq_val = 0;
         } else {
@@ -837,7 +871,7 @@ foreach ($result as $row) {
 										<label for="p_new_qty" class="col-sm-12" style="text-align: left; margin-bottom: 4px;">(N)Quantity (New Quantity) (NQ)</label>
 										<div class="col-sm-12">
 											<input type="number" min="0" name="p_new_qty" id="p_new_qty" class="form-control" value="<?php echo htmlspecialchars($p_new_qty); ?>" style="font-weight: 600;">
-											<small class="text-muted" style="font-size: 11px;"><i class="fa fa-cubes"></i> Incoming replenishment stock. Trigger: <code>Q &lt; 2 AND NQ &gt; 1</code> or <code>Q &lt; 6 AND NQ &gt; 5</code> rolls NQ into Q.</small>
+											<small class="text-muted" style="font-size: 11px;"><i class="fa fa-cubes"></i> Incoming replenishment stock. <strong>Hold Rule:</strong> <code>NQ</code> holds while <code>Q &ge; 3</code>; once <code>Q</code> is ordered down to <code>&lt; 3</code>, <code>NQ</code> moves to <code>Q</code> and <strong>Option 1 (Rule 1A: <code>Q &lt; 3 &amp; NQ &gt; 0 &amp; N &gt; C</code>)</strong> applies.</small>
 											<div id="p_qty_rule_notice" style="font-size: 11.5px; margin-top: 4px; font-weight: 600;"></div>
 										</div>
 									</div>
@@ -1010,12 +1044,14 @@ function evaluateRulesLive() {
     // 2. Price Rule evaluation strictly in sequential order (or Manual Override):
     // If supplier clicked "APPLY NEW PRICE" -> C = N directly (Override)
     // Priority Rule 4: If C is empty / <= 0 -> C = N
-    // Priority Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
-    // Priority Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
+    // Priority Rule 1A (Option 1): Q < 3 AND NQ > 0 AND N > C -> C = N (Critical Low Stock < 3 & Higher Batch Price Rollover)
+    // Priority Rule 1B (Hold Rule): Q >= 3 AND NQ > 0 -> C = C (Hold NQ & New Price until Q is ordered down to < 3)
+    // Priority Rule 2: C > N AND Q >= 3 -> C = C (Price Protection)
     // Priority Rule 3: Else (all other cases) -> C = C (Default Selling Price)
     var resultingC = existingC;
     var priceNotice = (typeof $ !== 'undefined') ? $('#p_price_rule_notice') : null;
     var priceNoticeEl = document.getElementById('p_price_rule_notice');
+    var unitProfit = Math.max(0, Math.round((nPrice - ca) * 100) / 100);
 
     if (isPriceOverrideActive) {
         // Manual Override Active: C = N directly
@@ -1025,14 +1061,30 @@ function evaluateRulesLive() {
         // Rule 4: if C = empty, C = N
         resultingC = nPrice;
         if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-info-circle"></i> <strong>Rule 4 (Initial / Empty Price):</strong> Current Price (C) is empty, automatically set to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>';
-    } else if (q < 6 && nq > 5) {
-        // Rule 1: Q < 6 AND NQ > 5 -> C = N (Low Stock Replenishment)
+    } else if (q < 3 && nq > 0 && nPrice > existingC) {
+        // Rule 1A (Option 1): Q < 3 AND NQ > 0 AND N > C -> C = N (Full Rollover to New Batch Price)
         resultingC = nPrice;
-        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-check-circle"></i> <strong>Rule 1 (Low Stock Replenishment: Q &lt; 6 &amp; NQ &gt; 5):</strong> Selling price updates to New Price (<strong>₱' + resultingC.toFixed(2) + '</strong>).</span>';
-    } else if (existingC > nPrice && q > 5) {
-        // Rule 2: C > N AND Q > 5 -> C = C (Price Protection)
+        if (priceNoticeEl) {
+            priceNoticeEl.innerHTML = '<div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 6px; padding: 7px 10px; color: #92400e; margin-top: 2px;">' +
+                '<div><i class="fa fa-bolt"></i> <strong>Rule 1A (Option 1 — Stock &lt; 3 &amp; Higher New Batch Price Rollover):</strong></div>' +
+                '<div style="margin-top: 2px; font-weight: 500;">Remaining stock is <strong>' + q + ' pcs (&lt; 3)</strong> with new batch (<strong>' + nq + ' pcs</strong>) at a higher rate. Current Price updates from <s>₱' + existingC.toFixed(2) + '</s> &rarr; <strong style="color: #047857;">₱' + resultingC.toFixed(2) + '</strong>.</div>' +
+                '<div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #fcd34d; font-size: 11px; color: #78350f;">' +
+                '<strong>Updated Batch Metrics:</strong> Capital Price: <strong>₱' + ca.toFixed(2) + '</strong> &bull; Mark-Up: <strong>₱' + markup.toFixed(2) + '</strong> &bull; Profit/Unit: <strong style="color: #047857;">₱' + unitProfit.toFixed(2) + '</strong>' +
+                '</div></div>';
+        }
+    } else if (q >= 3 && nq > 0) {
+        // Hold Rule: Q >= 3 AND NQ > 0 -> Hold NQ & keep Current Price C until Q is ordered down to < 3
         resultingC = existingC;
-        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #d97706;"><i class="fa fa-shield"></i> <strong>Rule 2 (Price Protection: C &gt; N &amp; Q &gt; 5):</strong> Current Price protected from decreases and retained at <strong>₱' + existingC.toFixed(2) + '</strong>.</span>';
+        if (priceNoticeEl) {
+            priceNoticeEl.innerHTML = '<div style="background: #eff6ff; border: 1.5px solid #3b82f6; border-radius: 6px; padding: 7px 10px; color: #1e3a8a; margin-top: 2px;">' +
+                '<div><i class="fa fa-pause-circle"></i> <strong>Hold Rule Active (Q &ge; 3 — New Batch On Hold):</strong></div>' +
+                '<div style="margin-top: 2px; font-weight: 500;">Current Price remains at <strong>₱' + existingC.toFixed(2) + '</strong> while <strong>' + q + ' pcs</strong> are still in stock. Once in-stock <strong>Q</strong> is ordered down to <strong>&lt; 3</strong>, held <strong>NQ (' + nq + ' pcs)</strong> moves to <strong>Q</strong> and <strong>Option 1 (Rule 1A)</strong> updates price to <strong>₱' + nPrice.toFixed(2) + '</strong>.</div>' +
+                '</div>';
+        }
+    } else if (existingC > nPrice && q >= 3) {
+        // Rule 2: C > N AND Q >= 3 -> C = C (Price Protection)
+        resultingC = existingC;
+        if (priceNoticeEl) priceNoticeEl.innerHTML = '<span style="color: #d97706;"><i class="fa fa-shield"></i> <strong>Rule 2 (Price Protection: C &gt; N &amp; Q &ge; 3):</strong> Current Price protected from decreases and retained at <strong>₱' + existingC.toFixed(2) + '</strong>.</span>';
     } else {
         // Rule 3: Else (all other cases) -> C = C (Default Selling Price)
         resultingC = existingC;
@@ -1040,23 +1092,28 @@ function evaluateRulesLive() {
     }
     if (cpEl) cpEl.value = resultingC.toFixed(2);
 
-    // 3. Quantity Rule evaluation
+    // 3. Quantity Rule evaluation (NQ Hold Rule: NQ only moves into Q when Q < 3)
     var qtyNoticeEl = document.getElementById('p_qty_rule_notice');
+    var willRolloverStock = (q < 3 && nq > 0);
     if (qtyNoticeEl) {
-        if (q < 2 && nq > 1) {
+        if (q < 3 && nq > 0 && nPrice > existingC) {
+            var expectedQ1A = q + nq;
+            qtyNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-refresh"></i> <strong>Option 1 Batch Rollover (Q &lt; 3 &amp; N &gt; C):</strong> Upon saving, ' + nq + ' units merge into active stock (Q: ' + q + ' &rarr; <strong>' + expectedQ1A + '</strong>, NQ &rarr; <strong>0</strong>) at New Price <strong>₱' + resultingC.toFixed(2) + '</strong>.</span>';
+        } else if (q < 3 && nq > 0) {
             var expectedQ = q + nq;
-            qtyNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-refresh"></i> <strong>Inventory Transfer Triggered (Q &lt; 2 &amp; NQ &gt; 1):</strong> Upon saving, ' + nq + ' units will be transferred into stock (Q: ' + q + ' &rarr; <strong>' + expectedQ + '</strong>, NQ &rarr; <strong>0</strong>).</span>';
-        } else if (q >= 2 && nq > 0) {
-            qtyNoticeEl.innerHTML = '<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity (Quantity transfer does NOT trigger because Q &ge; 2).</span>';
-        } else if (nq > 0) {
-            qtyNoticeEl.innerHTML = '<span class="text-muted"><i class="fa fa-info-circle"></i> ' + nq + ' units staged as New Quantity.</span>';
+            qtyNoticeEl.innerHTML = '<span style="color: #047857;"><i class="fa fa-refresh"></i> <strong>Low Stock (&lt; 3) Transfer Triggered:</strong> Upon saving, ' + nq + ' units move into active stock (Q: ' + q + ' &rarr; <strong>' + expectedQ + '</strong>, NQ &rarr; <strong>0</strong>).</span>';
+        } else if (q >= 3 && nq > 0) {
+            qtyNoticeEl.innerHTML = '<div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 5px; padding: 6px 8px; color: #92400e; margin-top: 2px;">' +
+                '<i class="fa fa-lock"></i> <strong>NQ On Hold (Q = ' + q + ' &ge; 3):</strong> <strong>' + nq + ' units</strong> will hold in New Quantity (NQ) until current in-stock (<strong>' + q + ' pcs</strong>) is ordered down to <strong>&lt; 3</strong>. Once ordered down to &lt; 3, NQ moves to Q and <strong>Option 1 (Rule 1A)</strong> applies.' +
+                '</div>';
         } else {
             qtyNoticeEl.innerHTML = '';
         }
     }
 
-    // 4. Stock Alert calculation (evaluated on expected final Q against S)
-    var alertQ = (q < 2 && nq > 1) ? (q + nq) : q;
+    // 4. Stock Alert calculation (evaluated on active in-stock Q when NQ is held, or merged Q+NQ when Q < 3)
+    var alertQ = willRolloverStock ? (q + nq) : q;
+    var heldSuffix = (!willRolloverStock && nq > 0) ? ' <span style="color: #b45309; font-weight: 700;">(+' + nq + ' Held in NQ until Q &lt; 3)</span>' : '';
     var halfS = 0.50 * s;
     var eightyS = 0.80 * s;
     var badgeEl = document.getElementById('p_stock_alert_badge');
@@ -1069,7 +1126,7 @@ function evaluateRulesLive() {
             badgeEl.style.color = '#ffffff';
             badgeEl.innerHTML = '<i class="fa fa-exclamation-triangle"></i> RED ALERT';
         }
-        if (descEl) descEl.innerHTML = '<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-exclamation-circle"></i> Critical Depletion (Q &lt; 50% &times; S): Stock (' + alertQ + ') &lt; 50% of Safety Level (' + s + '). Replenishment urgently required.</span>';
+        if (descEl) descEl.innerHTML = '<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-exclamation-circle"></i> Critical Depletion (Q &lt; 50% &times; S): Stock (' + alertQ + ') &lt; 50% of Safety Level (' + s + ').' + heldSuffix + '</span>';
         if (qEl) {
             qEl.style.borderColor = '#ef4444';
             qEl.style.backgroundColor = '#fef2f2';
@@ -1081,7 +1138,7 @@ function evaluateRulesLive() {
             badgeEl.style.color = '#ffffff';
             badgeEl.innerHTML = '<i class="fa fa-exclamation-circle"></i> ORANGE ALERT';
         }
-        if (descEl) descEl.innerHTML = '<span style="color: #ea580c; font-weight: 700;"><i class="fa fa-warning"></i> Low Stock Warning (50% &le; Q &lt; 80% &times; S): Stock (' + alertQ + ') is between 50% and 80% of Safety Level (' + s + ').</span>';
+        if (descEl) descEl.innerHTML = '<span style="color: #ea580c; font-weight: 700;"><i class="fa fa-warning"></i> Low Stock Warning (50% &le; Q &lt; 80% &times; S): Stock (' + alertQ + ') is between 50% and 80% of Safety Level (' + s + ').' + heldSuffix + '</span>';
         if (qEl) {
             qEl.style.borderColor = '#f97316';
             qEl.style.backgroundColor = '#fff7ed';
@@ -1093,7 +1150,7 @@ function evaluateRulesLive() {
             badgeEl.style.color = '#ffffff';
             badgeEl.innerHTML = '<i class="fa fa-check"></i> NORMAL';
         }
-        if (descEl) descEl.innerHTML = '<span style="color: #059669; font-weight: 600;"><i class="fa fa-check-circle"></i> Acceptable Stock (Q &ge; 80% &times; S): Stock (' + alertQ + ') &ge; 80% of Safety Level (' + s + ').</span>';
+        if (descEl) descEl.innerHTML = '<span style="color: #059669; font-weight: 600;"><i class="fa fa-check-circle"></i> Acceptable Stock (Q &ge; 80% &times; S): Stock (' + alertQ + ') &ge; 80% of Safety Level (' + s + ').' + heldSuffix + '</span>';
         if (qEl) {
             qEl.style.borderColor = '#cbd5e1';
             qEl.style.backgroundColor = '#ffffff';

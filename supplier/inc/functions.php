@@ -578,11 +578,63 @@ if (!function_exists('ensure_supplier_user_schema')) {
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_discount_requests_supp_status ON tbl_discount_requests (supplier_id, status)");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_discount_requests_req_id ON tbl_discount_requests (request_id)");
             
-            // Ensure tbl_order has necessary columns for POS and Special Orders
+            // Ensure tbl_order has necessary columns for POS, Special Orders, and historical transaction cost snapshots
             $pdo->exec("ALTER TABLE tbl_order ADD COLUMN IF NOT EXISTS supplier_id INTEGER DEFAULT 1");
             $pdo->exec("ALTER TABLE tbl_order ADD COLUMN IF NOT EXISTS item_type VARCHAR(50) DEFAULT 'STANDARD'");
             $pdo->exec("ALTER TABLE tbl_order ADD COLUMN IF NOT EXISTS special_order_reference VARCHAR(100)");
             $pdo->exec("ALTER TABLE tbl_order ADD COLUMN IF NOT EXISTS product_details TEXT");
+            $pdo->exec("ALTER TABLE tbl_order ADD COLUMN IF NOT EXISTS capital_price NUMERIC(10,2) DEFAULT NULL");
+            $pdo->exec("ALTER TABLE tbl_order ADD COLUMN IF NOT EXISTS markup_amount NUMERIC(10,2) DEFAULT NULL");
+
+            // Backfill historical tbl_order rows where capital_price is NULL so future product price changes never alter past sales/credit orders
+            $pdo->exec("
+                UPDATE tbl_order o
+                SET capital_price = CASE
+                        WHEN NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric > 0
+                             AND ABS(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.]', '', 'g'), '')::numeric - COALESCE(NULLIF(regexp_replace(COALESCE(p.p_current_price, ''), '[^0-9.]', '', 'g'), '')::numeric, 0)) < 0.01
+                        THEN ROUND(NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric, 2)
+                        WHEN NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric > 0
+                             AND COALESCE(NULLIF(regexp_replace(COALESCE(p.p_current_price, ''), '[^0-9.]', '', 'g'), '')::numeric, 0) > 0
+                        THEN ROUND(
+                            ABS(COALESCE(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0))
+                            * (NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric
+                               / NULLIF(regexp_replace(COALESCE(p.p_current_price, ''), '[^0-9.]', '', 'g'), '')::numeric),
+                            2
+                        )
+                        ELSE ROUND(ABS(COALESCE(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0)) / 1.20, 2)
+                    END,
+                    markup_amount = GREATEST(0, ROUND(
+                        ABS(COALESCE(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0)) -
+                        CASE
+                            WHEN NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric > 0
+                                 AND ABS(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.]', '', 'g'), '')::numeric - COALESCE(NULLIF(regexp_replace(COALESCE(p.p_current_price, ''), '[^0-9.]', '', 'g'), '')::numeric, 0)) < 0.01
+                            THEN ROUND(NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric, 2)
+                            WHEN NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric > 0
+                                 AND COALESCE(NULLIF(regexp_replace(COALESCE(p.p_current_price, ''), '[^0-9.]', '', 'g'), '')::numeric, 0) > 0
+                            THEN ROUND(
+                                ABS(COALESCE(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0))
+                                * (NULLIF(regexp_replace(COALESCE(p.p_capital_price, ''), '[^0-9.]', '', 'g'), '')::numeric
+                                   / NULLIF(regexp_replace(COALESCE(p.p_current_price, ''), '[^0-9.]', '', 'g'), '')::numeric),
+                                2
+                            )
+                            ELSE ROUND(ABS(COALESCE(NULLIF(regexp_replace(COALESCE(o.unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0)) / 1.20, 2)
+                        END,
+                        2
+                    ))
+                FROM tbl_product p
+                WHERE o.product_id = p.p_id
+                  AND o.capital_price IS NULL
+            ");
+            $pdo->exec("
+                UPDATE tbl_order
+                SET capital_price = ROUND(ABS(COALESCE(NULLIF(regexp_replace(COALESCE(unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0)) / 1.20, 2),
+                    markup_amount = GREATEST(0, ROUND(
+                        ABS(COALESCE(NULLIF(regexp_replace(COALESCE(unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0))
+                        - ROUND(ABS(COALESCE(NULLIF(regexp_replace(COALESCE(unit_price::text, ''), '[^0-9.-]', '', 'g'), '')::numeric, 0)) / 1.20, 2),
+                        2
+                    ))
+                WHERE capital_price IS NULL
+            ");
             
             $chk_brgy = $pdo->query("SELECT COUNT(*) FROM tbl_brgy");
             if ($chk_brgy && (int)$chk_brgy->fetchColumn() === 0) {

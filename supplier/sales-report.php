@@ -127,8 +127,9 @@ try {
 }
 
 // Helper: Calculate item financials (Revenue, Unit Capital, Total Cost, Profit, Markup)
+// Uses recorded transaction-time capital_price / markup_amount from tbl_order first so historical paid/credit sales are never affected by future product price changes.
 if (!function_exists('calculate_item_financials')) {
-    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map, $item_type = 'STANDARD') {
+    function calculate_item_financials($product_id, $unit_price, $quantity, &$products_map, $item_type = 'STANDARD', $order_item = null) {
         $qty = max(1, (int)$quantity);
         $u_price = (float)$unit_price;
         $p_id = (int)$product_id;
@@ -138,21 +139,61 @@ if (!function_exists('calculate_item_financials')) {
         $markup = 20.0;
         $unit_capital = 0.0;
 
-        if ($p_id > 0 && isset($products_map[$p_id])) {
-            $p = $products_map[$p_id];
-            $m = (isset($p['p_markup']) && $p['p_markup'] !== '') ? (float)$p['p_markup'] : 20.0;
-            if ($m <= 0) $m = 20.0;
-            $markup = $m;
-
-            if (isset($p['p_capital_price']) && (float)$p['p_capital_price'] > 0) {
-                $unit_capital = (float)$p['p_capital_price'];
-            } else {
-                $unit_capital = round($abs_unit_price / (1 + ($markup / 100)), 2);
+        $has_order_snapshot = false;
+        if (is_array($order_item)) {
+            if (isset($order_item['capital_price']) && $order_item['capital_price'] !== null && $order_item['capital_price'] !== '' && (float)$order_item['capital_price'] > 0) {
+                $unit_capital = round((float)$order_item['capital_price'], 2);
+                $has_order_snapshot = true;
+                if (isset($order_item['markup_amount']) && $order_item['markup_amount'] !== null && $order_item['markup_amount'] !== '') {
+                    $markup_amt_snap = (float)$order_item['markup_amount'];
+                    $markup = ($unit_capital > 0) ? round(($markup_amt_snap / $unit_capital) * 100, 2) : 20.0;
+                } else {
+                    $markup = ($unit_capital > 0 && $abs_unit_price >= $unit_capital)
+                        ? round((($abs_unit_price - $unit_capital) / $unit_capital) * 100, 2)
+                        : 0.0;
+                }
+            } elseif (!empty($order_item['product_details']) && preg_match('/Capital:\s*(?:₱|PHP)?\s*([0-9,]+(?:\.[0-9]+)?)/i', (string)$order_item['product_details'], $cap_m)) {
+                $parsed_cap = (float)str_replace(',', '', $cap_m[1]);
+                if ($parsed_cap > 0) {
+                    $unit_capital = round($parsed_cap, 2);
+                    $has_order_snapshot = true;
+                    $markup = ($unit_capital > 0 && $abs_unit_price >= $unit_capital)
+                        ? round((($abs_unit_price - $unit_capital) / $unit_capital) * 100, 2)
+                        : 0.0;
+                }
             }
-        } else {
-            // Fallback for special orders or unmapped items: default 20% markup
-            $markup = 20.0;
-            $unit_capital = round($abs_unit_price / 1.20, 2);
+        }
+
+        if (!$has_order_snapshot) {
+            if ($p_id > 0 && isset($products_map[$p_id])) {
+                $p = $products_map[$p_id];
+                $m = (isset($p['p_markup']) && $p['p_markup'] !== '') ? (float)$p['p_markup'] : 20.0;
+                if ($m <= 0) $m = 20.0;
+                $markup = $m;
+
+                $live_sell = isset($p['p_current_price']) ? (float)$p['p_current_price'] : 0.0;
+                $live_cap = isset($p['p_capital_price']) ? (float)$p['p_capital_price'] : 0.0;
+
+                if ($live_cap > 0 && $live_sell > 0 && abs($abs_unit_price - $live_sell) < 0.01) {
+                    $unit_capital = $live_cap;
+                } elseif ($live_cap > 0 && $live_sell > 0 && $abs_unit_price > 0) {
+                    // Product price changed since this historical order was recorded: scale proportionally so historical margin stays intact
+                    $ratio = $live_cap / $live_sell;
+                    if ($ratio > 0 && $ratio < 1.0) {
+                        $unit_capital = round($abs_unit_price * $ratio, 2);
+                    } else {
+                        $unit_capital = round($abs_unit_price / (1 + ($markup / 100)), 2);
+                    }
+                } elseif ($live_cap > 0 && $live_cap <= $abs_unit_price) {
+                    $unit_capital = $live_cap;
+                } else {
+                    $unit_capital = round($abs_unit_price / (1 + ($markup / 100)), 2);
+                }
+            } else {
+                // Fallback for special orders or unmapped items: default 20% markup
+                $markup = 20.0;
+                $unit_capital = round($abs_unit_price / 1.20, 2);
+            }
         }
 
         $total_capital = $unit_capital * $qty;
@@ -211,14 +252,14 @@ if (!function_exists('get_period_financial_metrics')) {
             $paid = (float)$ord['paid_amount'];
             $gross_sales += $paid;
 
-            $stmt_items = $pdo->prepare("SELECT product_id, unit_price, quantity, item_type FROM tbl_order WHERE payment_id = ?");
+            $stmt_items = $pdo->prepare("SELECT product_id, unit_price, quantity, item_type, capital_price, markup_amount, product_details FROM tbl_order WHERE payment_id = ?");
             $stmt_items->execute(array($ord['payment_id']));
             $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
 
             $order_capital_cost = 0.0;
             foreach ($items as $it) {
                 $is_rc = (!empty($it['item_type']) && $it['item_type'] === 'RETURN_CREDIT') || (float)$it['unit_price'] < 0;
-                $fin = calculate_item_financials($it['product_id'], (float)$it['unit_price'], $it['quantity'], $products_map, $it['item_type'] ?? 'STANDARD');
+                $fin = calculate_item_financials($it['product_id'], (float)$it['unit_price'], $it['quantity'], $products_map, $it['item_type'] ?? 'STANDARD', $it);
                 
                 if ($is_rc) {
                     // Restocked item capital credited back into store
@@ -466,7 +507,7 @@ foreach ($sales_orders as $ord) {
 
     foreach ($ord_items as $item) {
         $is_rc = (!empty($item['item_type']) && $item['item_type'] === 'RETURN_CREDIT') || (float)$item['unit_price'] < 0;
-        $fin = calculate_item_financials($item['product_id'], (float)$item['unit_price'], $item['quantity'], $products_map, $item['item_type'] ?? 'STANDARD');
+        $fin = calculate_item_financials($item['product_id'], (float)$item['unit_price'], $item['quantity'], $products_map, $item['item_type'] ?? 'STANDARD', $item);
         
         $items_subtotal += $fin['subtotal'];
         $order_capital_total += $fin['total_capital']; // Negative for return credits
@@ -730,7 +771,8 @@ $lb_selected_metric = isset($_GET['lb_metric']) ? $_GET['lb_metric'] : 'orders';
 // Fetch all order line items for the entire leaderboard year
 $stmt_lb_all = $pdo->prepare("
     SELECT p.id as payment_id, p.payment_date, p.paid_amount,
-           o.product_id, o.product_name, o.unit_price, o.quantity, o.item_type
+           o.product_id, o.product_name, o.unit_price, o.quantity, o.item_type,
+           o.capital_price, o.markup_amount, o.product_details
     FROM tbl_payment p
     JOIN tbl_order o ON p.payment_id = o.payment_id
     WHERE p.supplier_id = ? 
@@ -765,7 +807,7 @@ foreach ($lb_all_rows as $lb_row) {
     $u_price = (float)$lb_row['unit_price'];
     $pay_id = $lb_row['payment_id'];
 
-    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map, $lb_row['item_type'] ?? 'STANDARD');
+    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map, $lb_row['item_type'] ?? 'STANDARD', $lb_row);
     
     // Category resolution
     $cat_name = 'Building Materials';
@@ -977,7 +1019,8 @@ $product_annual_trends_json = json_encode($product_annual_trends);
 // =============================================================
 $stmt_horizon_all = $pdo->prepare("
     SELECT p.id as payment_id, p.payment_date, p.paid_amount,
-           o.product_id, o.product_name, o.unit_price, o.quantity, o.item_type
+           o.product_id, o.product_name, o.unit_price, o.quantity, o.item_type,
+           o.capital_price, o.markup_amount, o.product_details
     FROM tbl_payment p
     JOIN tbl_order o ON p.payment_id = o.payment_id
     WHERE p.supplier_id = ? 
@@ -1014,7 +1057,7 @@ foreach ($horizon_all_rows as $hz_row) {
     $u_price = (float)$hz_row['unit_price'];
     $pay_id = $hz_row['payment_id'];
 
-    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map, $hz_row['item_type'] ?? 'STANDARD');
+    $fin = calculate_item_financials($p_id, $u_price, $qty, $products_map, $hz_row['item_type'] ?? 'STANDARD', $hz_row);
 
     $cat_name = 'Building Materials';
     if ($p_id > 0 && isset($products_map[$p_id])) {

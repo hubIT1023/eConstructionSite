@@ -80,19 +80,22 @@ $available_categories = $stmt_cats->fetchAll(PDO::FETCH_ASSOC);
 						</thead>
 						<tbody>
 							<?php
-							// Automatic inventory & price rollover rule:
-							// Trigger 1: Q < 2 AND NQ > 1 (Quantity addition rule)
-							// Trigger 2: Q < 6 AND NQ > 5 (Low stock replenishment updates price & adds stock)
+							// Automatic inventory & price rollover rule (NQ Hold Rule: NQ holds while Q >= 3; only moves into Q when Q < 3):
+							// Trigger (Option 1 - Rule 1A): Q < 3 AND NQ > 0 -> Moves NQ into Q and applies New Price (N) if N > C
 							$pdo->query("UPDATE tbl_product 
-								SET p_qty = p_qty + p_new_qty,
+								SET p_qty = p_qty + COALESCE(p_new_qty, 0),
+								    p_old_price = CASE
+								        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0))
+								        THEN p_current_price
+								        ELSE p_old_price
+								    END,
 								    p_current_price = CASE 
-								        WHEN (p_qty < 6 AND p_new_qty > 5 AND p_new_price IS NOT NULL AND p_new_price != '') 
-								        THEN p_new_price 
+								        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0))
+								        THEN p_new_price
 								        ELSE p_current_price 
 								    END,
 								    p_new_qty = 0
-								WHERE (p_qty < 2 AND p_new_qty > 1) 
-								   OR (p_qty < 6 AND p_new_qty > 5)");
+								WHERE p_qty < 3 AND COALESCE(p_new_qty, 0) > 0");
 
 							$i=0;
 							$sql = "SELECT
@@ -181,7 +184,12 @@ $available_categories = $stmt_cats->fetchAll(PDO::FETCH_ASSOC);
 									<td>&#8369;<?php echo !empty($row['p_new_price']) ? $row['p_new_price'] : $row['p_current_price']; ?></td>
 									<td style="font-weight: 800; color: #1e40af;">&#8369;<?php echo $row['p_current_price']; ?></td>
 									<td style="<?php echo $qty_style; ?>"><?php echo $row['p_qty']; ?></td>
-									<td style="text-align: center; font-weight: 600;"><?php echo $clean_n_qty; ?></td>
+									<td style="text-align: center; font-weight: 600;">
+										<?php echo $clean_n_qty; ?>
+										<?php if ($clean_qty >= 3 && $clean_n_qty > 0): ?>
+											<br><span class="badge" style="background-color: #f59e0b; color: #fff; font-size: 9px; padding: 2px 5px; margin-top: 2px;" title="Held until current In-Stock Q is ordered down to < 3"><i class="fa fa-lock"></i> HELD (Until Q&lt;3)</span>
+										<?php endif; ?>
+									</td>
 									<td style="text-align: center;"><?php echo $clean_s_level; ?></td>
 									<td style="text-align: center;"><?php echo $stock_alert_badge; ?></td>
 									<td>

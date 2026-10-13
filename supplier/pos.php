@@ -227,7 +227,7 @@ if ((!empty($_GET['po_id']) || !empty($_GET['payment_id'])) && empty($_GET['po_s
 
             // Fetch line items from tbl_order for this PO
             $stmt_po_items = $pdo->prepare("
-                SELECT o.*, p.p_qty as current_stock, p.p_featured_photo, p.p_sku 
+                SELECT o.*, p.p_qty as current_stock, p.p_new_qty, p.p_current_price as prod_current_price, p.p_old_price as prod_old_price, p.p_new_price, p.p_capital_price, p.p_markup, p.p_featured_photo, p.p_sku 
                 FROM tbl_order o 
                 LEFT JOIN tbl_product p ON o.product_id = p.p_id 
                 WHERE o.payment_id = ? AND o.supplier_id = ? 
@@ -242,6 +242,48 @@ if ((!empty($_GET['po_id']) || !empty($_GET['payment_id'])) && empty($_GET['po_s
                 $p_type = (isset($it['item_type']) && $it['item_type'] === 'SPECIAL_ORDER') ? 'SPECIAL_ORDER' : 'STANDARD';
                 $q = max(1, intval($it['quantity']));
                 $u = max(0, floatval($it['unit_price']));
+                $p_cur_stock = intval($it['current_stock'] ?? 100);
+                $p_new_qty_val = isset($it['p_new_qty']) && $it['p_new_qty'] !== '' ? max(0, intval($it['p_new_qty'])) : 0;
+                $p_cur_price_val = floatval(preg_replace('/[^0-9.]/', '', strval($it['prod_current_price'] ?? $u)));
+                $p_old_price_val = floatval(preg_replace('/[^0-9.]/', '', strval($it['prod_old_price'] ?? $p_cur_price_val)));
+                $p_new_price_val = floatval(preg_replace('/[^0-9.]/', '', strval($it['p_new_price'] ?? 0)));
+                $p_cap_val = isset($it['capital_price']) && $it['capital_price'] !== null && floatval($it['capital_price']) > 0
+                    ? floatval($it['capital_price'])
+                    : floatval(preg_replace('/[^0-9.]/', '', strval($it['p_capital_price'] ?? 0)));
+                $p_mu_val = isset($it['markup_amount']) && $it['markup_amount'] !== null && floatval($it['markup_amount']) >= 0
+                    ? floatval($it['markup_amount'])
+                    : floatval(preg_replace('/[^0-9.]/', '', strval($it['p_markup'] ?? 0)));
+
+                // Always preserve the PO's recorded unit_price ($u) so subsequent product price changes never alter an existing PO/credit order
+                $is_ro_active = false;
+                $ro_old_p = $u;
+                $ro_new_p = $u;
+                $ro_orig_q = $p_cur_stock;
+                $ro_nq = $p_new_qty_val;
+                $raw_prod_details = $it['product_details'] ?? '';
+
+                if ($p_type === 'STANDARD') {
+                    if (preg_match('/\[Option 1 Batch Rollover:\s*Old Q=(\d+)\s*@\s*₱?([\d,.]+)\s*->\s*New Batch NQ=(\d+)\s*@\s*₱?([\d,.]+)\s*\|\s*Capital:\s*₱?([\d,.]+)\s*\|\s*Mark-Up:\s*₱?([\d,.]+)\s*\|\s*Profit:\s*₱?([\d,.]+)\]/i', $raw_prod_details, $ro_m)) {
+                        $is_ro_active = true;
+                        $ro_orig_q = intval($ro_m[1]);
+                        $ro_old_p = floatval(str_replace(',', '', $ro_m[2]));
+                        $ro_nq = intval($ro_m[3]);
+                        $ro_new_p = floatval(str_replace(',', '', $ro_m[4]));
+                        $p_cap_val = floatval(str_replace(',', '', $ro_m[5]));
+                        $p_mu_val = floatval(str_replace(',', '', $ro_m[6]));
+                    } elseif (strpos($raw_prod_details, 'Option 1 Batch Rollover') !== false) {
+                        $is_ro_active = true;
+                        $ro_old_p = ($p_old_price_val > 0) ? $p_old_price_val : $u;
+                        $ro_new_p = $u;
+                    }
+                }
+
+                $clean_prod_details = trim(preg_replace('/\s*\|?\s*\[Option 1 Batch Rollover:[^\]]+\]/i', '', $raw_prod_details), " \t\n\r\0\x0B|");
+
+                $unit_cap = ($p_cap_val > 0 && $p_cap_val <= $u) ? $p_cap_val : (($p_mu_val > 0 && $p_mu_val < $u) ? round($u - $p_mu_val, 2) : round($u / 1.20, 2));
+                $unit_mu = max(0, round($u - $unit_cap, 2));
+                $unit_prof = max(0, round($u - $unit_cap, 2));
+
                 $disc_pct = floatval($it['discount_percent'] ?? 0);
                 $disc_amt = floatval($it['discount_amount'] ?? 0);
                 $line_gross = round($q * $u, 2);
@@ -251,15 +293,35 @@ if ((!empty($_GET['po_id']) || !empty($_GET['payment_id'])) && empty($_GET['po_s
                 $line_net = max(0, $line_gross - $disc_amt);
                 $po_items_subtotal += $line_net;
 
+                $eff_stock = ($p_type === 'STANDARD') ? (($p_cur_stock < 3 && $p_new_qty_val > 0) ? ($p_cur_stock + $p_new_qty_val) : max($q, $p_cur_stock)) : 999999;
+
                 $po_cart[] = [
                     'id' => intval($it['product_id']),
                     'name' => $it['product_name'],
                     'base_name' => $it['product_name'],
                     'qty' => $q,
                     'price' => $u,
-                    'stock' => ($p_type === 'STANDARD') ? intval($it['current_stock'] ?? 100) : 999999,
+                    'locked_unit_price' => $u,
+                    'from_existing_po' => true,
+                    'orig_price' => $ro_old_p,
+                    'new_price' => $ro_new_p,
+                    'capital_price' => $unit_cap,
+                    'markup' => $unit_mu,
+                    'stock' => $eff_stock,
+                    'orig_stock' => $ro_orig_q,
+                    'new_qty' => $ro_nq,
+                    'batch_rollover_active' => $is_ro_active,
+                    'rollover_old_price' => $ro_old_p,
+                    'rollover_new_price' => $ro_new_p,
+                    'rollover_orig_stock' => $ro_orig_q,
+                    'rollover_new_qty' => $ro_nq,
+                    'rollover_capital_price' => $unit_cap,
+                    'rollover_markup' => $unit_mu,
+                    'rollover_unit_profit' => $unit_prof,
+                    'rollover_total_capital' => round($unit_cap * $q, 2),
+                    'rollover_total_profit' => round($unit_prof * $q, 2),
                     'item_type' => $p_type,
-                    'product_details' => $it['product_details'] ?? '',
+                    'product_details' => $clean_prod_details,
                     'size' => $it['size'] ?? '',
                     'color' => $it['color'] ?? '',
                     'special_order_reference' => $it['special_order_reference'] ?? '',
@@ -532,14 +594,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
 
         if ($item_type === 'STANDARD') {
             $p_id = intval($item['id']);
-            $stmt_pcheck = $pdo->prepare("SELECT p_name, p_qty, p_current_price, p_featured_photo FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
+            $stmt_pcheck = $pdo->prepare("SELECT p_name, p_qty, p_new_qty, p_current_price, p_new_price, p_capital_price, p_markup, p_featured_photo FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
             $stmt_pcheck->execute(array($p_id, $supplier_id));
             $p_row = $stmt_pcheck->fetch(PDO::FETCH_ASSOC);
             if ($p_row) {
-                $p_price = floatval(preg_replace('/[^0-9.]/', '', $p_row['p_current_price']));
-                $item['price'] = $p_price;
-                $item['stock'] = intval($p_row['p_qty']);
-                $item['photo'] = !empty($p_row['p_featured_photo']) ? $p_row['p_featured_photo'] : '';
+                $cur_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_current_price'])));
+                $new_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_new_price'] ?? 0)));
+                $ca_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_capital_price'] ?? 0)));
+                $mu_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_markup'] ?? 0)));
+                $db_q = intval($p_row['p_qty']);
+                $db_nq = isset($p_row['p_new_qty']) && $p_row['p_new_qty'] !== '' ? max(0, intval($p_row['p_new_qty'])) : 0;
+
+                if (!empty($item['from_existing_po'])) {
+                    // Existing PO / credit transaction item: preserve its locked transaction-time price, capital, and markup
+                    $locked_p = !empty($item['locked_unit_price']) ? floatval($item['locked_unit_price']) : $p_price;
+                    $p_price = $locked_p;
+                    $item['price'] = $locked_p;
+                    $item['stock'] = max($p_qty, $db_q);
+                    $item['photo'] = !empty($p_row['p_featured_photo']) ? $p_row['p_featured_photo'] : '';
+                } elseif ($db_nq > 0 && (($db_q < 3 && ($p_qty > $db_q || $new_p > $cur_p)) || $p_qty > $db_q) && $new_p > 0) {
+                    $p_price = ($p_qty > $db_q || $new_p > $cur_p) ? $new_p : $cur_p;
+                    $unit_cap = ($ca_p > 0) ? $ca_p : max(0, $p_price - $mu_p);
+                    $unit_mu = ($mu_p > 0) ? $mu_p : max(0, $p_price - $unit_cap);
+                    $unit_prof = max(0, $p_price - $unit_cap);
+                    $item['batch_rollover_active'] = true;
+                    $item['rollover_old_price'] = $cur_p;
+                    $item['rollover_new_price'] = $p_price;
+                    $item['rollover_orig_stock'] = $db_q;
+                    $item['rollover_new_qty'] = $db_nq;
+                    $item['rollover_capital_price'] = $unit_cap;
+                    $item['rollover_markup'] = $unit_mu;
+                    $item['rollover_unit_profit'] = $unit_prof;
+                    $item['rollover_total_capital'] = round($unit_cap * $p_qty, 2);
+                    $item['rollover_total_profit'] = round($unit_prof * $p_qty, 2);
+                    $item['stock'] = $db_q + $db_nq;
+                    $item['price'] = $p_price;
+                    $item['orig_price'] = $cur_p;
+                    $item['new_price'] = $new_p;
+                    $item['capital_price'] = $ca_p;
+                    $item['markup'] = $mu_p;
+                    $item['orig_stock'] = $db_q;
+                    $item['new_qty'] = $db_nq;
+                    $item['photo'] = !empty($p_row['p_featured_photo']) ? $p_row['p_featured_photo'] : '';
+                } else {
+                    $p_price = $cur_p;
+                    $item['batch_rollover_active'] = false;
+                    $item['stock'] = ($db_nq > 0) ? ($db_q + $db_nq) : $db_q;
+                    $item['price'] = $p_price;
+                    $item['orig_price'] = $cur_p;
+                    $item['new_price'] = $new_p;
+                    $item['capital_price'] = $ca_p;
+                    $item['markup'] = $mu_p;
+                    $item['orig_stock'] = $db_q;
+                    $item['new_qty'] = $db_nq;
+                    $item['photo'] = !empty($p_row['p_featured_photo']) ? $p_row['p_featured_photo'] : '';
+                }
             }
         } else {
             $item['stock'] = 999999;
@@ -674,9 +783,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
             $stmt_po_items = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id = ? AND supplier_id = ? ORDER BY id ASC");
             $stmt_po_items->execute([$paying_po_id, $supplier_id]);
             $po_db_items = $stmt_po_items->fetchAll(PDO::FETCH_ASSOC);
+            $po_db_item_map = [];
+            foreach ($po_db_items as $p_db_it) {
+                $db_pid = intval($p_db_it['product_id'] ?? 0);
+                if ($db_pid > 0 && !isset($po_db_item_map[$db_pid])) {
+                    $po_db_item_map[$db_pid] = $p_db_it;
+                }
+            }
 
-            // Load product catalog for authoritative price & stock validation
-            $stmt_p_auth = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_qty FROM tbl_product WHERE supplier_id = ?");
+            // Load product catalog for authoritative price & stock validation of newly added items
+            $stmt_p_auth = $pdo->prepare("SELECT p_id, p_name, p_current_price, p_new_price, p_capital_price, p_markup, p_qty, p_new_qty FROM tbl_product WHERE supplier_id = ?");
             $stmt_p_auth->execute([$supplier_id]);
             $auth_prod_map = [];
             while ($pr = $stmt_p_auth->fetch(PDO::FETCH_ASSOC)) {
@@ -698,18 +814,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                     $color = isset($item['color']) ? trim($item['color']) : '';
                     $p_details = isset($item['product_details']) ? trim($item['product_details']) : '';
                     $sp_ref = isset($item['special_order_reference']) ? trim($item['special_order_reference']) : '';
+                    $item_cap_price = null;
+                    $item_mu_amount = null;
 
                     if ($item_type === 'SPECIAL_ORDER') {
                         $p_name = !empty($item['name']) ? trim($item['name']) : 'Special Custom Item';
                         $unit_price = max(0, floatval($item['price'] ?? 0));
+                        $item_cap_price = round($unit_price / 1.20, 2);
+                        $item_mu_amount = max(0, round($unit_price - $item_cap_price, 2));
                     } else {
-                        if ($p_id > 0 && isset($auth_prod_map[$p_id])) {
+                        if ($p_id > 0 && isset($po_db_item_map[$p_id])) {
+                            // Existing PO line item: preserve its original transaction-time unit_price, capital_price, markup_amount, and rollover audit note
+                            $orig_po_it = $po_db_item_map[$p_id];
+                            $p_name = !empty($orig_po_it['product_name']) ? $orig_po_it['product_name'] : (!empty($item['name']) ? trim($item['name']) : 'Store Catalog Item');
+                            $unit_price = max(0, floatval($orig_po_it['unit_price']));
+                            if (isset($orig_po_it['capital_price']) && $orig_po_it['capital_price'] !== null && floatval($orig_po_it['capital_price']) > 0) {
+                                $item_cap_price = floatval($orig_po_it['capital_price']);
+                            } elseif (!empty($item['capital_price']) && floatval($item['capital_price']) > 0) {
+                                $item_cap_price = floatval($item['capital_price']);
+                            } else {
+                                $item_cap_price = round($unit_price / 1.20, 2);
+                            }
+                            if (isset($orig_po_it['markup_amount']) && $orig_po_it['markup_amount'] !== null && floatval($orig_po_it['markup_amount']) >= 0) {
+                                $item_mu_amount = floatval($orig_po_it['markup_amount']);
+                            } else {
+                                $item_mu_amount = max(0, round($unit_price - $item_cap_price, 2));
+                            }
+                            if (preg_match('/(\[Option 1 Batch Rollover:[^\]]+\])/i', $orig_po_it['product_details'] ?? '', $ro_m_keep)) {
+                                if (stripos($p_details, 'Option 1 Batch Rollover') === false) {
+                                    $p_details = $p_details !== '' ? ($p_details . ' | ' . $ro_m_keep[1]) : $ro_m_keep[1];
+                                }
+                            }
+                        } elseif ($p_id > 0 && isset($auth_prod_map[$p_id])) {
                             $p_info = $auth_prod_map[$p_id];
                             $p_name = $p_info['p_name'];
-                            $unit_price = (floatval($p_info['p_new_price'] ?? 0) > 0) ? floatval($p_info['p_new_price']) : floatval($p_info['p_current_price'] ?? ($item['price'] ?? 0));
+                            $db_cur_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_info['p_current_price'] ?? 0)));
+                            $db_new_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_info['p_new_price'] ?? 0)));
+                            $db_cap_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_info['p_capital_price'] ?? 0)));
+                            $db_mu_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_info['p_markup'] ?? 0)));
+                            $db_q = intval($p_info['p_qty'] ?? 0);
+                            $db_nq = isset($p_info['p_new_qty']) && $p_info['p_new_qty'] !== '' ? max(0, intval($p_info['p_new_qty'])) : 0;
+                            if ((!empty($item['batch_rollover_active']) || ($db_nq > 0 && (($db_q < 3 && ($qty > $db_q || $db_new_p > $db_cur_p)) || $qty > $db_q))) && $db_new_p > 0) {
+                                $unit_price = ($qty > $db_q || $db_new_p > $db_cur_p) ? $db_new_p : $db_cur_p;
+                            } else {
+                                $unit_price = ($db_cur_p > 0) ? $db_cur_p : max(0, floatval($item['price'] ?? 0));
+                            }
+                            $item_cap_price = ($db_cap_p > 0) ? $db_cap_p : (($db_mu_p > 0 && $db_mu_p < $unit_price) ? round($unit_price - $db_mu_p, 2) : round($unit_price / 1.20, 2));
+                            $item_mu_amount = max(0, round($unit_price - $item_cap_price, 2));
                         } else {
                             $p_name = !empty($item['name']) ? trim($item['name']) : 'Store Catalog Item';
                             $unit_price = max(0, floatval($item['price'] ?? 0));
+                            $item_cap_price = round($unit_price / 1.20, 2);
+                            $item_mu_amount = max(0, round($unit_price - $item_cap_price, 2));
                         }
                     }
 
@@ -730,6 +886,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                         'qty' => $qty,
                         'price' => $unit_price,
                         'authoritative_unit_price' => $unit_price,
+                        'capital_price' => $item_cap_price,
+                        'markup_amount' => $item_mu_amount,
                         'size' => $size,
                         'color' => $color,
                         'item_type' => $item_type,
@@ -762,6 +920,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                         'qty' => $qty,
                         'price' => $price,
                         'authoritative_unit_price' => $price,
+                        'capital_price' => isset($p_it['capital_price']) ? $p_it['capital_price'] : null,
+                        'markup_amount' => isset($p_it['markup_amount']) ? $p_it['markup_amount'] : null,
                         'size' => $p_it['size'],
                         'color' => $p_it['color'],
                         'item_type' => $p_it['item_type'],
@@ -885,6 +1045,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                                 // More items added -> deduct additional stock
                                 $stmt_ded = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
                                 $stmt_ded->execute([$diff, $pid, $supplier_id]);
+
+                                // If current Q was ordered down to < 3, move held NQ into Q and apply Option 1 (Rule 1A)
+                                $stmt_ro_po = $pdo->prepare("UPDATE tbl_product 
+                                    SET p_qty = p_qty + COALESCE(p_new_qty, 0),
+                                        p_old_price = CASE
+                                            WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0))
+                                            THEN p_current_price
+                                            ELSE p_old_price
+                                        END,
+                                        p_current_price = CASE 
+                                            WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0)) 
+                                            THEN p_new_price 
+                                            ELSE p_current_price 
+                                        END,
+                                        p_new_qty = 0
+                                    WHERE p_id = ? AND supplier_id = ? AND p_qty < 3 AND COALESCE(p_new_qty, 0) > 0");
+                                $stmt_ro_po->execute([$pid, $supplier_id]);
                             } elseif ($diff < 0) {
                                 // Items removed -> restore stock
                                 $stmt_res = $pdo->prepare("UPDATE tbl_product SET p_qty = p_qty + ? WHERE p_id = ? AND supplier_id = ?");
@@ -901,8 +1078,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                                 INSERT INTO tbl_order (
                                     product_id, product_name, size, color, quantity, unit_price,
                                     payment_id, supplier_id, item_type,
-                                    special_order_reference, product_details, discount_percent, discount_amount
-                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                    special_order_reference, product_details, discount_percent, discount_amount,
+                                    capital_price, markup_amount
+                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                             ");
                             $stmt_ins_ord->execute([
                                 $v_it['id'],
@@ -917,7 +1095,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                                 $v_it['special_order_reference'],
                                 $v_it['product_details'],
                                 $v_it['discount_percent'],
-                                $v_it['discount_amount']
+                                $v_it['discount_amount'],
+                                $v_it['capital_price'] ?? null,
+                                $v_it['markup_amount'] ?? null
                             ]);
                         }
                     }
@@ -1157,12 +1337,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
 
                 if ($item_type === 'STANDARD') {
                     $p_id = intval($item['id']);
-                    $stmt_pcheck = $pdo->prepare("SELECT p_name, p_current_price FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
+                    $stmt_pcheck = $pdo->prepare("SELECT p_name, p_qty, p_new_qty, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
                     $stmt_pcheck->execute(array($p_id, $supplier_id));
                     $p_row = $stmt_pcheck->fetch(PDO::FETCH_ASSOC);
                     if ($p_row) {
-                        $p_price = floatval(preg_replace('/[^0-9.]/', '', $p_row['p_current_price']));
+                        $cur_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_current_price'])));
+                        $new_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_new_price'] ?? 0)));
+                        $ca_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_capital_price'] ?? 0)));
+                        $mu_p = floatval(preg_replace('/[^0-9.]/', '', strval($p_row['p_markup'] ?? 0)));
+                        $db_q = intval(preg_replace('/[^0-9]/', '', strval($p_row['p_qty'])));
+                        $db_nq = isset($p_row['p_new_qty']) && $p_row['p_new_qty'] !== '' ? max(0, intval(preg_replace('/[^0-9]/', '', strval($p_row['p_new_qty'])))) : 0;
+
+                        if ($db_nq > 0 && (($db_q < 3 && ($p_qty > $db_q || $new_p > $cur_p)) || $p_qty > $db_q) && $new_p > 0) {
+                            $p_price = ($p_qty > $db_q || $new_p > $cur_p) ? $new_p : $cur_p;
+                            $unit_cap = ($ca_p > 0) ? $ca_p : max(0, $p_price - $mu_p);
+                            $unit_mu = ($mu_p > 0) ? $mu_p : max(0, $p_price - $unit_cap);
+                            $unit_prof = max(0, $p_price - $unit_cap);
+                            $item['batch_rollover_active'] = true;
+                            $item['rollover_old_price'] = $cur_p;
+                            $item['rollover_new_price'] = $p_price;
+                            $item['rollover_orig_stock'] = $db_q;
+                            $item['rollover_new_qty'] = $db_nq;
+                            $item['rollover_capital_price'] = $unit_cap;
+                            $item['rollover_markup'] = $unit_mu;
+                            $item['rollover_total_profit'] = round($unit_prof * $p_qty, 2);
+                            $item['capital_price'] = $unit_cap;
+                            $item['markup_amount'] = $unit_mu;
+                        } else {
+                            $p_price = $cur_p;
+                            $item['batch_rollover_active'] = false;
+                            if ($db_nq > 0 && $new_p > 0 && abs($new_p - $cur_p) >= 0.01 && abs(($ca_p + $mu_p) - $new_p) < 0.01) {
+                                // NQ is on hold at $new_p; compute current batch capital & markup for $cur_p
+                                $unit_cap = ($mu_p > 0 && $mu_p < $p_price) ? round($p_price - $mu_p, 2) : (($ca_p > 0 && $new_p > 0) ? round($p_price * ($ca_p / $new_p), 2) : round($p_price / 1.20, 2));
+                            } else {
+                                $unit_cap = ($ca_p > 0 && $ca_p <= $p_price) ? $ca_p : (($mu_p > 0 && $mu_p < $p_price) ? round($p_price - $mu_p, 2) : round($p_price / 1.20, 2));
+                            }
+                            $unit_mu = max(0, round($p_price - $unit_cap, 2));
+                            $item['capital_price'] = $unit_cap;
+                            $item['markup_amount'] = $unit_mu;
+                        }
                     }
+                } else {
+                    $item['capital_price'] = round($p_price / 1.20, 2);
+                    $item['markup_amount'] = max(0, round($p_price - $item['capital_price'], 2));
                 }
 
                 $line_gross = round($p_price * $p_qty, 2);
@@ -1567,8 +1784,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             supplier_id,
                             item_type,
                             special_order_reference,
-                            product_details
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                            product_details,
+                            capital_price,
+                            markup_amount
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
@@ -1580,7 +1799,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             $supplier_id,
                             $item_type,
                             $so_ref,
-                            $p_details
+                            $p_details,
+                            isset($item['capital_price']) ? floatval($item['capital_price']) : round($p_effective_unit_price / 1.20, 2),
+                            isset($item['markup_amount']) ? floatval($item['markup_amount']) : max(0, round($p_effective_unit_price - round($p_effective_unit_price / 1.20, 2), 2))
                         ));
                     } else {
                         $p_id = intval($item['id']);
@@ -1590,6 +1811,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                         $p_details = '';
                         if (!empty($item['discount_amount']) && $item['discount_amount'] > 0) {
                             $p_details = 'Discount: -₱' . number_format($item['discount_amount'], 2) . ' (' . number_format($item['discount_percent'], 1) . '%)';
+                        }
+                        if (!empty($item['batch_rollover_active'])) {
+                            $ro_note = sprintf(
+                                '[Option 1 Batch Rollover: Old Q=%d @ ₱%s -> New Batch NQ=%d @ ₱%s | Capital: ₱%s | Mark-Up: ₱%s | Profit: ₱%s]',
+                                intval($item['rollover_orig_stock'] ?? 0),
+                                number_format(floatval($item['rollover_old_price'] ?? 0), 2),
+                                intval($item['rollover_new_qty'] ?? 0),
+                                number_format(floatval($item['rollover_new_price'] ?? $p_effective_unit_price), 2),
+                                number_format(floatval($item['rollover_capital_price'] ?? 0), 2),
+                                number_format(floatval($item['rollover_markup'] ?? 0), 2),
+                                number_format(floatval($item['rollover_total_profit'] ?? 0), 2)
+                            );
+                            $p_details = $p_details ? ($p_details . ' | ' . $ro_note) : $ro_note;
                         }
 
                         $statement_o = $pdo->prepare("INSERT INTO tbl_order (
@@ -1603,8 +1837,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             supplier_id,
                             item_type,
                             special_order_reference,
-                            product_details
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                            product_details,
+                            capital_price,
+                            markup_amount
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
@@ -1616,26 +1852,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             $supplier_id,
                             'STANDARD',
                             '',
-                            $p_details
+                            $p_details,
+                            isset($item['capital_price']) ? floatval($item['capital_price']) : round($p_effective_unit_price / 1.20, 2),
+                            isset($item['markup_amount']) ? floatval($item['markup_amount']) : max(0, round($p_effective_unit_price - round($p_effective_unit_price / 1.20, 2), 2))
                         ));
 
-                        // Decrement Stock only for standard catalogue products
-                        $statement_stock = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
-                        $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
+                        if (!empty($item['batch_rollover_active'])) {
+                            // Option 1 (Rule 1A): Merge (p_qty + p_new_qty) before deducting ordered quantity, update C = N, and reset NQ = 0
+                            $stmt_ro_stock = $pdo->prepare("UPDATE tbl_product 
+                                SET p_qty = GREATEST(0, (p_qty + COALESCE(p_new_qty, 0)) - ?),
+                                    p_old_price = p_current_price,
+                                    p_current_price = CASE 
+                                        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0)) 
+                                        THEN p_new_price 
+                                        ELSE p_current_price 
+                                    END,
+                                    p_new_qty = 0
+                                WHERE p_id = ? AND supplier_id = ?");
+                            $stmt_ro_stock->execute(array($p_qty, $p_id, $supplier_id));
+                        } else {
+                            // Standard Decrement Stock
+                            $statement_stock = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ? AND supplier_id = ?");
+                            $statement_stock->execute(array($p_qty, $p_id, $supplier_id));
 
-                        // Automatic inventory & price rollover if stock reached 0 or 1
-                        $statement_rollover = $pdo->prepare("UPDATE tbl_product 
-                            SET p_qty = p_qty + p_new_qty,
-                                p_current_price = CASE 
-                                    WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric) 
-                                    THEN p_new_price 
-                                    ELSE p_current_price 
-                                END,
-                                p_new_qty = 0
-                            WHERE p_id = ? 
-                              AND (p_qty = 0 OR p_qty = 1) 
-                              AND p_new_qty > (COALESCE(p_s_level, 10) * 0.1)");
-                        $statement_rollover->execute(array($p_id));
+                            // NQ Hold Rule -> Auto-Move to Q & Apply Option 1 (Rule 1A) once current Q is ordered down to < 3
+                            $statement_rollover = $pdo->prepare("UPDATE tbl_product 
+                                SET p_qty = p_qty + COALESCE(p_new_qty, 0),
+                                    p_old_price = CASE
+                                        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0))
+                                        THEN p_current_price
+                                        ELSE p_old_price
+                                    END,
+                                    p_current_price = CASE 
+                                        WHEN (p_new_price IS NOT NULL AND p_new_price != '' AND NULLIF(regexp_replace(p_new_price, '[^0-9.]', '', 'g'), '')::numeric > COALESCE(NULLIF(regexp_replace(p_current_price, '[^0-9.]', '', 'g'), '')::numeric, 0)) 
+                                        THEN p_new_price 
+                                        ELSE p_current_price 
+                                    END,
+                                    p_new_qty = 0
+                                WHERE p_id = ? AND supplier_id = ? AND p_qty < 3 AND COALESCE(p_new_qty, 0) > 0");
+                            $statement_rollover->execute(array($p_id, $supplier_id));
+                        }
                     }
 
                     // Update tbl_discount_requests with payment_id
@@ -1770,11 +2026,44 @@ if (!empty($active_pos_cart)) {
                 $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Product';
             }
             $p_id = intval($pi['id']);
-            $stmt_pk = $pdo->prepare("SELECT p_name, p_qty, p_current_price FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
+            $stmt_pk = $pdo->prepare("SELECT p_name, p_qty, p_new_qty, p_current_price, p_new_price, p_capital_price, p_markup FROM tbl_product WHERE p_id = ? AND supplier_id = ?");
             $stmt_pk->execute(array($p_id, $supplier_id));
             $pk_row = $stmt_pk->fetch(PDO::FETCH_ASSOC);
             if ($pk_row) {
-                $pi['stock'] = intval($pk_row['p_qty']);
+                $pk_q = intval($pk_row['p_qty']);
+                $pk_nq = isset($pk_row['p_new_qty']) && $pk_row['p_new_qty'] !== '' ? max(0, intval($pk_row['p_new_qty'])) : 0;
+                $pk_cur_p = floatval(preg_replace('/[^0-9.]/', '', strval($pk_row['p_current_price'])));
+                $pk_new_p = floatval(preg_replace('/[^0-9.]/', '', strval($pk_row['p_new_price'] ?? 0)));
+                $pk_ca_p = floatval(preg_replace('/[^0-9.]/', '', strval($pk_row['p_capital_price'] ?? 0)));
+                $pk_mu_p = floatval(preg_replace('/[^0-9.]/', '', strval($pk_row['p_markup'] ?? 0)));
+
+                $pi['orig_stock'] = $pk_q;
+                $pi['new_qty'] = $pk_nq;
+                $pi['orig_price'] = $pk_cur_p;
+                $pi['new_price'] = $pk_new_p;
+                $pi['capital_price'] = $pk_ca_p;
+                $pi['markup'] = $pk_mu_p;
+                $pi['stock'] = ($pk_q < 3 && $pk_nq > 0) ? ($pk_q + $pk_nq) : $pk_q;
+
+                if ($pk_q < 3 && $pk_nq > 0 && ($pi['qty'] > $pk_q || $pk_new_p > $pk_cur_p) && $pk_new_p > 0) {
+                    $applied_p = ($pk_new_p > $pk_cur_p) ? $pk_new_p : $pk_cur_p;
+                    $unit_cap = ($pk_ca_p > 0) ? $pk_ca_p : max(0, $applied_p - $pk_mu_p);
+                    $unit_mu = ($pk_mu_p > 0) ? $pk_mu_p : max(0, $applied_p - $unit_cap);
+                    $unit_prof = max(0, $applied_p - $unit_cap);
+                    $pi['price'] = $applied_p;
+                    $pi['batch_rollover_active'] = true;
+                    $pi['rollover_old_price'] = $pk_cur_p;
+                    $pi['rollover_new_price'] = $applied_p;
+                    $pi['rollover_orig_stock'] = $pk_q;
+                    $pi['rollover_new_qty'] = $pk_nq;
+                    $pi['rollover_capital_price'] = $unit_cap;
+                    $pi['rollover_markup'] = $unit_mu;
+                    $pi['rollover_unit_profit'] = $unit_prof;
+                    $pi['rollover_total_capital'] = round($unit_cap * $pi['qty'], 2);
+                    $pi['rollover_total_profit'] = round($unit_prof * $pi['qty'], 2);
+                } else {
+                    $pi['batch_rollover_active'] = !empty($pi['batch_rollover_active']);
+                }
             } elseif (!isset($pi['stock'])) {
                 $pi['stock'] = 0;
             }
@@ -1786,7 +2075,7 @@ if (!empty($active_pos_cart)) {
 
 // Read saved customer & fulfillment info from session if present
 $saved_checkout = !empty($_SESSION['supplier_checkout_cart']) ? $_SESSION['supplier_checkout_cart'] : null;
-$saved_cust = !empty($saved_checkout['customer']) ? $saved_checkout['customer'] : null;
+$saved_cust = !empty($saved_checkout['customer']) ? $saved_cust['customer'] : null;
 $saved_fulfillment = !empty($saved_checkout['fulfillment']) ? $saved_checkout['fulfillment'] : null;
 $saved_payment_method = !empty($saved_checkout['payment_method']) ? $saved_checkout['payment_method'] : 'Cash (OTC)';
 
@@ -1861,7 +2150,13 @@ foreach ($raw_products as $prod) {
     }
 
     $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
+    $clean_new_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_new_price'] ?? 0)));
+    $clean_capital_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_capital_price'] ?? 0)));
+    $clean_markup = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_markup'] ?? 0)));
     $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
+    $clean_new_qty = isset($prod['p_new_qty']) && $prod['p_new_qty'] !== '' ? max(0, intval(preg_replace('/[^0-9]/', '', strval($prod['p_new_qty'])))) : 0;
+    $effective_orderable_stock = ($clean_new_qty > 0) ? ($clean_stock + $clean_new_qty) : $clean_stock;
+
     $img_src = (!empty($prod['p_featured_photo']) && file_exists('../assets/uploads/'.$prod['p_featured_photo'])) 
         ? '../assets/uploads/'.$prod['p_featured_photo'] 
         : '../assets/uploads/photo-6.jpg';
@@ -1892,7 +2187,13 @@ foreach ($raw_products as $prod) {
         'rated_current' => $parsed_spec['rated_current'],
         'length' => $parsed_spec['length'],
         'price' => $clean_price,
-        'stock' => $clean_stock,
+        'orig_price' => $clean_price,
+        'new_price' => $clean_new_price,
+        'capital_price' => $clean_capital_price,
+        'markup' => $clean_markup,
+        'stock' => $effective_orderable_stock,
+        'orig_stock' => $clean_stock,
+        'new_qty' => $clean_new_qty,
         'photo' => $img_src,
         'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic'
     );
@@ -1914,12 +2215,12 @@ foreach ($raw_products as $prod) {
             'photo' => $img_src,
             'min_price' => $clean_price,
             'max_price' => $clean_price,
-            'total_stock' => $clean_stock,
+            'total_stock' => $effective_orderable_stock,
             'variants' => array($variant_item)
         );
     } else {
         $grouped_products[$group_key]['variants'][] = $variant_item;
-        $grouped_products[$group_key]['total_stock'] += $clean_stock;
+        $grouped_products[$group_key]['total_stock'] += $effective_orderable_stock;
         if ($clean_price < $grouped_products[$group_key]['min_price']) {
             $grouped_products[$group_key]['min_price'] = $clean_price;
         }
@@ -3186,6 +3487,22 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <?php endif; ?>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Pre-Payment Option 1 Batch Rollover Notification / Alert (Cashier & Admin Only) -->
+                    <div id="posBatchRolloverAlert" style="display: none; background: #fffbeb; border: 2px solid #f59e0b; border-left: 5px solid #d97706; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; color: #78350f; box-shadow: 0 2px 6px rgba(217, 119, 6, 0.12);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                            <span class="label label-warning" style="background: #d97706; font-size: 10.5px; font-weight: 800; padding: 3px 8px; text-transform: uppercase; letter-spacing: 0.4px;">
+                                <i class="fa fa-bell"></i> PRE-PAYMENT ALERT &bull; RULE 1A (OPTION 1: BATCH ROLLOVER)
+                            </span>
+                            <span style="font-size: 11px; font-weight: 800; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 4px;">
+                                <i class="fa fa-eye-slash"></i> Cashier &amp; Admin Only
+                            </span>
+                        </div>
+                        <div style="font-size: 12px; font-weight: 700; color: #92400e; line-height: 1.35; margin-bottom: 8px;">
+                            Critical low stock (&lt; 3) with higher-priced new batch detected. Selling price, capital price, mark-up amount, and profit amount have been updated for this Purchase Order before payment:
+                        </div>
+                        <div id="posBatchRolloverItemsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
                     </div>
 
                     <!-- Down-Trade Exchange Notification Banner (shown when replacement item is cheaper than returned item) -->
@@ -4835,6 +5152,67 @@ window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
             </div>
             
             <div class="modal-body" style="padding: 16px; background: #f1f5f9; text-align: center; max-height: 70vh; overflow-y: auto;">
+                <?php
+                $po_rollover_items = [];
+                if (!empty($pos_po_success_data['items']) && is_array($pos_po_success_data['items'])) {
+                    foreach ($pos_po_success_data['items'] as $po_it) {
+                        if (!empty($po_it['batch_rollover_active'])) {
+                            $po_rollover_items[] = $po_it;
+                        }
+                    }
+                }
+                if (!empty($po_rollover_items)):
+                ?>
+                <div style="text-align: left; background: #fffbeb; border: 2px solid #f59e0b; border-left: 5px solid #d97706; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; color: #78350f; box-shadow: 0 2px 6px rgba(217, 119, 6, 0.12);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <span class="label label-warning" style="background: #d97706; font-size: 10.5px; font-weight: 800; padding: 3px 8px; text-transform: uppercase;">
+                            <i class="fa fa-bell"></i> PRE-PAYMENT ALERT &bull; RULE 1A (OPTION 1: BATCH ROLLOVER)
+                        </span>
+                        <span style="font-size: 11px; font-weight: 800; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 4px;">
+                            <i class="fa fa-eye-slash"></i> Cashier &amp; Admin Only (Not Printed on Customer Slip)
+                        </span>
+                    </div>
+                    <div style="font-size: 12px; font-weight: 700; color: #92400e; margin-bottom: 8px;">
+                        Critical low stock (&lt; 3) merged with new higher-priced batch. Updated cost &amp; profit breakdown before payment:
+                    </div>
+                    <?php foreach ($po_rollover_items as $ro_it):
+                        $ro_q = intval($ro_it['qty']);
+                        $ro_old_p = floatval($ro_it['rollover_old_price'] ?? 0);
+                        $ro_new_p = floatval($ro_it['rollover_new_price'] ?? $ro_it['price']);
+                        $ro_orig_s = intval($ro_it['rollover_orig_stock'] ?? 0);
+                        $ro_nq_s = intval($ro_it['rollover_new_qty'] ?? 0);
+                        $ro_cap = floatval($ro_it['rollover_capital_price'] ?? 0);
+                        $ro_mu = floatval($ro_it['rollover_markup'] ?? 0);
+                        $ro_u_prof = floatval($ro_it['rollover_unit_profit'] ?? max(0, $ro_new_p - $ro_cap));
+                        $ro_tot_prof = floatval($ro_it['rollover_total_profit'] ?? ($ro_u_prof * $ro_q));
+                    ?>
+                    <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px;">
+                        <div style="font-weight: 800; color: #0f172a; margin-bottom: 4px;">
+                            <?php echo htmlspecialchars($ro_it['name']); ?> &bull; Ordered: <?php echo $ro_q; ?> pcs
+                            <span style="font-weight: 600; color: #b45309; font-size: 11px;">(Old Stock: <?php echo $ro_orig_s; ?> + New Batch: <?php echo $ro_nq_s; ?> &rarr; <?php echo ($ro_orig_s + $ro_nq_s); ?> Available)</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 11.5px;">
+                            <div style="background: #f8fafc; padding: 4px 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                <div style="color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase;">Selling Price</div>
+                                <div style="font-weight: 800; color: #1e40af;"><span style="text-decoration: line-through; color: #94a3b8; font-weight: 600;">&#8369;<?php echo number_format($ro_old_p, 2); ?></span> &rarr; &#8369;<?php echo number_format($ro_new_p, 2); ?></div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 4px 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                <div style="color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase;">Capital Price</div>
+                                <div style="font-weight: 800; color: #334155;">&#8369;<?php echo number_format($ro_cap, 2); ?> / pc</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 4px 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                <div style="color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase;">Mark-Up Amt</div>
+                                <div style="font-weight: 800; color: #d97706;">+&#8369;<?php echo number_format($ro_mu, 2); ?> / pc</div>
+                            </div>
+                            <div style="background: #ecfdf5; padding: 4px 6px; border-radius: 4px; border: 1px solid #a7f3d0;">
+                                <div style="color: #065f46; font-size: 10px; font-weight: 700; text-transform: uppercase;">Net Profit (<?php echo $ro_q; ?> pcs)</div>
+                                <div style="font-weight: 900; color: #059669;">&#8369;<?php echo number_format($ro_tot_prof, 2); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
                 <div id="posPrintPOArea" style="display: inline-block; text-align: left; background: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.12); border-radius: 4px; padding: 12px; margin: 0 auto;">
                     <div style="text-align: center;">
                         <div class="pos-company-header" style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;">SAM &amp; INRI CONSTRUCTION SUPPLY</div>
@@ -4889,15 +5267,19 @@ window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
                                 $item_net = isset($item['line_net']) ? floatval($item['line_net']) : max(0, $item_gross - $item_disc);
                                 $is_special = isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER';
                                 $unit_label = ($item_qty > 1 ? 'pcs' : 'pc');
+                                $clean_po_item_details = trim(preg_replace('/\s*\|?\s*\[Option 1 Batch Rollover:[^\]]+\]/i', '', $item['product_details'] ?? ''), " \t\n\r\0\x0B|");
                             ?>
                             <tr>
                                 <td colspan="2" style="text-align: left; padding-top: 3px; font-weight: bold; word-break: break-word;">
                                     <?php if ($is_special): ?>[SPECIAL ORDER] <?php endif; ?>
                                     <?php echo htmlspecialchars($item['name']); ?>
-                                    <?php if (!empty($item['product_details'])): ?>
-                                        <div style="font-size: 9pt; font-weight: normal; margin-top: 1px;"><?php echo htmlspecialchars($item['product_details']); ?></div>
+                                    <?php if (!empty($clean_po_item_details)): ?>
+                                        <div style="font-size: 9pt; font-weight: normal; margin-top: 1px;"><?php echo htmlspecialchars($clean_po_item_details); ?></div>
                                     <?php elseif (!empty($item['variant_details'])): ?>
                                         <div style="font-size: 9pt; font-weight: normal; margin-top: 1px;"><?php echo htmlspecialchars($item['variant_details']); ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($item['batch_rollover_active'])): ?>
+                                        <div style="font-size: 8.5pt; font-weight: normal; margin-top: 1px;">* New Batch Rate Applied</div>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -5510,8 +5892,16 @@ function onVariantSelectChange(variantId) {
         addBtn.disabled = true;
         qtyInput.disabled = true;
     } else {
-        stockBadge.className = (variant.stock < 10) ? 'label label-warning' : 'label label-success';
-        stockBadge.innerText = `${variant.stock} in stock`;
+        const vOrigStock = (variant.orig_stock !== undefined) ? parseInt(variant.orig_stock, 10) : parseInt(variant.stock, 10);
+        const vNewQty = parseInt(variant.new_qty || 0, 10);
+        stockBadge.className = (variant.stock < 10 || (vOrigStock < 3 && vNewQty > 0)) ? 'label label-warning' : 'label label-success';
+        if (vOrigStock < 3 && vNewQty > 0) {
+            stockBadge.innerText = `${variant.stock} in stock (${vOrigStock} Old + ${vNewQty} New Batch)`;
+        } else if (vOrigStock >= 3 && vNewQty > 0) {
+            stockBadge.innerText = `${vOrigStock} in stock (+${vNewQty} Held in NQ | Total: ${variant.stock})`;
+        } else {
+            stockBadge.innerText = `${variant.stock} in stock`;
+        }
         addBtn.disabled = false;
         qtyInput.disabled = false;
         qtyInput.max = variant.stock;
@@ -5573,7 +5963,16 @@ function onModalQtyChange() {
 function calcModalSubtotal() {
     if (!currentSelectedVariant) return;
     const qty = parseInt(document.getElementById('vModalQtyInput').value) || 1;
-    const subtotal = currentSelectedVariant.price * qty;
+    const vOrigStock = (currentSelectedVariant.orig_stock !== undefined) ? parseInt(currentSelectedVariant.orig_stock, 10) : parseInt(currentSelectedVariant.stock, 10);
+    const vNewQty = parseInt(currentSelectedVariant.new_qty || 0, 10);
+    const vOrigPrice = parseFloat(currentSelectedVariant.orig_price !== undefined ? currentSelectedVariant.orig_price : currentSelectedVariant.price) || 0;
+    const vNewPrice = parseFloat(currentSelectedVariant.new_price || 0) || 0;
+    let effectiveUnit = vOrigPrice;
+    if (vNewQty > 0 && ((vOrigStock < 3 && (qty > vOrigStock || vNewPrice > vOrigPrice)) || qty > vOrigStock) && vNewPrice > 0) {
+        effectiveUnit = (qty > vOrigStock || vNewPrice > vOrigPrice) ? vNewPrice : vOrigPrice;
+    }
+    document.getElementById('vModalPrice').innerText = effectiveUnit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const subtotal = effectiveUnit * qty;
     document.getElementById('vModalItemSubtotal').innerText = subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
@@ -5591,10 +5990,64 @@ function submitVariantToCart() {
     $('#posVariantModal').modal('hide');
 }
 
+// Evaluate Rule 1A (Option 1: Critical Low Stock < 3 & Option A: Order Qty > Q Pulls Held NQ at New Price) on a cart item
+function evaluateItemBatchRollover(item) {
+    if (!item || item.item_type === 'SPECIAL_ORDER' || item.item_type === 'RETURN_CREDIT') {
+        if (item) item.batch_rollover_active = false;
+        return;
+    }
+    if (item.from_existing_po) {
+        const lockedP = parseFloat(item.locked_unit_price || item.price || 0);
+        if (lockedP > 0) item.price = lockedP;
+        if (item.batch_rollover_active) {
+            const unitCap = parseFloat(item.rollover_capital_price || item.capital_price || 0);
+            const unitProf = Math.max(0, lockedP - unitCap);
+            item.rollover_unit_profit = unitProf;
+            item.rollover_total_capital = round2(unitCap * item.qty);
+            item.rollover_total_profit = round2(unitProf * item.qty);
+        }
+        return;
+    }
+    const origStock = (item.orig_stock !== undefined) ? parseInt(item.orig_stock, 10) : parseInt(item.stock, 10);
+    const newQty = parseInt(item.new_qty || 0, 10);
+    const origPrice = parseFloat(item.orig_price !== undefined ? item.orig_price : item.price) || 0;
+    const newPrice = parseFloat(item.new_price || 0) || 0;
+    const capPrice = parseFloat(item.capital_price || 0) || 0;
+    const markupVal = parseFloat(item.markup || 0) || 0;
+
+    if ((newQty > 0 && ((origStock < 3 && (item.qty > origStock || newPrice > origPrice)) || item.qty > origStock) && newPrice > 0) || (item.batch_rollover_active && item.rollover_new_price > 0 && newQty === 0)) {
+        item.batch_rollover_active = true;
+        const activeNewPrice = (item.qty > origStock && newPrice > 0) ? newPrice : ((newPrice > origPrice) ? newPrice : (parseFloat(item.rollover_new_price) || origPrice));
+        item.price = activeNewPrice;
+        item.rollover_old_price = (item.rollover_old_price !== undefined && item.rollover_old_price > 0) ? parseFloat(item.rollover_old_price) : origPrice;
+        item.rollover_new_price = activeNewPrice;
+        item.rollover_orig_stock = (item.rollover_orig_stock !== undefined) ? parseInt(item.rollover_orig_stock, 10) : origStock;
+        item.rollover_new_qty = (item.rollover_new_qty !== undefined && item.rollover_new_qty > 0) ? parseInt(item.rollover_new_qty, 10) : newQty;
+
+        const unitCap = (capPrice > 0) ? capPrice : Math.max(0, activeNewPrice - markupVal);
+        const unitMu = (markupVal > 0) ? markupVal : Math.max(0, activeNewPrice - unitCap);
+        const unitProf = Math.max(0, activeNewPrice - unitCap);
+
+        item.rollover_capital_price = unitCap;
+        item.rollover_markup = unitMu;
+        item.rollover_unit_profit = unitProf;
+        item.rollover_total_capital = round2(unitCap * item.qty);
+        item.rollover_total_profit = round2(unitProf * item.qty);
+    } else {
+        item.batch_rollover_active = false;
+        if (origPrice > 0) {
+            item.price = origPrice;
+        }
+    }
+}
+
 // Add Variant to Cart with Specific Qty
 function addVariantToCart(variant, qty) {
     const existingIndex = cart.findIndex(item => (item.id === variant.id || String(item.id) === String(variant.id)) && item.item_type !== 'SPECIAL_ORDER');
+    let targetItem = null;
+    let prevQty = 0;
     if (existingIndex > -1) {
+        prevQty = parseInt(cart[existingIndex].qty || 0, 10);
         const potentialQty = cart[existingIndex].qty + qty;
         if (potentialQty <= variant.stock) {
             cart[existingIndex].qty = potentialQty;
@@ -5602,11 +6055,13 @@ function addVariantToCart(variant, qty) {
             alert(`Cannot add more than available inventory (${variant.stock} units). Currently in cart: ${cart[existingIndex].qty}`);
             cart[existingIndex].qty = variant.stock;
         }
+        evaluateItemBatchRollover(cart[existingIndex]);
+        targetItem = cart[existingIndex];
     } else {
         if (qty > variant.stock) {
             qty = variant.stock;
         }
-        cart.push({
+        const newItem = {
             id: variant.id,
             item_type: 'STANDARD',
             sku: variant.sku,
@@ -5619,9 +6074,25 @@ function addVariantToCart(variant, qty) {
             color: variant.color || '',
             material: variant.material || '',
             price: variant.price,
+            orig_price: (variant.orig_price !== undefined) ? variant.orig_price : variant.price,
+            new_price: variant.new_price || 0,
+            capital_price: variant.capital_price || 0,
+            markup: variant.markup || 0,
             stock: variant.stock,
+            orig_stock: (variant.orig_stock !== undefined) ? variant.orig_stock : variant.stock,
+            new_qty: variant.new_qty || 0,
             qty: qty
-        });
+        };
+        evaluateItemBatchRollover(newItem);
+        cart.push(newItem);
+        targetItem = newItem;
+    }
+    if (targetItem && targetItem.batch_rollover_active) {
+        const origStock = (targetItem.orig_stock !== undefined) ? parseInt(targetItem.orig_stock, 10) : parseInt(targetItem.stock, 10);
+        const heldNq = parseInt(targetItem.new_qty || 0, 10);
+        if (origStock >= 3 && heldNq > 0 && prevQty <= origStock && targetItem.qty > origStock) {
+            alert('In-Stock inventory is ' + origStock + ' units. Since order quantity (' + targetItem.qty + ') exceeds ' + origStock + ', the held New Quantity (' + heldNq + ' units) has been pulled in and New Price (₱' + parseFloat(targetItem.price).toFixed(2) + ') applied to complete the total order.');
+        }
     }
     renderCart();
 }
@@ -5633,6 +6104,7 @@ function addVariantToCart(variant, qty) {
 function updateCartQty(itemId, newQty) {
     const item = cart.find(i => i.id === itemId || String(i.id) === String(itemId));
     if (item) {
+        const prevQty = parseInt(item.qty || 0, 10);
         newQty = parseInt(newQty);
         if (newQty <= 0) {
             removeFromCart(itemId);
@@ -5651,6 +6123,16 @@ function updateCartQty(itemId, newQty) {
             item.qty = item.stock;
         } else {
             item.qty = newQty;
+        }
+
+        evaluateItemBatchRollover(item);
+
+        if (item.item_type !== 'SPECIAL_ORDER' && item.item_type !== 'RETURN_CREDIT' && item.batch_rollover_active) {
+            const origStock = (item.orig_stock !== undefined) ? parseInt(item.orig_stock, 10) : parseInt(item.stock, 10);
+            const heldNq = parseInt(item.new_qty || 0, 10);
+            if (origStock >= 3 && heldNq > 0 && prevQty <= origStock && item.qty > origStock) {
+                alert('In-Stock inventory is ' + origStock + ' units. Since order quantity (' + item.qty + ') exceeds ' + origStock + ', the held New Quantity (' + heldNq + ' units) has been pulled in and New Price (₱' + parseFloat(item.price).toFixed(2) + ') applied to complete the total order.');
+            }
         }
 
         // If item has an active discount, update amount proportionally based on discount_percent
@@ -5710,8 +6192,10 @@ function renderCart() {
     } else {
         let html = '';
         cart.forEach(item => {
+            evaluateItemBatchRollover(item);
             const isSpecialOrder = (item.item_type === 'SPECIAL_ORDER');
             const isReturnCredit = (item.item_type === 'RETURN_CREDIT');
+            const isRollover = !!item.batch_rollover_active;
             const grossLineTotal = item.price * item.qty;
             const itemIdStr = typeof item.id === 'string' ? `'${item.id}'` : item.id;
             
@@ -5729,6 +6213,9 @@ function renderCart() {
                     detailsHtml = `<div style="font-size: 11px; color: #475569; background: #fef3c7; border: 1px solid #fde68a; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.product_details)}</div>`;
                 }
             } else {
+                if (isRollover) {
+                    itemBadge = `<span class="label label-warning" style="background-color: #d97706; font-size: 9.5px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;" title="Rule 1A (Option 1): Critical low stock merged with new higher-priced batch"><i class="fa fa-level-up"></i> NEW BATCH RATE (₱${parseFloat(item.price).toFixed(2)})</span>`;
+                }
                 let specsArr = [];
                 if (item.spec_label && item.spec_label !== 'Standard') {
                     specsArr.push(`<span style="color: #0369a1; font-weight: 700; font-size: 11px;">${escapeHtml(item.spec_label)}</span>`);
@@ -5739,6 +6226,18 @@ function renderCart() {
                     if (item.color) specsArr.push(`<span class="pos-color-badge pos-color-${item.color.toLowerCase()}">${escapeHtml(item.color)}</span>`);
                 }
                 detailsHtml = specsArr.length > 0 ? `<div style="margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px;">${specsArr.join(' ')}</div>` : '';
+                if (isRollover) {
+                    const roOldP = parseFloat(item.rollover_old_price || item.orig_price || 0);
+                    const roCap = parseFloat(item.rollover_capital_price || 0);
+                    const roMu = parseFloat(item.rollover_markup || 0);
+                    const roTotProf = parseFloat(item.rollover_total_profit || 0);
+                    detailsHtml += `
+                        <div style="font-size: 10.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.35;">
+                            <strong>Option 1 Rollover:</strong> Old ₱${roOldP.toFixed(2)} &rarr; <strong>₱${parseFloat(item.price).toFixed(2)}</strong><br>
+                            <span>Cap: <strong>₱${roCap.toFixed(2)}</strong> | Mark-Up: <strong>+₱${roMu.toFixed(2)}</strong> | Profit: <strong style="color:#059669;">₱${roTotProf.toFixed(2)}</strong></span>
+                        </div>
+                    `;
+                }
             }
 
             const refOrSku = isSpecialOrder 
@@ -5820,13 +6319,13 @@ function renderCart() {
             }
 
             html += `
-                <tr ${isReturnCredit ? 'style="background-color: #fef2f2;"' : (isSpecialOrder ? 'style="background-color: #fffbeb;"' : '')}>
+                <tr ${isReturnCredit ? 'style="background-color: #fef2f2;"' : ((isSpecialOrder || isRollover) ? 'style="background-color: #fffbeb;"' : '')}>
                     <td style="padding: 8px 4px;">
                         ${itemBadge}
                         <strong style="color: #0f172a; font-size: 13px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
                         ${detailsHtml}
                         <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-top: 2px;">
-                            ${refOrSku}&#8369;${Math.abs(item.price).toFixed(2)} each
+                            ${refOrSku}${isRollover && parseFloat(item.rollover_old_price || 0) !== parseFloat(item.price) ? `<span style="text-decoration: line-through; color: #94a3b8; margin-right: 4px;">&#8369;${parseFloat(item.rollover_old_price).toFixed(2)}</span>` : ''}&#8369;${Math.abs(item.price).toFixed(2)} each
                         </div>
                         ${discountSectionHtml}
                     </td>
@@ -5863,11 +6362,15 @@ function updatePOSCalculations() {
     let totalDiscountSavings = 0;
     let totalReturnCredits = 0;
     let hasPendingDiscounts = false;
+    let rolloverItems = [];
 
     cart.forEach(item => {
         if (item.item_type === 'RETURN_CREDIT') {
             totalReturnCredits += Math.abs(item.price) * item.qty;
             return;
+        }
+        if (item.batch_rollover_active) {
+            rolloverItems.push(item);
         }
         const itemGross = item.price * item.qty;
         grossSubtotal += itemGross;
@@ -5879,6 +6382,70 @@ function updatePOSCalculations() {
             hasPendingDiscounts = true;
         }
     });
+
+    // Render Pre-Payment Batch Rollover Alert (Cashier & Admin Notification)
+    const batchRolloverAlert = document.getElementById('posBatchRolloverAlert');
+    const batchRolloverList = document.getElementById('posBatchRolloverItemsList');
+    if (batchRolloverAlert && batchRolloverList) {
+        if (rolloverItems.length > 0) {
+            let roHtml = '';
+            rolloverItems.forEach(ro => {
+                const oldP = parseFloat(ro.rollover_old_price || ro.orig_price || 0);
+                const newP = parseFloat(ro.rollover_new_price || ro.price || 0);
+                const origQ = parseInt(ro.rollover_orig_stock ?? ro.orig_stock ?? 0, 10);
+                const newQ = parseInt(ro.rollover_new_qty ?? ro.new_qty ?? 0, 10);
+                const mergedQ = origQ + newQ;
+                const remQ = Math.max(0, mergedQ - parseInt(ro.qty, 10));
+                const capP = parseFloat(ro.rollover_capital_price || ro.capital_price || 0);
+                const muP = parseFloat(ro.rollover_markup || ro.markup || 0);
+                const unitProf = parseFloat(ro.rollover_unit_profit || Math.max(0, newP - capP));
+                const totCap = parseFloat(ro.rollover_total_capital || (capP * ro.qty));
+                const totProf = parseFloat(ro.rollover_total_profit || (unitProf * ro.qty));
+
+                roHtml += `
+                    <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 10px; font-size: 11.5px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 4px;">
+                            <strong style="color: #0f172a; font-size: 12.5px;">${escapeHtml(ro.base_name || ro.name)} (${ro.qty} pcs)</strong>
+                            <span style="font-size: 11px; font-weight: 700; color: #b45309;">
+                                Stock Merged: ${origQ} Old + ${newQ} New = ${mergedQ} Avail (${remQ} left after order)
+                            </span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+                            <div style="background: #f8fafc; padding: 5px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Selling Price (Unit)</div>
+                                <div style="font-weight: 800; color: #1e40af; font-size: 12.5px;">
+                                    <span style="text-decoration: line-through; color: #94a3b8; font-weight: 600;">₱${oldP.toFixed(2)}</span> &rarr; ₱${newP.toFixed(2)}
+                                </div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 5px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Capital Price (Ca)</div>
+                                <div style="font-weight: 800; color: #334155; font-size: 12.5px;">
+                                    ₱${capP.toFixed(2)}/pc <span style="font-size: 10.5px; color: #64748b; font-weight: 600;">(Total: ₱${totCap.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})})</span>
+                                </div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 5px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Mark-Up Amount</div>
+                                <div style="font-weight: 800; color: #d97706; font-size: 12.5px;">
+                                    +₱${muP.toFixed(2)}/pc
+                                </div>
+                            </div>
+                            <div style="background: #ecfdf5; padding: 5px 8px; border-radius: 4px; border: 1px solid #a7f3d0;">
+                                <div style="font-size: 10px; color: #065f46; font-weight: 700; text-transform: uppercase;">Net Profit Amount</div>
+                                <div style="font-weight: 900; color: #059669; font-size: 13px;">
+                                    ₱${totProf.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="font-size: 10.5px; font-weight: 700;">(₱${unitProf.toFixed(2)} &times; ${ro.qty})</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            batchRolloverList.innerHTML = roHtml;
+            batchRolloverAlert.style.display = 'block';
+        } else {
+            batchRolloverList.innerHTML = '';
+            batchRolloverAlert.style.display = 'none';
+        }
+    }
 
     const isLocationActive = document.getElementById('locationRadio').checked;
     const deliveryFeeRow = document.getElementById('deliveryFeeRow');
