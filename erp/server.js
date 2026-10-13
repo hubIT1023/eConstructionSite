@@ -163,7 +163,11 @@ const server = http.createServer(async (req, res) => {
 
   try {
     // Health Check
-    if (pathname === '/api/health' && method === 'GET') {
+    if (pathname === '/api/health' && (method === 'GET' || method === 'HEAD')) {
+      if (method === 'HEAD') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end();
+      }
       return sendJson(res, 200, { status: 'UP', service: 'eConstructionSite ERP Tenant Hub', port });
     }
 

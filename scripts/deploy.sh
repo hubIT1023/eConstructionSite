@@ -96,11 +96,17 @@ docker compose up -d erp 2>/dev/null || docker-compose up -d erp 2>/dev/null || 
 
 # 6. Post-deployment Health Check
 log "Step 6: Running health checks..."
-sleep 3
+HTTP_ERP="000"
+for i in $(seq 1 12); do
+    HTTP_ERP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/health || echo "000")
+    if [ "${HTTP_ERP}" = "200" ]; then
+        break
+    fi
+    sleep 1
+done
 
 HTTP_LOCAL=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9090/ || echo "000")
 HTTP_PUBLIC=$(curl -s -k -o /dev/null -w "%{http_code}" https://econstruction-supply.site/ || echo "000")
-HTTP_ERP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/health || echo "000")
 
 log "Health check response: Local POS port 9090: [${HTTP_LOCAL}], Public domain: [${HTTP_PUBLIC}], Local ERP port 4000: [${HTTP_ERP}]"
 
