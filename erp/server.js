@@ -160,6 +160,15 @@ const requestHandler = async (req, res) => {
   }
   const method = req.method;
 
+  // Auto-redirect direct public port 4000 visits to clean https://econstruction-supply.site/erp
+  const hostHeader = req.headers.host || '';
+  const isDirectPort4000 = hostHeader.includes(':4000') && !hostHeader.startsWith('localhost') && !hostHeader.startsWith('127.0.0.1');
+  if (isDirectPort4000 && (pathname === '/' || pathname === '/index.html')) {
+    const redirectUrl = 'https://econstruction-supply.site/erp' + (parsedUrl.search || '');
+    res.writeHead(302, { 'Location': redirectUrl });
+    return res.end();
+  }
+
   if (method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
