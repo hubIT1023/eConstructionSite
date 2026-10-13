@@ -152,7 +152,12 @@ async function runPosSyncWorker() {
 // --------------------------------------------------------------------------
 const requestHandler = async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
-  const pathname = parsedUrl.pathname;
+  let pathname = parsedUrl.pathname;
+  if (pathname === '/erp') {
+    pathname = '/';
+  } else if (pathname.startsWith('/erp/')) {
+    pathname = pathname.substring(4);
+  }
   const method = req.method;
 
   if (method === 'OPTIONS') {
@@ -2045,6 +2050,16 @@ function getTenantDashboardHtml() {
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    // Automatic API Base Resolution: routes to /erp/api/... when accessed behind /erp reverse proxy
+    const _nativeFetch = window.fetch;
+    window.fetch = function(input, init) {
+      if (typeof input === 'string' && input.startsWith('/api/')) {
+        const prefix = window.location.pathname.startsWith('/erp') ? '/erp' : '';
+        input = prefix + input;
+      }
+      return _nativeFetch.call(this, input, init);
+    };
+
     let currentSupplierId = 1;
     let currentSupplierName = 'eConstruction Store ERP';
     let currentWaterfallPeriod = 'daily';
@@ -2157,6 +2172,11 @@ function getTenantDashboardHtml() {
         currentSupplierName = cookieStoreName;
         const nameEl = document.getElementById('activeTenantName');
         if (nameEl) nameEl.textContent = currentSupplierName;
+      }
+
+      // Sanitize URL query parameters immediately to prevent exposing ?supplier_id=... in browser address bar
+      if (window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
 
       const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';

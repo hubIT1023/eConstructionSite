@@ -12,8 +12,11 @@ if (!defined('ERP_LOCAL_URL')) {
     $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') 
         || ($_SERVER['SERVER_PORT'] ?? 80) == 443 
         || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
-    $erp_proto = ($is_https && !in_array($h_only, ['localhost', '127.0.0.1'])) ? 'https://' : 'http://';
-    define('ERP_LOCAL_URL', $erp_proto . $erp_h . ':4000');
+    if ($is_https && !in_array($h_only, ['localhost', '127.0.0.1'])) {
+        define('ERP_LOCAL_URL', 'https://' . $erp_h . '/erp');
+    } else {
+        define('ERP_LOCAL_URL', 'http://' . $erp_h . ':4000');
+    }
 }
 
 /**
