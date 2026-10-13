@@ -624,7 +624,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                             product_details,
                             capital_price,
                             markup_amount
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
