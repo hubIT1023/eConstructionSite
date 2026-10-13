@@ -267,7 +267,11 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
                             $req_host_raw = $_SERVER['HTTP_HOST'] ?? 'localhost';
                             $req_host_only = explode(':', $req_host_raw)[0];
                             $erp_host = in_array($req_host_only, ['localhost', '127.0.0.1']) ? 'localhost' : $req_host_only;
-                            $erp_switch_url = 'http://' . $erp_host . ':4000/?supplier_id=' . (int)$supplier_id 
+                            $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') 
+                                || ($_SERVER['SERVER_PORT'] ?? 80) == 443 
+                                || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+                            $erp_proto = ($is_https && !in_array($req_host_only, ['localhost', '127.0.0.1'])) ? 'https://' : 'http://';
+                            $erp_switch_url = $erp_proto . $erp_host . ':4000/?supplier_id=' . (int)$supplier_id 
                                 . '&user_name=' . urlencode($_SESSION['supplier_user']['full_name'] ?? 'Supplier Admin') 
                                 . '&role=' . urlencode(get_role_display_name($user_role));
                         ?>

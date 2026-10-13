@@ -92,6 +92,9 @@ chmod -R 775 "${APP_DIR}/assets/uploads" 2>/dev/null || true
 
 # 5b. Start or update ERP Tenant Hub container
 log "Step 5b: Ensuring ERP Tenant Hub container is running..."
+if [ -d "/root/mes/letsencrypt" ]; then
+    export SSL_CERTS_DIR="/root/mes/letsencrypt"
+fi
 docker compose up -d erp 2>/dev/null || docker-compose up -d erp 2>/dev/null || true
 
 # 6. Post-deployment Health Check

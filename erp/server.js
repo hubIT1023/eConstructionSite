@@ -1,5 +1,8 @@
+const net = require('net');
 const http = require('http');
+const https = require('https');
 const url = require('url');
+const fs = require('fs');
 const { Pool } = require('pg');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env.erp') });
@@ -147,7 +150,7 @@ async function runPosSyncWorker() {
 // --------------------------------------------------------------------------
 // 2. HTTP SERVER & API ROUTES FOR TENANT ADMIN
 // --------------------------------------------------------------------------
-const server = http.createServer(async (req, res) => {
+const requestHandler = async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
   const method = req.method;
@@ -914,6 +917,46 @@ const server = http.createServer(async (req, res) => {
     console.error('[Server Error]:', err);
     return sendJson(res, 500, { error: err.message });
   }
+};
+
+const httpServer = http.createServer(requestHandler);
+
+// SSL Certificate Detection for Production (Let's Encrypt / Production or Custom)
+const certPath = process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/econstruction-supply.site/fullchain.pem';
+const keyPath = process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/econstruction-supply.site/privkey.pem';
+
+let httpsServer = null;
+if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+  try {
+    httpsServer = https.createServer({
+      cert: fs.readFileSync(certPath),
+      key: fs.readFileSync(keyPath)
+    }, requestHandler);
+    console.log('[ERP SSL]: Loaded Let\'s Encrypt certificates successfully from', certPath);
+  } catch (sslErr) {
+    console.warn('[ERP SSL Warning]: Could not initialize HTTPS server:', sslErr.message);
+  }
+}
+
+// Dual HTTP/HTTPS Connection Multiplexer on port 4000
+const tcpServer = net.createServer((socket) => {
+  socket.once('data', (buffer) => {
+    socket.pause();
+    socket.unshift(buffer);
+    // 0x16 (22) is TLS Handshake record type in SSLv3/TLS1.x
+    if (buffer[0] === 22 && httpsServer) {
+      httpsServer.emit('connection', socket);
+    } else {
+      httpServer.emit('connection', socket);
+    }
+    process.nextTick(() => socket.resume());
+  });
+
+  socket.on('error', (err) => {
+    if (err.code !== 'ECONNRESET') {
+      console.warn('[ERP Socket Error]:', err.message);
+    }
+  });
 });
 
 // Full-featured Tenant Admin Dashboard (Matching POS AdminLTE Layout on Port 9090)
@@ -2124,6 +2167,8 @@ function getTenantDashboardHtml() {
       if (posLink) posLink.href = posReturnTarget;
       const logoLink = document.getElementById('logoReturnLink');
       if (logoLink) logoLink.href = posReturnTarget;
+      const sidebarPosLink = document.getElementById('sidebarPosLink');
+      if (sidebarPosLink) sidebarPosLink.href = posReturnTarget;
 
       await loadTenants();
       await loadAllData();
@@ -3958,11 +4003,12 @@ function getTenantDashboardHtml() {
 </html>`;
 }
 
-server.listen(port, () => {
+tcpServer.listen(port, () => {
   console.log(`=======================================================`);
-  console.log(`  eConstructionSite ERP Tenant Hub running on localhost:${port}`);
+  console.log(`  eConstructionSite ERP Tenant Hub running on port ${port}`);
+  console.log(`  Mode: ${httpsServer ? 'Dual HTTPS & HTTP (SSL Active)' : 'Plain HTTP (Local Dev)'}`);
   console.log(`  Targeting PostgreSQL: ${process.env.DB_HOST}:${process.env.DB_PORT}`);
-  console.log(`  Tenant Admin Dashboard: http://localhost:${port}`);
+  console.log(`  Tenant Admin Dashboard: ${httpsServer ? 'https' : 'http'}://localhost:${port}`);
   console.log(`=======================================================`);
 });
 

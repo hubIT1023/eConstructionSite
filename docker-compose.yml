@@ -48,6 +48,7 @@ services:
     working_dir: /app/erp
     volumes:
       - .:/app
+      - ${SSL_CERTS_DIR:-./ssl}:/etc/letsencrypt:ro
     ports:
       - "4000:4000"
     environment:

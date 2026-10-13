@@ -9,7 +9,11 @@ if (!defined('ERP_LOCAL_URL')) {
     $req_h = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $h_only = explode(':', $req_h)[0];
     $erp_h = in_array($h_only, ['localhost', '127.0.0.1']) ? 'localhost' : $h_only;
-    define('ERP_LOCAL_URL', 'http://' . $erp_h . ':4000');
+    $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') 
+        || ($_SERVER['SERVER_PORT'] ?? 80) == 443 
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    $erp_proto = ($is_https && !in_array($h_only, ['localhost', '127.0.0.1'])) ? 'https://' : 'http://';
+    define('ERP_LOCAL_URL', $erp_proto . $erp_h . ':4000');
 }
 
 /**
