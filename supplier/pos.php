@@ -184,6 +184,8 @@ if (isset($_GET['clear_cart']) || isset($_GET['new_sale']) || isset($_GET['reset
     unset($_SESSION['pos_cart']);
     unset($_SESSION['supplier_checkout_cart']);
     unset($_SESSION['pos_po_success']);
+    unset($_SESSION['pos_last_receipt']);
+    unset($_SESSION['pos_last_processed_token']);
     $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
     $active_pos_cart = [];
 }
@@ -736,6 +738,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
     header('Content-Type: application/json');
     unset($_SESSION['pos_cart']);
     unset($_SESSION['supplier_checkout_cart']);
+    unset($_SESSION['pos_po_success']);
+    unset($_SESSION['pos_last_receipt']);
+    unset($_SESSION['pos_last_processed_token']);
+    $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
     echo json_encode(['status' => 'success']);
     exit;
 }
@@ -1463,41 +1469,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 }
 
                 if (empty($pos_order_error)) {
-                    // Check for rapid duplicate submission within 5 seconds for same supplier, customer and exact paid amount
-                    $is_rapid_dup = false;
-                    $dup_payment_id = '';
-                    try {
-                        $stmt_dup_chk = $pdo->prepare("
-                            SELECT payment_id, payment_date, paid_amount 
-                            FROM tbl_payment 
-                            WHERE supplier_id = ? 
-                              AND customer_name = ? 
-                              AND paid_amount = ? 
-                              AND NULLIF(payment_date, '')::timestamp >= (NOW() - INTERVAL '5 seconds')
-                            ORDER BY id DESC LIMIT 1
-                        ");
-                        $stmt_dup_chk->execute([
-                            $supplier_id,
-                            $customer_name,
-                            number_format($amount_paid, 2, '.', '')
-                        ]);
-                        $dup_row = $stmt_dup_chk->fetch(PDO::FETCH_ASSOC);
-                        if ($dup_row && !empty($dup_row['payment_id'])) {
-                            $is_rapid_dup = true;
-                            $dup_payment_id = $dup_row['payment_id'];
-                        }
-                    } catch (Exception $e) {
-                        $is_rapid_dup = false;
-                    }
-
-                    if ($is_rapid_dup && !empty($_SESSION['pos_last_receipt']) && (($_SESSION['pos_last_receipt']['payment_id'] ?? '') === $dup_payment_id)) {
-                        // Idempotent recovery: use cached receipt to avoid duplicate insertion & stock deduction
-                        $pos_success_receipt = $_SESSION['pos_last_receipt'];
-                        unset($_SESSION['pos_cart']);
-                        unset($_SESSION['supplier_checkout_cart']);
-                    } else {
-                        $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
-                        $payment_date = date('Y-m-d H:i:s');
+                    $payment_id = 'POS-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+                    $payment_date = date('Y-m-d H:i:s');
 
                     $tx_info = 'POS Terminal - Method: ' . $payment_method;
                     if (!empty($payment_reference)) {
@@ -1952,7 +1925,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 // Clear session cart on complete sale
                 unset($_SESSION['pos_cart']);
                 unset($_SESSION['supplier_checkout_cart']);
-                    }
                 }
             }
         }
@@ -4738,6 +4710,9 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 ?>
 <script>
 window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
+if (window.history && window.history.replaceState) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+}
 </script>
 <div class="modal fade in" id="posSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.65); z-index: 10080;">
     <div class="modal-dialog modal-lg" role="document" style="max-width: 720px; margin: 30px auto;">
@@ -5142,6 +5117,9 @@ window.posReceiptSuccessData = <?php echo json_encode($pos_success_receipt); ?>;
 ?>
 <script>
 window.posPOSuccessData = <?php echo json_encode($pos_po_success_data); ?>;
+if (window.history && window.history.replaceState) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+}
 </script>
 <div class="modal fade in" id="posPOSuccessModal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.65); z-index: 10080;">
     <div class="modal-dialog" role="document" style="max-width: 680px;">
@@ -10725,6 +10703,11 @@ $(document).ready(function() {
     toggleLocationOption();
     handlePaymentMethodChange();
     updatePOSCalculations();
+
+    // Ensure session receipt and URL are cleanly reset if modal is dismissed via ESC or backdrop click
+    $('#posSuccessModal, #posPOSuccessModal').on('hidden.bs.modal', function() {
+        closeReceiptModal();
+    });
     try {
         if (localStorage.getItem('pos_categories_collapsed') === '1') {
             const wrapper = document.getElementById('posCategoryAccordion');

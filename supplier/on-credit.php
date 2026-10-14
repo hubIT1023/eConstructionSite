@@ -61,6 +61,74 @@ if (!function_exists('ensure_credit_schema')) {
 }
 ensure_credit_schema($pdo);
 
+// Helper for parsing credit markup from transaction info
+if (!function_exists('parse_credit_markup')) {
+    function parse_credit_markup($row) {
+        $tx = is_array($row) ? ($row['bank_transaction_info'] ?? '') : strval($row);
+        $res = ['amount' => 0.0, 'label' => ''];
+        if (preg_match('/Credit Mark[\s-]*Up:\s*\+?(?:[^\d\s]+\s*)?([0-9,.]+)(?:\s*\(([^)]+)\))?/u', $tx, $m)) {
+            $res['amount'] = floatval(str_replace(',', '', $m[1]));
+            if (!empty($m[2])) {
+                $res['label'] = trim($m[2]);
+            }
+        }
+        return $res;
+    }
+}
+
+// Helper to extract delivery fee from transaction info
+if (!function_exists('parse_order_delivery_fee')) {
+    function parse_order_delivery_fee($row) {
+        $tx = is_array($row) ? ($row['bank_transaction_info'] ?? '') : strval($row);
+        if (preg_match('/Delivery (?:Fee|Cost):\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            return floatval(str_replace(',', '', $m[1]));
+        }
+        return 0.0;
+    }
+}
+
+// Helper to extract due date from transaction info or calculate from payment date
+if (!function_exists('parse_order_due_date')) {
+    function parse_order_due_date($tx_info, $payment_date, $payment_method) {
+        if (preg_match('/(?:Due Date|Due)[:\s]+([0-9]{4}-[0-9]{2}-[0-9]{2})/i', $tx_info, $m)) {
+            return $m[1];
+        }
+        $days = 15;
+        if (preg_match('/([0-9]+)\s*Days/i', $payment_method . ' ' . $tx_info, $m_d)) {
+            $days = (int)$m_d[1];
+        }
+        return date('Y-m-d', strtotime($payment_date . " +$days days"));
+    }
+}
+
+// Helper to parse authoritative total invoiced amount
+if (!function_exists('parse_invoice_total')) {
+    function parse_invoice_total($row, $items_subtotal = 0) {
+        $tx = is_array($row) ? ($row['bank_transaction_info'] ?? '') : strval($row);
+        // 1. Total Payable
+        if (preg_match('/Total Payable:\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            $v = floatval(str_replace(',', '', $m[1]));
+            if ($v > 0) return $v;
+        }
+        // 2. Total Invoice or Total Amount
+        if (preg_match('/Total (?:Invoice|Amount):\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            $v = floatval(str_replace(',', '', $m[1]));
+            if ($v > 0) return $v;
+        }
+        // 3. Standalone Total (excluding Base Total)
+        if (preg_match('/(?:^|\|)\s*(?<!Base )Total:\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            $v = floatval(str_replace(',', '', $m[1]));
+            if ($v > 0) return $v;
+        }
+        // Fallback: items_subtotal + markup + delivery
+        $cm = parse_credit_markup($row);
+        $df = parse_order_delivery_fee($row);
+        $computed = floatval($items_subtotal) + $cm['amount'] + $df;
+        $paid = is_array($row) ? floatval($row['paid_amount'] ?? 0) : 0.0;
+        return max($paid, $computed);
+    }
+}
+
 // -------------------------------------------------------------
 // AJAX Endpoint: Settle / Record Credit Payment
 // -------------------------------------------------------------
@@ -97,16 +165,7 @@ if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' &
         $sum_row = $stmt_items_sum->fetch(PDO::FETCH_ASSOC);
         $items_total = floatval($sum_row['items_subtotal'] ?? 0);
 
-        // Check delivery cost in tx info if present
-        $delivery_cost = 0;
-        if (preg_match('/Delivery (?:Fee|Cost):s*₱?([0-9.]+)/i', $order_pay['bank_transaction_info'] ?? '', $m_del)) {
-            $delivery_cost = floatval($m_del[1]);
-        }
-        $invoice_grand_total = max(floatval($order_pay['paid_amount']), $items_total + $delivery_cost);
-        if (preg_match('/Total:s*₱?([0-9,.]+)/i', $order_pay['bank_transaction_info'] ?? '', $m_tot)) {
-            $parsed_tot = floatval(str_replace(',', '', $m_tot[1]));
-            if ($parsed_tot > 0) $invoice_grand_total = $parsed_tot;
-        }
+        $invoice_grand_total = parse_invoice_total($order_pay, $items_total);
 
         $current_paid = floatval($order_pay['paid_amount']);
         $current_balance = max(0, $invoice_grand_total - $current_paid);
@@ -157,8 +216,8 @@ if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' &
         $stmt_sup->execute([$supplier_id]);
         $sup_row = $stmt_sup->fetch(PDO::FETCH_ASSOC);
 
-        $credit_ref = $order_pay['credit_ref_no'] ?? '';
-        if (empty($credit_ref) && preg_match('/Credit Ref:\s*([A-Z0-9-]+)/i', $order_pay['bank_transaction_info'] ?? '', $m_cr)) {
+        $credit_ref = !empty($order_pay['card_number']) ? $order_pay['card_number'] : ($order_pay['credit_ref_no'] ?? '');
+        if (empty($credit_ref) && preg_match('/Credit Ref\s*(?:#|No|Number)?[:\s]+([A-Z0-9-]+)/i', $order_pay['bank_transaction_info'] ?? '', $m_cr)) {
             $credit_ref = $m_cr[1];
         }
         $due_date_val = $order_pay['due_date'] ?? '';
@@ -257,31 +316,7 @@ if (!function_exists('get_credit_aging_badge')) {
     }
 }
 
-// Helper to extract due date from transaction info or calculate from payment date
-if (!function_exists('parse_order_due_date')) {
-    function parse_order_due_date($tx_info, $payment_date, $payment_method) {
-        if (preg_match('/(?:Due Date|Due)[:\s]+([0-9]{4}-[0-9]{2}-[0-9]{2})/i', $tx_info, $m)) {
-            return $m[1];
-        }
-        $days = 15;
-        if (preg_match('/([0-9]+)\s*Days/i', $payment_method . ' ' . $tx_info, $m_d)) {
-            $days = (int)$m_d[1];
-        }
-        return date('Y-m-d', strtotime($payment_date . " +$days days"));
-    }
-}
 
-// Helper to parse total invoiced amount
-if (!function_exists('parse_invoice_total')) {
-    function parse_invoice_total($row, $items_subtotal) {
-        if (preg_match('/Total:\s*₱?([0-9,.]+)/i', $row['bank_transaction_info'] ?? '', $m)) {
-            $v = floatval(str_replace(',', '', $m[1]));
-            if ($v > 0) return $v;
-        }
-        $paid = floatval($row['paid_amount']);
-        return max($paid, floatval($items_subtotal));
-    }
-}
 
 // -------------------------------------------------------------
 // AJAX Endpoint: Adjust Credit Terms & Due Date
@@ -572,6 +607,10 @@ foreach ($all_credit_records as $rec) {
     $paid_so_far = floatval($rec['paid_amount']);
     $balance = max(0, $inv_total - $paid_so_far);
     $due_date = parse_order_due_date($rec['bank_transaction_info'] ?? '', $rec['payment_date'], $rec['payment_method']);
+    $cm_info = parse_credit_markup($rec);
+    $rec['credit_markup'] = $cm_info['amount'];
+    $rec['credit_markup_label'] = $cm_info['label'];
+    $rec['delivery_fee'] = parse_order_delivery_fee($rec);
 
     // Calculate total item capital cost for this credit order using locked transaction-time snapshots
     $c_capital_total = 0.0;
@@ -996,11 +1035,10 @@ require_once('header.php');
                             }
                         }
 
-                        // Extract delivery fee if recorded
-                        $row_delivery_fee = 0;
-                        if (preg_match('/Delivery (?:Fee|Cost):\s*₱?([0-9.]+)/i', $row['bank_transaction_info'] ?? '', $m_del)) {
-                            $row_delivery_fee = floatval($m_del[1]);
-                        }
+                        // Extract delivery fee and credit surcharge if recorded
+                        $row_delivery_fee = $row['delivery_fee'] ?? parse_order_delivery_fee($row);
+                        $row_credit_markup = $row['credit_markup'] ?? (parse_credit_markup($row)['amount'] ?? 0);
+                        $row_credit_markup_label = $row['credit_markup_label'] ?? (parse_credit_markup($row)['label'] ?? '');
                     ?>
                     <tr id="creditRow-<?php echo htmlspecialchars($pay_id); ?>">
                         <td style="color: #64748b; font-weight: 700;"><?php echo $row_idx; ?></td>
@@ -1092,6 +1130,11 @@ require_once('header.php');
                         </td>
                         <td style="text-align: right; font-weight: 700; color: #0f172a;">
                             ₱<?php echo number_format($total_amt, 2); ?>
+                            <?php if ($row_credit_markup > 0): ?>
+                                <div style="font-size: 10px; color: #b45309; font-weight: 600;" title="Includes Credit Surcharge: +₱<?php echo number_format($row_credit_markup, 2); ?><?php echo !empty($row_credit_markup_label) ? ' (' . htmlspecialchars($row_credit_markup_label) . ')' : ''; ?>">
+                                    +₱<?php echo number_format($row_credit_markup, 2); ?> markup
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td style="text-align: right; font-weight: 700; color: #059669;">
                             ₱<?php echo number_format($paid_amt, 2); ?>
@@ -1310,6 +1353,12 @@ require_once('header.php');
                                                         <span>Items Subtotal:</span>
                                                         <span style="font-weight: 700; color: #0f172a;">₱<?php echo number_format($calc_subtotal, 2); ?></span>
                                                     </div>
+                                                    <?php if ($row_credit_markup > 0): ?>
+                                                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #b45309; margin-bottom: 3px;">
+                                                        <span><i class="fa fa-percent"></i> Credit Surcharge<?php echo !empty($row_credit_markup_label) ? ' (' . htmlspecialchars($row_credit_markup_label) . ')' : ''; ?>:</span>
+                                                        <span style="font-weight: 700; color: #b45309;">+₱<?php echo number_format($row_credit_markup, 2); ?></span>
+                                                    </div>
+                                                    <?php endif; ?>
                                                     <?php if ($row_delivery_fee > 0): ?>
                                                     <div style="display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-bottom: 3px;">
                                                         <span>Delivery Fee:</span>
@@ -1411,6 +1460,9 @@ require_once('header.php');
                                                     <div style="text-align: center; overflow: hidden; white-space: nowrap;">--------------------------------</div>
                                                     <table style="width: 100%; border-collapse: collapse; font-family: inherit; font-size: 10.5pt; margin: 2px 0;">
                                                         <tr><td>Subtotal:</td><td style="text-align: right;"><?php echo number_format($calc_subtotal, 2); ?></td></tr>
+                                                        <?php if ($row_credit_markup > 0): ?>
+                                                        <tr><td>Credit Surcharge<?php echo !empty($row_credit_markup_label) ? ' (' . htmlspecialchars($row_credit_markup_label) . ')' : ''; ?>:</td><td style="text-align: right;">+<?php echo number_format($row_credit_markup, 2); ?></td></tr>
+                                                        <?php endif; ?>
                                                         <?php if ($row_delivery_fee > 0): ?>
                                                         <tr><td>Delivery Fee:</td><td style="text-align: right;"><?php echo number_format($row_delivery_fee, 2); ?></td></tr>
                                                         <?php endif; ?>
