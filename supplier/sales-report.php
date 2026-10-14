@@ -787,11 +787,17 @@ $lb_all_rows = $stmt_lb_all->fetchAll(PDO::FETCH_ASSOC);
 
 // Structure: $lb_monthly_raw[month_num][product_name] = [...]
 $lb_monthly_raw = [];
+$lb_weekly_raw = [];
 for ($m = 1; $m <= 12; $m++) {
     $lb_monthly_raw[$m] = [];
+    $lb_weekly_raw[$m] = [];
+    for ($w = 1; $w <= 5; $w++) {
+        $lb_weekly_raw[$m][$w] = [];
+    }
 }
 $lb_monthly_raw['all'] = [];
 $lb_order_track = [];
+$lb_week_order_track = [];
 
 foreach ($lb_all_rows as $lb_row) {
     // Skip trade-in exchange credit lines from leaderboard
@@ -844,6 +850,31 @@ foreach ($lb_all_rows as $lb_row) {
         $lb_monthly_raw[$tgt_m][$p_name]['cost'] += $fin['total_capital'];
         $lb_monthly_raw[$tgt_m][$p_name]['profit'] += $fin['profit'];
     }
+
+    // Accumulate calendar week buckets (Weeks 1 to 5 within month)
+    $day_of_month = (int)date('j', $p_date);
+    $w_idx = ($day_of_month <= 7) ? 1 : (($day_of_month <= 14) ? 2 : (($day_of_month <= 21) ? 3 : (($day_of_month <= 28) ? 4 : 5)));
+
+    if (!isset($lb_weekly_raw[$m_idx][$w_idx][$p_name])) {
+        $lb_weekly_raw[$m_idx][$w_idx][$p_name] = [
+            'orders' => 0,
+            'units' => 0,
+            'revenue' => 0.0,
+            'cost' => 0.0,
+            'profit' => 0.0
+        ];
+        $lb_week_order_track[$m_idx][$w_idx][$p_name] = [];
+    }
+
+    if (!isset($lb_week_order_track[$m_idx][$w_idx][$p_name][$pay_id])) {
+        $lb_week_order_track[$m_idx][$w_idx][$p_name][$pay_id] = true;
+        $lb_weekly_raw[$m_idx][$w_idx][$p_name]['orders'] += 1;
+    }
+
+    $lb_weekly_raw[$m_idx][$w_idx][$p_name]['units'] += $qty;
+    $lb_weekly_raw[$m_idx][$w_idx][$p_name]['revenue'] += $fin['subtotal'];
+    $lb_weekly_raw[$m_idx][$w_idx][$p_name]['cost'] += $fin['total_capital'];
+    $lb_weekly_raw[$m_idx][$w_idx][$p_name]['profit'] += $fin['profit'];
 }
 
 // Calculate margins
@@ -985,13 +1016,42 @@ if (!empty($lb_monthly_raw['all']) && is_array($lb_monthly_raw['all'])) {
                 $peak_month = $m;
             }
 
+            // Build calendar weeks (Weeks 1 to 5) for this month
+            $days_in_m = (int)date('t', mktime(0, 0, 0, $m, 1, $lb_year_int));
+            $total_weeks = ($days_in_m > 28) ? 5 : 4;
+            $m_weeks = [];
+            $m_short = date('M', mktime(0, 0, 0, $m, 1, $lb_year_int));
+
+            for ($w = 1; $w <= $total_weeks; $w++) {
+                $w_start = ($w - 1) * 7 + 1;
+                $w_end = min($w * 7, $days_in_m);
+                $w_entry = $lb_weekly_raw[$m][$w][$p_name] ?? null;
+                $w_orders = $w_entry ? (int)$w_entry['orders'] : 0;
+                $w_units = $w_entry ? (int)$w_entry['units'] : 0;
+                $w_rev = $w_entry ? (float)$w_entry['revenue'] : 0.0;
+                $w_profit = $w_entry ? (float)$w_entry['profit'] : 0.0;
+                $w_rate = ($w_orders > 0) ? round($w_units / $w_orders, 2) : 0.0;
+
+                $m_weeks[$w] = [
+                    'week' => $w,
+                    'label' => $m_short . ' ' . $w_start . '–' . $w_end,
+                    'range' => $w_start . '–' . $w_end,
+                    'orders' => $w_orders,
+                    'units' => $w_units,
+                    'revenue' => $w_rev,
+                    'profit' => $w_profit,
+                    'rate' => $w_rate
+                ];
+            }
+
             $monthly_arr[$m] = [
                 'month' => $m,
                 'orders' => $m_orders,
                 'units' => $m_units,
                 'revenue' => $m_rev,
                 'profit' => $m_profit,
-                'rate' => $m_rate
+                'rate' => $m_rate,
+                'weeks' => $m_weeks
             ];
         }
 
@@ -2280,11 +2340,28 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                         <!-- Left: 12-Month Bar & Line Velocity Chart -->
                         <div class="col-md-7 col-xs-12">
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="font-size: 13px; color: #334155;">
-                                        <i class="fa fa-bar-chart text-info"></i> 12-Month Monthly Distribution &amp; Velocity (Jan – Dec <?php echo $lb_year_int; ?>)
-                                    </strong>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                        <strong style="font-size: 13px; color: #334155;" id="chartTrendHeading">
+                                            <i class="fa fa-bar-chart text-info"></i> 12-Month Monthly Distribution &amp; Velocity (Jan – Dec <?php echo $lb_year_int; ?>)
+                                        </strong>
+                                        <button type="button" class="btn btn-default btn-xs" id="btnTrendBackToMonths" onclick="drillUpTrendMonths()" style="display: none; font-weight: 700; color: #0284c7; border-color: #7dd3fc; background: #f0f9ff; padding: 2px 8px;" title="Return to 12-Month View">
+                                            <i class="fa fa-arrow-left"></i> Back to 12 Months
+                                        </button>
+                                        <div id="trendMonthSelectWrapper" style="display: none; align-items: center; gap: 4px;">
+                                            <span style="font-size: 11px; color: #64748b; font-weight: 600;">Month:</span>
+                                            <select id="trendMonthDrillSelect" class="form-control input-sm" style="height: 24px; padding: 1px 6px; font-size: 11px; font-weight: 700; color: #0369a1; border-color: #bae6fd; background: #f8fafc;" onchange="drillDownTrendMonth(parseInt(this.value))">
+                                                <?php for ($m_opt = 1; $m_opt <= 12; $m_opt++): ?>
+                                                    <option value="<?php echo $m_opt; ?>"><?php echo date('F', mktime(0, 0, 0, $m_opt, 1, $lb_year_int)); ?></option>
+                                                <?php endfor; ?>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <span class="label label-info" id="chartTrendMetricBadge" style="background: #0284c7; font-size: 10.5px;">Orders (Bars) + Rate (Line)</span>
+                                </div>
+                                <div id="chartDrilldownHint" style="font-size: 11px; color: #0284c7; background: #f0f9ff; border: 1px solid #e0f2fe; border-radius: 4px; padding: 4px 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span><i class="fa fa-info-circle"></i> <strong>Interactive Drilldown:</strong> Click any month bar to view its <strong>4–5 weekly breakdown</strong>.</span>
+                                    <span style="font-size: 10px; font-weight: 700; color: #0369a1;">Click bar ➔</span>
                                 </div>
                                 <div style="position: relative; height: 340px; width: 100%;">
                                     <canvas id="chartProductAnnualTrend"></canvas>
@@ -2298,12 +2375,12 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                 <table class="table table-bordered table-striped table-hover" id="tableProductAnnualTrend" style="font-size: 12px; margin-bottom: 0;">
                                     <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                                         <tr style="background: #f8fafc; color: #334155;">
-                                            <th style="width: 80px;">Month</th>
+                                            <th style="width: 80px;" id="thTrendPeriod">Month</th>
                                             <th class="text-right" style="width: 55px;">Orders</th>
                                             <th class="text-right" style="width: 55px;">Units</th>
                                             <th class="text-right" style="width: 75px;">Rate (pcs/ord)</th>
                                             <th class="text-right" style="width: 85px;">Revenue</th>
-                                            <th class="text-center" style="width: 65px;">MoM</th>
+                                            <th class="text-center" style="width: 65px;" id="thTrendGrowth">MoM</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tableProductAnnualTrendBody">
@@ -2311,12 +2388,12 @@ $daily_cashier_inventory_json = json_encode($daily_cashier_inventory_payload);
                                     </tbody>
                                     <tfoot style="position: sticky; bottom: 0; background: #f1f5f9; font-weight: 800; border-top: 2px solid #cbd5e1;">
                                         <tr>
-                                            <td>Total / Avg</td>
+                                            <td id="tfTrendLabel">Total / Avg</td>
                                             <td class="text-right" id="tfAnnualOrders" style="color: #0284c7;">0</td>
                                             <td class="text-right" id="tfAnnualUnits">0</td>
                                             <td class="text-right" id="tfAnnualRate" style="color: #7c3aed;">0.00</td>
                                             <td class="text-right" id="tfAnnualRevenue">₱0.00</td>
-                                            <td class="text-center" style="color: #059669;">1-Yr Total</td>
+                                            <td class="text-center" id="tfTrendScopeBadge" style="color: #059669;">1-Yr Total</td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -3629,7 +3706,10 @@ window.chartLeaderboardInstance = null;
 window.productAnnualTrends = <?php echo $product_annual_trends_json; ?>;
 window.currentTrendMetric = 'orders';
 window.currentTrendProductName = null;
+window.currentTrendScope = 'months'; // 'months' | 'weeks'
+window.currentTrendDrillMonth = 1;
 window.chartProductAnnualTrendInstance = null;
+var CURRENT_LB_YEAR = <?php echo $lb_year_int; ?>;
 
 var MONTH_SHORT_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 var MONTH_FULL_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -3753,76 +3833,253 @@ function loadProductAnnualTrend(productName) {
         kpiPeakStats.innerText = peakOrd.toLocaleString() + ' orders (' + peakUnits.toLocaleString() + ' pcs)';
     }
     
-    // Populate 12-Month Table
-    var tbody = document.getElementById('tableProductAnnualTrendBody');
-    if (tbody) {
-        var html = '';
-        var prevOrders = 0;
-        var totOrders = 0, totUnits = 0, totRev = 0;
-        
-        for (var m = 1; m <= 12; m++) {
-            var mEntry = (profile.monthly && profile.monthly[m]) ? profile.monthly[m] : { orders: 0, units: 0, revenue: 0, profit: 0, rate: 0 };
-            var mName = MONTH_SHORT_NAMES[m - 1];
-            var ord = mEntry.orders || 0;
-            var units = mEntry.units || 0;
-            var rate = (ord > 0) ? (units / ord).toFixed(2) : '0.00';
-            var rev = mEntry.revenue || 0;
-            
-            totOrders += ord;
-            totUnits += units;
-            totRev += rev;
-            
-            // MoM Growth Badge
-            var momHtml = '<span class="text-muted" style="font-size:11px;">―</span>';
-            if (m > 1) {
-                if (prevOrders === 0 && ord > 0) {
-                    momHtml = '<span class="label label-primary" style="font-size:10px;">+100%</span>';
-                } else if (prevOrders > 0) {
-                    var diff = ord - prevOrders;
-                    var pct = (diff / prevOrders) * 100;
-                    if (pct > 0) {
-                        momHtml = '<span class="text-success font-weight-bold" style="font-size:11px;"><i class="fa fa-caret-up"></i> +' + pct.toFixed(0) + '%</span>';
-                    } else if (pct < 0) {
-                        momHtml = '<span class="text-danger font-weight-bold" style="font-size:11px;"><i class="fa fa-caret-down"></i> ' + pct.toFixed(0) + '%</span>';
-                    } else {
-                        momHtml = '<span class="text-muted" style="font-size:11px;">0%</span>';
-                    }
-                }
-            }
-            prevOrders = ord;
-            
-            var isPeak = (m === profile.peak_month && ord > 0);
-            var rowBg = isPeak ? 'background: #fefce8;' : '';
-            var monthCell = '<strong>' + mName + '</strong>';
-            if (isPeak) {
-                monthCell += ' <span class="label label-warning" style="font-size:9px; padding:1px 4px; background:#f59e0b;" title="Highest volume month"><i class="fa fa-trophy"></i> Peak</span>';
-            }
-            
-            html += '<tr style="' + rowBg + '">' +
-                '<td>' + monthCell + '</td>' +
-                '<td class="text-right font-weight-bold" style="color: #0284c7;">' + ord.toLocaleString() + '</td>' +
-                '<td class="text-right font-weight-bold">' + units.toLocaleString() + '</td>' +
-                '<td class="text-right" style="color: #7c3aed; font-weight: 600;">' + rate + '</td>' +
-                '<td class="text-right">₱' + Number(rev).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
-                '<td class="text-center" style="vertical-align: middle;">' + momHtml + '</td>' +
-            '</tr>';
-        }
-        tbody.innerHTML = html;
-        
-        // Update Table Footers
-        var tfOrd = document.getElementById('tfAnnualOrders');
-        var tfUnits = document.getElementById('tfAnnualUnits');
-        var tfRate = document.getElementById('tfAnnualRate');
-        var tfRev = document.getElementById('tfAnnualRevenue');
-        
-        if (tfOrd) tfOrd.innerText = totOrders.toLocaleString();
-        if (tfUnits) tfUnits.innerText = totUnits.toLocaleString();
-        if (tfRate) tfRate.innerText = (totOrders > 0 ? (totUnits / totOrders).toFixed(2) : '0.00');
-        if (tfRev) tfRev.innerText = '₱' + Number(totRev).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    // Render according to current scope
+    if (window.currentTrendScope === 'weeks') {
+        var drillM = window.currentTrendDrillMonth || profile.peak_month || 1;
+        var selDrill = document.getElementById('trendMonthDrillSelect');
+        if (selDrill) selDrill.value = drillM;
+        populateTrendWeeklyTable(profile, drillM);
+        renderProductWeeklyTrendChart(profile, drillM);
+    } else {
+        populateTrendMonthlyTable(profile);
+        renderProductAnnualTrendChart(profile);
+    }
+}
+
+function getCurrentTrendProfile() {
+    if (!window.productAnnualTrends) return null;
+    var pName = window.currentTrendProductName;
+    if (pName && window.productAnnualTrends[pName]) {
+        return window.productAnnualTrends[pName];
+    }
+    var keys = Object.keys(window.productAnnualTrends);
+    return (keys.length > 0) ? window.productAnnualTrends[keys[0]] : null;
+}
+
+function drillDownTrendMonth(mIndex) {
+    window.currentTrendScope = 'weeks';
+    window.currentTrendDrillMonth = mIndex;
+    
+    var sel = document.getElementById('trendMonthDrillSelect');
+    if (sel) sel.value = mIndex;
+    
+    var profile = getCurrentTrendProfile();
+    if (!profile) return;
+    
+    var heading = document.getElementById('chartTrendHeading');
+    var btnBack = document.getElementById('btnTrendBackToMonths');
+    var selWrap = document.getElementById('trendMonthSelectWrapper');
+    var hint = document.getElementById('chartDrilldownHint');
+    var mName = MONTH_FULL_NAMES[mIndex - 1] || ('Month ' + mIndex);
+    
+    if (heading) {
+        heading.innerHTML = '<i class="fa fa-calendar-check-o text-info"></i> ' + escapeHtml(mName) + ' ' + CURRENT_LB_YEAR + ': Weekly Breakdown &amp; Velocity';
+    }
+    if (btnBack) btnBack.style.display = 'inline-block';
+    if (selWrap) selWrap.style.display = 'inline-flex';
+    if (hint) {
+        hint.innerHTML = '<span><i class="fa fa-check-circle text-success"></i> Viewing <strong>' + escapeHtml(mName) + '</strong> weekly breakdown (Weeks 1 to 5).</span> <a href="javascript:void(0)" onclick="drillUpTrendMonths()" style="font-weight: 700; color: #0284c7; text-decoration: underline;"><i class="fa fa-arrow-left"></i> Back to 12 Months</a>';
     }
     
-    // Render Dual-Axis Chart
+    populateTrendWeeklyTable(profile, mIndex);
+    renderProductWeeklyTrendChart(profile, mIndex);
+}
+
+function drillUpTrendMonths() {
+    window.currentTrendScope = 'months';
+    
+    var profile = getCurrentTrendProfile();
+    if (!profile) return;
+    
+    var heading = document.getElementById('chartTrendHeading');
+    var btnBack = document.getElementById('btnTrendBackToMonths');
+    var selWrap = document.getElementById('trendMonthSelectWrapper');
+    var hint = document.getElementById('chartDrilldownHint');
+    
+    if (heading) {
+        heading.innerHTML = '<i class="fa fa-bar-chart text-info"></i> 12-Month Monthly Distribution &amp; Velocity (Jan – Dec ' + CURRENT_LB_YEAR + ')';
+    }
+    if (btnBack) btnBack.style.display = 'none';
+    if (selWrap) selWrap.style.display = 'none';
+    if (hint) {
+        hint.innerHTML = '<span><i class="fa fa-info-circle"></i> <strong>Interactive Drilldown:</strong> Click any month bar to view its <strong>4–5 weekly breakdown</strong>.</span> <span style="font-size: 10px; font-weight: 700; color: #0369a1;">Click bar ➔</span>';
+    }
+    
+    populateTrendMonthlyTable(profile);
     renderProductAnnualTrendChart(profile);
+}
+
+function populateTrendMonthlyTable(profile) {
+    var thPeriod = document.getElementById('thTrendPeriod');
+    var thGrowth = document.getElementById('thTrendGrowth');
+    var tfLabel = document.getElementById('tfTrendLabel');
+    var tfScope = document.getElementById('tfTrendScopeBadge');
+    
+    if (thPeriod) thPeriod.innerText = 'Month';
+    if (thGrowth) thGrowth.innerText = 'MoM';
+    if (tfLabel) tfLabel.innerText = 'Total / Avg';
+    if (tfScope) tfScope.innerText = '1-Yr Total';
+    
+    var tbody = document.getElementById('tableProductAnnualTrendBody');
+    if (!tbody) return;
+    
+    var html = '';
+    var prevOrders = 0;
+    var totOrders = 0, totUnits = 0, totRev = 0;
+    
+    for (var m = 1; m <= 12; m++) {
+        var mEntry = (profile.monthly && profile.monthly[m]) ? profile.monthly[m] : { orders: 0, units: 0, revenue: 0, profit: 0, rate: 0 };
+        var mName = MONTH_SHORT_NAMES[m - 1];
+        var ord = mEntry.orders || 0;
+        var units = mEntry.units || 0;
+        var rate = (ord > 0) ? (units / ord).toFixed(2) : '0.00';
+        var rev = mEntry.revenue || 0;
+        
+        totOrders += ord;
+        totUnits += units;
+        totRev += rev;
+        
+        // MoM Growth Badge
+        var momHtml = '<span class="text-muted" style="font-size:11px;">―</span>';
+        if (m > 1) {
+            if (prevOrders === 0 && ord > 0) {
+                momHtml = '<span class="label label-primary" style="font-size:10px;">+100%</span>';
+            } else if (prevOrders > 0) {
+                var diff = ord - prevOrders;
+                var pct = (diff / prevOrders) * 100;
+                if (pct > 0) {
+                    momHtml = '<span class="text-success font-weight-bold" style="font-size:11px;"><i class="fa fa-caret-up"></i> +' + pct.toFixed(0) + '%</span>';
+                } else if (pct < 0) {
+                    momHtml = '<span class="text-danger font-weight-bold" style="font-size:11px;"><i class="fa fa-caret-down"></i> ' + pct.toFixed(0) + '%</span>';
+                } else {
+                    momHtml = '<span class="text-muted" style="font-size:11px;">0%</span>';
+                }
+            }
+        }
+        prevOrders = ord;
+        
+        var isPeak = (m === profile.peak_month && ord > 0);
+        var rowBg = isPeak ? 'background: #fefce8;' : '';
+        var monthCell = '<a href="javascript:void(0)" onclick="drillDownTrendMonth(' + m + ')" style="color: #0284c7; font-weight: 700; text-decoration: underline;" title="Inspect ' + mName + ' weekly breakdown">' + mName + '</a>';
+        if (isPeak) {
+            monthCell += ' <span class="label label-warning" style="font-size:9px; padding:1px 4px; background:#f59e0b;" title="Highest volume month"><i class="fa fa-trophy"></i> Peak</span>';
+        }
+        
+        html += '<tr style="' + rowBg + '">' +
+            '<td>' + monthCell + '</td>' +
+            '<td class="text-right font-weight-bold" style="color: #0284c7;">' + ord.toLocaleString() + '</td>' +
+            '<td class="text-right font-weight-bold">' + units.toLocaleString() + '</td>' +
+            '<td class="text-right" style="color: #7c3aed; font-weight: 600;">' + rate + '</td>' +
+            '<td class="text-right">₱' + Number(rev).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
+            '<td class="text-center" style="vertical-align: middle;">' + momHtml + '</td>' +
+        '</tr>';
+    }
+    tbody.innerHTML = html;
+    
+    // Update Table Footers
+    var tfOrd = document.getElementById('tfAnnualOrders');
+    var tfUnits = document.getElementById('tfAnnualUnits');
+    var tfRate = document.getElementById('tfAnnualRate');
+    var tfRev = document.getElementById('tfAnnualRevenue');
+    
+    if (tfOrd) tfOrd.innerText = totOrders.toLocaleString();
+    if (tfUnits) tfUnits.innerText = totUnits.toLocaleString();
+    if (tfRate) tfRate.innerText = (totOrders > 0 ? (totUnits / totOrders).toFixed(2) : '0.00');
+    if (tfRev) tfRev.innerText = '₱' + Number(totRev).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function populateTrendWeeklyTable(profile, mIndex) {
+    var thPeriod = document.getElementById('thTrendPeriod');
+    var thGrowth = document.getElementById('thTrendGrowth');
+    var tfLabel = document.getElementById('tfTrendLabel');
+    var tfScope = document.getElementById('tfTrendScopeBadge');
+    var mName = MONTH_SHORT_NAMES[mIndex - 1] || ('M' + mIndex);
+    
+    if (thPeriod) thPeriod.innerText = 'Week';
+    if (thGrowth) thGrowth.innerText = 'WoW';
+    if (tfLabel) tfLabel.innerText = mName + ' Total';
+    if (tfScope) tfScope.innerText = 'Month Total';
+    
+    var tbody = document.getElementById('tableProductAnnualTrendBody');
+    if (!tbody) return;
+    
+    var mEntry = (profile.monthly && profile.monthly[mIndex]) ? profile.monthly[mIndex] : null;
+    var weeks = (mEntry && mEntry.weeks) ? mEntry.weeks : {};
+    var weekKeys = Object.keys(weeks);
+    
+    var html = '';
+    var prevOrders = 0;
+    var totOrders = 0, totUnits = 0, totRev = 0;
+    
+    // Find peak week in this month
+    var peakWeek = 1;
+    var maxWeekOrders = -1;
+    weekKeys.forEach(function(wk) {
+        var wObj = weeks[wk];
+        if (wObj && wObj.orders > maxWeekOrders) {
+            maxWeekOrders = wObj.orders;
+            peakWeek = parseInt(wk);
+        }
+    });
+    
+    weekKeys.forEach(function(wk, idx) {
+        var wObj = weeks[wk];
+        var ord = wObj ? (wObj.orders || 0) : 0;
+        var units = wObj ? (wObj.units || 0) : 0;
+        var rate = (ord > 0) ? (units / ord).toFixed(2) : '0.00';
+        var rev = wObj ? (wObj.revenue || 0) : 0;
+        
+        totOrders += ord;
+        totUnits += units;
+        totRev += rev;
+        
+        var wowHtml = '<span class="text-muted" style="font-size:11px;">―</span>';
+        if (idx > 0) {
+            if (prevOrders === 0 && ord > 0) {
+                wowHtml = '<span class="label label-primary" style="font-size:10px;">+100%</span>';
+            } else if (prevOrders > 0) {
+                var diff = ord - prevOrders;
+                var pct = (diff / prevOrders) * 100;
+                if (pct > 0) {
+                    wowHtml = '<span class="text-success font-weight-bold" style="font-size:11px;"><i class="fa fa-caret-up"></i> +' + pct.toFixed(0) + '%</span>';
+                } else if (pct < 0) {
+                    wowHtml = '<span class="text-danger font-weight-bold" style="font-size:11px;"><i class="fa fa-caret-down"></i> ' + pct.toFixed(0) + '%</span>';
+                } else {
+                    wowHtml = '<span class="text-muted" style="font-size:11px;">0%</span>';
+                }
+            }
+        }
+        prevOrders = ord;
+        
+        var isWeekPeak = (parseInt(wk) === peakWeek && ord > 0);
+        var rowBg = isWeekPeak ? 'background: #fefce8;' : '';
+        var weekCell = '<strong>Week ' + wk + '</strong> <span style="color:#64748b; font-size:11px;">(' + (wObj ? wObj.range : '') + ')</span>';
+        if (isWeekPeak) {
+            weekCell += ' <span class="label label-warning" style="font-size:9px; padding:1px 4px; background:#f59e0b;" title="Peak week of month"><i class="fa fa-star"></i> Peak</span>';
+        }
+        
+        html += '<tr style="' + rowBg + '">' +
+            '<td>' + weekCell + '</td>' +
+            '<td class="text-right font-weight-bold" style="color: #0284c7;">' + ord.toLocaleString() + '</td>' +
+            '<td class="text-right font-weight-bold">' + units.toLocaleString() + '</td>' +
+            '<td class="text-right" style="color: #7c3aed; font-weight: 600;">' + rate + '</td>' +
+            '<td class="text-right">₱' + Number(rev).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
+            '<td class="text-center" style="vertical-align: middle;">' + wowHtml + '</td>' +
+        '</tr>';
+    });
+    
+    tbody.innerHTML = html;
+    
+    // Update Table Footers
+    var tfOrd = document.getElementById('tfAnnualOrders');
+    var tfUnits = document.getElementById('tfAnnualUnits');
+    var tfRate = document.getElementById('tfAnnualRate');
+    var tfRev = document.getElementById('tfAnnualRevenue');
+    
+    if (tfOrd) tfOrd.innerText = totOrders.toLocaleString();
+    if (tfUnits) tfUnits.innerText = totUnits.toLocaleString();
+    if (tfRate) tfRate.innerText = (totOrders > 0 ? (totUnits / totOrders).toFixed(2) : '0.00');
+    if (tfRev) tfRev.innerText = '₱' + Number(totRev).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 function renderProductAnnualTrendChart(profile) {
@@ -3957,6 +4214,18 @@ function renderProductAnnualTrendChart(profile) {
                 mode: 'index',
                 intersect: false
             },
+            onClick: function(event, elements, chart) {
+                if (elements && elements.length > 0) {
+                    var clickedMonthIndex = elements[0].index + 1;
+                    drillDownTrendMonth(clickedMonthIndex);
+                }
+            },
+            onHover: function(event, elements, chart) {
+                var target = event.native ? event.native.target : canvas;
+                if (target) {
+                    target.style.cursor = (elements && elements.length) ? 'pointer' : 'default';
+                }
+            },
             plugins: {
                 legend: {
                     position: 'top',
@@ -3967,7 +4236,7 @@ function renderProductAnnualTrendChart(profile) {
                         title: function(context) {
                             var idx = context[0].dataIndex;
                             var mName = MONTH_FULL_NAMES[idx] || ('Month ' + (idx + 1));
-                            return mName + ' <?php echo $lb_year_int; ?> • ' + profile.name;
+                            return mName + ' ' + CURRENT_LB_YEAR + ' • ' + profile.name;
                         },
                         afterBody: function(context) {
                             var idx = context[0].dataIndex;
@@ -3978,6 +4247,230 @@ function renderProductAnnualTrendChart(profile) {
                             var rt = (ord > 0) ? (un / ord).toFixed(2) : '0.00';
                             var rv = mEntry ? mEntry.revenue : 0;
                             var pf = mEntry ? mEntry.profit : 0;
+                            var mName = MONTH_FULL_NAMES[idx] || ('Month ' + (idx + 1));
+                            return [
+                                '─────────────────────',
+                                'Orders: ' + ord.toLocaleString() + ' transactions',
+                                'Units Sold: ' + un.toLocaleString() + ' pcs',
+                                'Purchase Rate: ' + rt + ' pcs / order',
+                                'Gross Sales: ₱' + Number(rv).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}),
+                                'Gross Profit: ₱' + Number(pf).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}),
+                                '─────────────────────',
+                                '💡 Click bar to view ' + mName + ' weekly breakdown'
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { weight: '600' } }
+                },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(val) {
+                            if (metric === 'revenue') return '₱' + val.toLocaleString();
+                            if (metric === 'rate') return val.toFixed(1) + ' pcs/ord';
+                            return val.toLocaleString() + (metric === 'orders' ? ' ord' : ' pcs');
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: (metric === 'orders' ? 'Orders Count' : (metric === 'units' ? 'Units Sold' : (metric === 'revenue' ? 'Revenue (₱)' : 'Purchase Rate'))),
+                        font: { size: 11, weight: 'bold' }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    beginAtZero: true,
+                    grid: { drawOnChartArea: false },
+                    ticks: {
+                        callback: function(val) {
+                            if (metric === 'rate') return val.toLocaleString() + ' ord';
+                            return val.toFixed(1) + ' pcs/ord';
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: (metric === 'rate' ? 'Orders Frequency' : 'Purchase Rate (Velocity)'),
+                        font: { size: 11, weight: 'bold' }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderProductWeeklyTrendChart(profile, mIndex) {
+    var canvas = document.getElementById('chartProductAnnualTrend');
+    if (!canvas) return;
+    
+    if (window.chartProductAnnualTrendInstance) {
+        window.chartProductAnnualTrendInstance.destroy();
+    }
+    
+    var metric = window.currentTrendMetric || 'orders';
+    var mEntry = (profile.monthly && profile.monthly[mIndex]) ? profile.monthly[mIndex] : null;
+    var weeks = (mEntry && mEntry.weeks) ? mEntry.weeks : {};
+    var weekKeys = Object.keys(weeks);
+    var mName = MONTH_FULL_NAMES[mIndex - 1] || ('Month ' + mIndex);
+    
+    var labels = [];
+    var ordersData = [];
+    var unitsData = [];
+    var rateData = [];
+    var revData = [];
+    var profitData = [];
+    
+    var maxOrders = -1;
+    var peakWeek = 1;
+    
+    weekKeys.forEach(function(wk) {
+        var wObj = weeks[wk];
+        var ord = wObj ? (wObj.orders || 0) : 0;
+        if (ord > maxOrders) {
+            maxOrders = ord;
+            peakWeek = parseInt(wk);
+        }
+        labels.push('W' + wk + ' (' + (wObj.range || '') + ')');
+        ordersData.push(ord);
+        unitsData.push(wObj ? (wObj.units || 0) : 0);
+        rateData.push(wObj ? (wObj.rate || 0) : 0);
+        revData.push(wObj ? (wObj.revenue || 0) : 0);
+        profitData.push(wObj ? (wObj.profit || 0) : 0);
+    });
+    
+    var barColors = [];
+    for (var i = 0; i < weekKeys.length; i++) {
+        var wkNum = parseInt(weekKeys[i]);
+        if (wkNum === peakWeek && ordersData[i] > 0) {
+            barColors.push('rgba(245, 158, 11, 0.95)'); // Gold accent for peak week
+        } else {
+            if (metric === 'units') barColors.push('rgba(16, 185, 129, 0.85)');
+            else if (metric === 'revenue') barColors.push('rgba(14, 165, 233, 0.85)');
+            else if (metric === 'rate') barColors.push('rgba(139, 92, 246, 0.85)');
+            else barColors.push('rgba(2, 132, 199, 0.85)');
+        }
+    }
+    
+    var primaryDataset = {};
+    var secondaryDataset = {
+        type: 'line',
+        label: 'Purchase Rate (pcs/order)',
+        data: rateData,
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.15)',
+        borderWidth: 2.5,
+        tension: 0.3,
+        pointBackgroundColor: '#8b5cf6',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        yAxisID: 'y1'
+    };
+    
+    if (metric === 'orders') {
+        primaryDataset = {
+            type: 'bar',
+            label: 'Weekly Orders Count',
+            data: ordersData,
+            backgroundColor: barColors,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: 'rgba(0,0,0,0.05)',
+            yAxisID: 'y'
+        };
+    } else if (metric === 'units') {
+        primaryDataset = {
+            type: 'bar',
+            label: 'Units Sold (pcs)',
+            data: unitsData,
+            backgroundColor: barColors,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: 'rgba(0,0,0,0.05)',
+            yAxisID: 'y'
+        };
+    } else if (metric === 'revenue') {
+        primaryDataset = {
+            type: 'bar',
+            label: 'Weekly Revenue (₱)',
+            data: revData,
+            backgroundColor: barColors,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: 'rgba(0,0,0,0.05)',
+            yAxisID: 'y'
+        };
+    } else if (metric === 'rate') {
+        primaryDataset = {
+            type: 'bar',
+            label: 'Purchase Rate (pcs/order)',
+            data: rateData,
+            backgroundColor: barColors,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: 'rgba(0,0,0,0.05)',
+            yAxisID: 'y'
+        };
+        secondaryDataset = {
+            type: 'line',
+            label: 'Orders Frequency',
+            data: ordersData,
+            borderColor: '#0284c7',
+            backgroundColor: 'rgba(2, 132, 199, 0.15)',
+            borderWidth: 2.5,
+            tension: 0.3,
+            pointBackgroundColor: '#0284c7',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            yAxisID: 'y1'
+        };
+    }
+    
+    var ctx = canvas.getContext('2d');
+    window.chartProductAnnualTrendInstance = new Chart(ctx, {
+        data: {
+            labels: labels,
+            datasets: [primaryDataset, secondaryDataset]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { boxWidth: 14, font: { size: 11, weight: '600' } }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            var idx = context[0].dataIndex;
+                            var wkNum = weekKeys[idx];
+                            var wObj = weeks[wkNum];
+                            return mName + ' • Week ' + wkNum + ' (' + (wObj ? wObj.range : '') + ') • ' + profile.name;
+                        },
+                        afterBody: function(context) {
+                            var idx = context[0].dataIndex;
+                            var wkNum = weekKeys[idx];
+                            var wObj = weeks[wkNum];
+                            var ord = wObj ? wObj.orders : 0;
+                            var un = wObj ? wObj.units : 0;
+                            var rt = (ord > 0) ? (un / ord).toFixed(2) : '0.00';
+                            var rv = wObj ? wObj.revenue : 0;
+                            var pf = wObj ? wObj.profit : 0;
                             return [
                                 '─────────────────────',
                                 'Orders: ' + ord.toLocaleString() + ' transactions',
