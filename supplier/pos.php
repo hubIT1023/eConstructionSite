@@ -980,10 +980,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 $change_amount = ($credit_balance <= 0.009) ? max(0.0, $amount_tendered - $grand_total) : 0.00;
             } else {
                 $grand_total = $base_grand_total;
-                if (stripos($payment_method_raw, 'Cash') !== false && $grand_total > 0 && $amount_tendered < $grand_total) {
+                $is_physical_cash = (stripos($payment_method_raw, 'Cash') !== false && stripos($payment_method_raw, 'gcash') === false && stripos($payment_method_raw, 'maya') === false);
+                if ($is_physical_cash && $grand_total > 0 && $amount_tendered < $grand_total) {
                     $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
                 } else {
-                    if (stripos($payment_method_raw, 'Cash') === false && $amount_tendered <= 0) {
+                    if (!$is_physical_cash && $amount_tendered <= 0) {
                         $amount_tendered = $grand_total;
                     }
                     $amount_paid = $grand_total;
@@ -1447,10 +1448,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                     $change_amount = ($credit_balance <= 0.009) ? max(0.0, $amount_tendered - $grand_total) : 0.00;
                 } else {
                     $grand_total = $base_grand_total;
-                    if (stripos($payment_method_raw, 'Cash') !== false && $grand_total > 0 && $amount_tendered < $grand_total) {
+                    $is_physical_cash = (stripos($payment_method_raw, 'Cash') !== false && stripos($payment_method_raw, 'gcash') === false && stripos($payment_method_raw, 'maya') === false);
+                    if ($is_physical_cash && $grand_total > 0 && $amount_tendered < $grand_total) {
                         $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
                     } else {
-                        if (stripos($payment_method_raw, 'Cash') === false && $amount_tendered <= 0) {
+                        if (!$is_physical_cash && $amount_tendered <= 0) {
                             $amount_tendered = $grand_total;
                         }
                         $amount_paid = $grand_total;

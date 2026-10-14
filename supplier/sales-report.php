@@ -1262,23 +1262,23 @@ foreach ($cashier_all_payments as $p) {
         ];
     }
 
-    // Categorize payment method
+    // Categorize payment method (Prioritize digital e-wallets before physical cash so 'GCash' is not misclassified by substring 'cash')
     $pm_clean = trim($pm);
     $pm_type = 'other';
-    if (stripos($pm_clean, 'cash') !== false || stripos($pm_clean, 'over the counter') !== false || stripos($pm_clean, 'counter') !== false) {
-        $pm_type = 'cash';
-    } elseif (stripos($pm_clean, 'gcash') !== false) {
+    if (stripos($pm_clean, 'gcash') !== false) {
         $pm_type = 'gcash';
     } elseif (stripos($pm_clean, 'maya') !== false || stripos($pm_clean, 'paymaya') !== false) {
         $pm_type = 'maya';
     } elseif (stripos($pm_clean, 'bank') !== false || stripos($pm_clean, 'transfer') !== false) {
         $pm_type = 'bank';
+    } elseif (stripos($pm_clean, 'card') !== false || stripos($pm_clean, 'debit') !== false) {
+        $pm_type = 'card';
     } elseif (stripos($pm_clean, 'check') !== false || stripos($pm_clean, 'term') !== false) {
         $pm_type = 'terms';
     } elseif (stripos($pm_clean, 'po') !== false || stripos($pm_clean, 'purchase order') !== false) {
         $pm_type = 'po';
-    } elseif (stripos($pm_clean, 'card') !== false || stripos($pm_clean, 'credit') !== false) {
-        $pm_type = 'card';
+    } elseif (stripos($pm_clean, 'cash') !== false || stripos($pm_clean, 'over the counter') !== false || stripos($pm_clean, 'counter') !== false || stripos($pm_clean, 'otc') !== false) {
+        $pm_type = 'cash';
     }
 
     // Accumulate master totals
