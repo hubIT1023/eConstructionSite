@@ -6518,7 +6518,8 @@ function updatePOSCalculations() {
 
     // For non-cash payment methods (except Check / Terms which supports flexible upfront downpayment), auto-keep amount tendered synced with grand total
     const payMethod = document.getElementById('posPaymentMethod')?.value || 'Cash (OTC)';
-    if (!payMethod.toLowerCase().includes('cash') && payMethod !== 'Check / Terms') {
+    const isPhysicalCashPayment = payMethod === 'Cash (OTC)' || (payMethod.toLowerCase().includes('cash') && !payMethod.toLowerCase().includes('gcash'));
+    if (!isPhysicalCashPayment && payMethod !== 'Check / Terms') {
         const tenderedInput = document.getElementById('posAmountTendered');
         if (tenderedInput) {
             tenderedInput.value = grandTotal.toFixed(2);
@@ -7505,7 +7506,8 @@ function handlePaymentMethodChange() {
     const quickPresets = document.getElementById('posCashQuickPresets');
     const changeDueBox = document.getElementById('posChangeDueBox');
 
-    if (method.indexOf('Cash') > -1) {
+    const isCashMode = method === 'Cash (OTC)' || (method.indexOf('Cash') > -1 && method.indexOf('GCash') === -1);
+    if (isCashMode) {
         // Cash (OTC) Mode
         if (cashSection) cashSection.style.display = 'block';
         if (refSection) refSection.style.display = 'none';
@@ -8187,7 +8189,8 @@ function validatePOSForm() {
     const refundDue = (netPayable < 0) ? Math.abs(netPayable) : 0;
 
     const payMethod = document.getElementById('posPaymentMethod')?.value || 'Cash (OTC)';
-    if (payMethod.toLowerCase().includes('cash')) {
+    const isPhysicalCashTender = payMethod === 'Cash (OTC)' || (payMethod.toLowerCase().includes('cash') && !payMethod.toLowerCase().includes('gcash'));
+    if (isPhysicalCashTender) {
         const tendered = parseFloat(document.getElementById('posAmountTendered')?.value) || 0;
         if (grandTotal > 0 && tendered < grandTotal) {
             alert('Amount tendered (₱' + tendered.toFixed(2) + ') is less than the Grand Total (₱' + grandTotal.toFixed(2) + '). Please enter sufficient cash.');
