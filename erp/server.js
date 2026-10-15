@@ -805,10 +805,11 @@ const requestHandler = async (req, res) => {
       const supplierId = parseInt(parsedUrl.query.supplier_id || '1', 10);
       const rawPeriod = String(parsedUrl.query.period || 'daily').toLowerCase();
       const periodConfig = {
-        daily:     { days: 1,  label: 'Daily',     opexFactor: 1 / 30 },
-        weekly:    { days: 7,  label: 'Weekly',    opexFactor: 7 / 30 },
-        monthly:   { days: 30, label: 'Monthly',   opexFactor: 1.0 },
-        quarterly: { days: 90, label: 'Quarterly', opexFactor: 3.0 }
+        daily:     { days: 1,   label: 'Daily',     opexFactor: 1 / 30 },
+        weekly:    { days: 7,   label: 'Weekly',    opexFactor: 7 / 30 },
+        monthly:   { days: 30,  label: 'Monthly',   opexFactor: 1.0 },
+        quarterly: { days: 90,  label: 'Quarterly', opexFactor: 3.0 },
+        yearly:    { days: 365, label: 'Yearly',    opexFactor: 12.0 }
       };
       const periodKey = periodConfig[rawPeriod] ? rawPeriod : 'daily';
       const cfg = periodConfig[periodKey];
@@ -1397,12 +1398,13 @@ function getTenantDashboardHtml() {
                     <span id="wfPeriodSummary" class="badge bg-light text-secondary border" style="font-size: 11px;">Period: Daily</span>
                   </div>
 
-                  <!-- Daily / Weekly / Monthly / Quarterly Period Selector -->
+                  <!-- Daily / Weekly / Monthly / Quarterly / Yearly Period Selector -->
                   <div class="btn-group btn-group-sm" role="group" aria-label="P&L Waterfall Period">
                     <button type="button" id="btnPeriod-daily" class="btn btn-primary fw-bold" onclick="setWaterfallPeriod('daily')">Daily</button>
                     <button type="button" id="btnPeriod-weekly" class="btn btn-outline-primary fw-bold" onclick="setWaterfallPeriod('weekly')">Weekly</button>
                     <button type="button" id="btnPeriod-monthly" class="btn btn-outline-primary fw-bold" onclick="setWaterfallPeriod('monthly')">Monthly</button>
                     <button type="button" id="btnPeriod-quarterly" class="btn btn-outline-primary fw-bold" onclick="setWaterfallPeriod('quarterly')">Quarterly</button>
+                    <button type="button" id="btnPeriod-yearly" class="btn btn-outline-primary fw-bold" onclick="setWaterfallPeriod('yearly')">Yearly</button>
                   </div>
                 </div>
 
@@ -1449,6 +1451,207 @@ function getTenantDashboardHtml() {
                 <p class="text-muted small">Amortized breakdown of recorded store bills absorbed during the selected <strong class="kpiPeriodLabel">Daily</strong> period.</p>
                 <div id="opexSummaryList" class="list-group list-group-flush small">
                   <div class="text-muted text-center py-3">Loading summary...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 2: VISUAL WATERFALL BAR CHART & BREAK-EVEN ANALYTICS -->
+          <div class="row mt-4">
+            <!-- Stepped Waterfall Bar Chart Card -->
+            <div class="col-12 mb-4">
+              <div class="card p-4 shadow-sm border">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                  <div>
+                    <h5 class="fw-bold mb-1"><i class="fa fa-bar-chart text-success"></i> Visual Stepped Waterfall Bar Chart (<span class="kpiPeriodLabel">Daily</span>)</h5>
+                    <p class="text-muted small mb-0">Step-by-step financial bridge tracking inflows, cost deductions, and net margins across the selected period.</p>
+                  </div>
+                  <div class="d-flex align-items-center gap-3 small fw-bold">
+                    <span class="d-flex align-items-center gap-1"><span style="width: 12px; height: 12px; background: #10b981; display: inline-block; border-radius: 2px;"></span> Revenue</span>
+                    <span class="d-flex align-items-center gap-1"><span style="width: 12px; height: 12px; background: #ef4444; display: inline-block; border-radius: 2px;"></span> Deductions (COGS/OPEX)</span>
+                    <span class="d-flex align-items-center gap-1"><span style="width: 12px; height: 12px; background: #3b82f6; display: inline-block; border-radius: 2px;"></span> Margin Pillars</span>
+                  </div>
+                </div>
+
+                <div class="border rounded p-3 bg-light overflow-auto">
+                  <svg id="waterfallSvg" style="min-width: 760px; width: 100%; height: 320px;" viewBox="0 0 960 320">
+                    <!-- Rendered dynamically by JavaScript -->
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Periodic Scale Comparison Bar Chart -->
+            <div class="col-lg-6 mb-4">
+              <div class="card p-4 shadow-sm border h-100">
+                <h5 class="fw-bold mb-1"><i class="fa fa-columns text-primary"></i> Periodic Scale Comparison (Bars)</h5>
+                <p class="text-muted small mb-3">Gross POS Revenue vs True Landed COGS vs Store OPEX across periods.</p>
+
+                <div class="d-flex align-items-end justify-content-around pt-4 pb-2 border-bottom" style="height: 220px;">
+                  <!-- Daily -->
+                  <div class="text-center flex-fill">
+                    <div class="small fw-bold text-muted mb-1">Daily</div>
+                    <div class="d-flex align-items-end justify-content-center gap-1" style="height: 140px;">
+                      <div id="barScaleDailyRev" style="width: 14px; height: 20%; background: #10b981; border-radius: 3px 3px 0 0;" title="Revenue"></div>
+                      <div id="barScaleDailyCogs" style="width: 14px; height: 23%; background: #ef4444; border-radius: 3px 3px 0 0;" title="COGS"></div>
+                      <div id="barScaleDailyOpex" style="width: 14px; height: 8%; background: #a855f7; border-radius: 3px 3px 0 0;" title="OPEX"></div>
+                    </div>
+                    <div id="lblScaleDaily" class="small fw-bold text-dark mt-2" style="font-size: 11px;">--</div>
+                  </div>
+
+                  <!-- Weekly -->
+                  <div class="text-center flex-fill">
+                    <div class="small fw-bold text-muted mb-1">Weekly</div>
+                    <div class="d-flex align-items-end justify-content-center gap-1" style="height: 140px;">
+                      <div id="barScaleWeeklyRev" style="width: 14px; height: 35%; background: #10b981; border-radius: 3px 3px 0 0;" title="Revenue"></div>
+                      <div id="barScaleWeeklyCogs" style="width: 14px; height: 40%; background: #ef4444; border-radius: 3px 3px 0 0;" title="COGS"></div>
+                      <div id="barScaleWeeklyOpex" style="width: 14px; height: 15%; background: #a855f7; border-radius: 3px 3px 0 0;" title="OPEX"></div>
+                    </div>
+                    <div id="lblScaleWeekly" class="small fw-bold text-dark mt-2" style="font-size: 11px;">--</div>
+                  </div>
+
+                  <!-- Monthly -->
+                  <div class="text-center flex-fill">
+                    <div class="small fw-bold text-muted mb-1">Monthly</div>
+                    <div class="d-flex align-items-end justify-content-center gap-1" style="height: 140px;">
+                      <div id="barScaleMonthlyRev" style="width: 14px; height: 55%; background: #10b981; border-radius: 3px 3px 0 0;" title="Revenue"></div>
+                      <div id="barScaleMonthlyCogs" style="width: 14px; height: 63%; background: #ef4444; border-radius: 3px 3px 0 0;" title="COGS"></div>
+                      <div id="barScaleMonthlyOpex" style="width: 14px; height: 25%; background: #a855f7; border-radius: 3px 3px 0 0;" title="OPEX"></div>
+                    </div>
+                    <div id="lblScaleMonthly" class="small fw-bold text-dark mt-2" style="font-size: 11px;">--</div>
+                  </div>
+
+                  <!-- Quarterly -->
+                  <div class="text-center flex-fill">
+                    <div class="small fw-bold text-muted mb-1">Quarterly</div>
+                    <div class="d-flex align-items-end justify-content-center gap-1" style="height: 140px;">
+                      <div id="barScaleQuarterlyRev" style="width: 14px; height: 75%; background: #10b981; border-radius: 3px 3px 0 0;" title="Revenue"></div>
+                      <div id="barScaleQuarterlyCogs" style="width: 14px; height: 86%; background: #ef4444; border-radius: 3px 3px 0 0;" title="COGS"></div>
+                      <div id="barScaleQuarterlyOpex" style="width: 14px; height: 35%; background: #a855f7; border-radius: 3px 3px 0 0;" title="OPEX"></div>
+                    </div>
+                    <div id="lblScaleQuarterly" class="small fw-bold text-dark mt-2" style="font-size: 11px;">--</div>
+                  </div>
+
+                  <!-- Yearly -->
+                  <div class="text-center flex-fill">
+                    <div class="small fw-bold text-muted mb-1">Yearly</div>
+                    <div class="d-flex align-items-end justify-content-center gap-1" style="height: 140px;">
+                      <div id="barScaleYearlyRev" style="width: 14px; height: 95%; background: #10b981; border-radius: 3px 3px 0 0;" title="Revenue"></div>
+                      <div id="barScaleYearlyCogs" style="width: 14px; height: 100%; background: #ef4444; border-radius: 3px 3px 0 0;" title="COGS"></div>
+                      <div id="barScaleYearlyOpex" style="width: 14px; height: 45%; background: #a855f7; border-radius: 3px 3px 0 0;" title="OPEX"></div>
+                    </div>
+                    <div id="lblScaleYearly" class="small fw-bold text-dark mt-2" style="font-size: 11px;">--</div>
+                  </div>
+                </div>
+
+                <div class="d-flex justify-content-center gap-4 mt-2 small text-muted">
+                  <span><span style="display:inline-block; width:10px; height:10px; background:#10b981;"></span> Revenue</span>
+                  <span><span style="display:inline-block; width:10px; height:10px; background:#ef4444;"></span> COGS</span>
+                  <span><span style="display:inline-block; width:10px; height:10px; background:#a855f7;"></span> Store OPEX</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Predictive Break-Even Simulator Card -->
+            <div class="col-lg-6 mb-4">
+              <div class="card p-4 shadow-sm border h-100" style="background: linear-gradient(145deg, #ffffff 0%, #f0f7ff 100%);">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h5 class="fw-bold mb-0"><i class="fa fa-calculator text-primary"></i> Predictive Break-Even Simulator</h5>
+                  <span class="badge bg-primary">Forecasting</span>
+                </div>
+                <p class="text-muted small mb-3">Model required sales and order frequency to cover operating expenses and achieve profitability.</p>
+
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between small fw-bold mb-1">
+                    <span>Average Target Markup over Landed COGS:</span>
+                    <span id="erpSimMarkupVal" class="text-primary font-monospace">25.0%</span>
+                  </div>
+                  <input type="range" id="erpSimMarkupInput" min="5" max="60" step="1" value="25" class="form-range" oninput="runErpBreakEvenSimulation()">
+                  <div class="d-flex justify-content-between text-muted" style="font-size: 10px;">
+                    <span>5% (Commodity)</span>
+                    <span>25% (Standard)</span>
+                    <span>60% (High-Margin)</span>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between small fw-bold mb-1">
+                    <span>Monthly Store OPEX (Rent, Power, Wages):</span>
+                    <span id="erpSimOpexVal" class="text-primary font-monospace">₱20,000.00</span>
+                  </div>
+                  <input type="range" id="erpSimOpexInput" min="5000" max="60000" step="1000" value="20000" class="form-range" oninput="runErpBreakEvenSimulation()">
+                </div>
+
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between small fw-bold mb-1">
+                    <span>Average Order Basket Value:</span>
+                    <span id="erpSimBasketVal" class="text-success font-monospace">₱1,200.00</span>
+                  </div>
+                  <input type="range" id="erpSimBasketInput" min="300" max="5000" step="100" value="1200" class="form-range" oninput="runErpBreakEvenSimulation()">
+                </div>
+
+                <div class="p-3 bg-white border rounded shadow-sm">
+                  <div class="small fw-bold text-muted text-uppercase mb-2">Required Target to Break-Even</div>
+                  <div class="row text-center g-2">
+                    <div class="col-6">
+                      <div class="p-2 bg-light rounded border">
+                        <div class="text-muted" style="font-size: 11px;">Monthly Break-Even Sales</div>
+                        <div id="erpSimMonthlyBe" class="fw-bold text-primary" style="font-size: 16px;">₱100,000.00</div>
+                        <div id="erpSimDailyBe" class="text-muted" style="font-size: 10px;">₱3,333.33 / day</div>
+                      </div>
+                    </div>
+                    <div class="col-6">
+                      <div class="p-2 bg-light rounded border">
+                        <div class="text-muted" style="font-size: 11px;">Orders Needed per Day</div>
+                        <div id="erpSimDailyOrders" class="fw-bold text-success" style="font-size: 16px;">3 Orders / Day</div>
+                        <div class="text-muted" style="font-size: 10px;">at avg basket ticket</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actionable Playbook: 4 Strategies -->
+            <div class="col-12 mb-3">
+              <div class="card p-4 shadow-sm border">
+                <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">
+                  <i class="fa fa-line-chart text-success fa-lg"></i>
+                  <div>
+                    <h5 class="fw-bold mb-0">Actionable Growth Playbook: How to Reverse Margin Losses &amp; Increase Sales</h5>
+                    <p class="text-muted small mb-0">Proven retail principles designed specifically for construction and hardware suppliers.</p>
+                  </div>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-md-3 col-sm-6">
+                    <div class="p-3 border rounded bg-light h-100">
+                      <div class="badge bg-primary mb-2">1. Price Floor Guard</div>
+                      <h6 class="fw-bold mb-1" style="font-size: 13px;">Enforce POS Minimum Markup</h6>
+                      <p class="text-muted small mb-0">Never allow catalog items to be rung up below landed capital cost. Prevents accidental negative gross margins (-₱533 daily).</p>
+                    </div>
+                  </div>
+                  <div class="col-md-3 col-sm-6">
+                    <div class="p-3 border rounded bg-light h-100">
+                      <div class="badge bg-success mb-2">2. Margin Bundling</div>
+                      <h6 class="fw-bold mb-1" style="font-size: 13px;">Bundle Low-Margin Staples</h6>
+                      <p class="text-muted small mb-0">Pair thin-margin cement and rebar (5-8%) with high-margin sundries (tie wires, waterproofing, trowels at 40-50% margin).</p>
+                    </div>
+                  </div>
+                  <div class="col-md-3 col-sm-6">
+                    <div class="p-3 border rounded bg-light h-100">
+                      <div class="badge bg-warning text-dark mb-2">3. Credit Terms Fee</div>
+                      <h6 class="fw-bold mb-1" style="font-size: 13px;">Automated 2.5% - 5.0% Terms Markup</h6>
+                      <p class="text-muted small mb-0">Standardize carrying markup on 15/30-day contractor credit orders to eliminate working capital drag and finance receivables.</p>
+                    </div>
+                  </div>
+                  <div class="col-md-3 col-sm-6">
+                    <div class="p-3 border rounded bg-light h-100">
+                      <div class="badge bg-info text-dark mb-2">4. Contractor Accounts</div>
+                      <h6 class="fw-bold mb-1" style="font-size: 13px;">3 Active Contractor Retainers</h6>
+                      <p class="text-muted small mb-0">Securing 3 sub-contractors spending ₱15k weekly guarantees ₱180k monthly sales, comfortably surpassing the ₱100k break-even line.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2121,7 +2324,7 @@ function getTenantDashboardHtml() {
 
     function setWaterfallPeriod(period) {
       currentWaterfallPeriod = period;
-      ['daily', 'weekly', 'monthly', 'quarterly'].forEach(p => {
+      ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'].forEach(p => {
         const btn = document.getElementById('btnPeriod-' + p);
         if (btn) {
           btn.className = (p === period)
@@ -2292,9 +2495,215 @@ function getTenantDashboardHtml() {
             '<tr><td><code>6200</code></td><td>Store Operating Expenses (Power, Rent, Wages)</td><td><span class="badge bg-secondary">Expense</span></td><td class="text-end">₱' + fmt(m.total_operating_expenses) + '</td><td class="text-end">₱' + fmt(m.total_operating_expenses) + '</td></tr>' +
             '<tr class="table-light fw-bold"><td colspan="3">Total Trial Balance Activity</td><td class="text-end text-success">₱' + fmt(totalDebits) + '</td><td class="text-end text-success">₱' + fmt(totalCredits) + '</td></tr>';
         }
+
+        // Render Stepped Waterfall Bar Chart & Periodic Comparison Scale
+        renderWaterfallSvg(m);
+        updateScaleComparisonBars(m);
+        runErpBreakEvenSimulation();
       } catch (err) {
         console.error(err);
       }
+    }
+
+    function renderWaterfallSvg(m) {
+      const svg = document.getElementById('waterfallSvg');
+      if (!svg) return;
+      svg.innerHTML = '';
+
+      const gross = parseFloat(m.gross_revenue || 0);
+      const cogs = parseFloat(m.landed_cogs || 0);
+      const grossMargin = parseFloat(m.gross_margin || 0);
+      const fees = parseFloat(m.bank_processing_fees || 0);
+      const comm = parseFloat(m.sales_staff_incentives || 0);
+      const cm1 = parseFloat(m.contribution_margin_1 || 0);
+      const opex = parseFloat(m.total_operating_expenses || 0);
+      const net = parseFloat(m.net_operating_profit || 0);
+
+      const fmt = (n) => '₱' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Financial steps sequence
+      const steps = [
+        { label: 'Gross Revenue', val: gross, type: 'pillar', color: '#10b981' },
+        { label: 'Landed COGS', val: -cogs, type: 'step', color: '#ef4444' },
+        { label: 'Gross Margin', val: grossMargin, type: 'subtotal', color: grossMargin >= 0 ? '#3b82f6' : '#f59e0b' },
+        { label: 'Processing Fees', val: -fees, type: 'step', color: '#94a3b8' },
+        { label: 'Commissions', val: -comm, type: 'step', color: '#94a3b8' },
+        { label: 'Contribution M1', val: cm1, type: 'subtotal', color: cm1 >= 0 ? '#3b82f6' : '#f59e0b' },
+        { label: 'Store OPEX', val: -opex, type: 'step', color: '#a855f7' },
+        { label: 'Net Profit', val: net, type: 'pillar', color: net >= 0 ? '#10b981' : '#ef4444' }
+      ];
+
+      const width = 960;
+      const height = 320;
+      const paddingX = 40;
+      const paddingBottom = 60;
+      const paddingTop = 30;
+      const usableHeight = height - paddingTop - paddingBottom;
+      const colWidth = 72;
+      const gap = (width - paddingX * 2 - colWidth * steps.length) / (steps.length - 1);
+
+      const maxVal = Math.max(gross * 1.15, 100);
+      const minVal = Math.min(-cogs * 0.4, net * 1.2, -opex, -100);
+      const range = Math.max(1, maxVal - minVal);
+
+      const getY = (val) => paddingTop + usableHeight * (1 - (val - minVal) / range);
+      const zeroY = getY(0);
+
+      // Draw zero axis line
+      const zeroLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      zeroLine.setAttribute('x1', paddingX - 10);
+      zeroLine.setAttribute('y1', zeroY);
+      zeroLine.setAttribute('x2', width - paddingX + 10);
+      zeroLine.setAttribute('y2', zeroY);
+      zeroLine.setAttribute('stroke', '#cbd5e1');
+      zeroLine.setAttribute('stroke-width', '1.5');
+      svg.appendChild(zeroLine);
+
+      let runningTotal = 0;
+
+      steps.forEach((s, i) => {
+        const x = paddingX + i * (colWidth + gap);
+        let startVal = runningTotal;
+        let endVal = runningTotal;
+
+        if (s.type === 'step') {
+          endVal = runningTotal + s.val;
+          runningTotal = endVal;
+        } else {
+          startVal = 0;
+          endVal = s.val;
+          runningTotal = s.val;
+        }
+
+        const y1 = getY(startVal);
+        const y2 = getY(endVal);
+        const barY = Math.min(y1, y2);
+        const barH = Math.max(4, Math.abs(y1 - y2));
+
+        if (i > 0) {
+          const bridge = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          bridge.setAttribute('x1', x - gap);
+          bridge.setAttribute('y1', y1);
+          bridge.setAttribute('x2', x);
+          bridge.setAttribute('y2', y1);
+          bridge.setAttribute('stroke', '#94a3b8');
+          bridge.setAttribute('stroke-dasharray', '4 3');
+          bridge.setAttribute('stroke-width', '1.5');
+          svg.appendChild(bridge);
+        }
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x);
+        rect.setAttribute('y', barY);
+        rect.setAttribute('width', colWidth);
+        rect.setAttribute('height', barH);
+        rect.setAttribute('rx', '4');
+        rect.setAttribute('fill', s.color);
+        rect.setAttribute('opacity', '0.9');
+        svg.appendChild(rect);
+
+        const valText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        valText.setAttribute('x', x + colWidth / 2);
+        const textY = s.val >= 0 ? barY - 6 : barY + barH + 13;
+        valText.setAttribute('y', textY);
+        valText.setAttribute('text-anchor', 'middle');
+        valText.setAttribute('font-size', '11');
+        valText.setAttribute('font-weight', '700');
+        valText.setAttribute('fill', s.color);
+        valText.textContent = (s.val > 0 ? '+' : '') + fmt(s.val);
+        svg.appendChild(valText);
+
+        const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        labelText.setAttribute('x', x + colWidth / 2);
+        labelText.setAttribute('y', height - 15);
+        labelText.setAttribute('text-anchor', 'middle');
+        labelText.setAttribute('font-size', '10.5');
+        labelText.setAttribute('font-weight', '600');
+        labelText.setAttribute('fill', '#475569');
+        labelText.textContent = s.label;
+        svg.appendChild(labelText);
+      });
+    }
+
+    function updateScaleComparisonBars(m) {
+      const gross = parseFloat(m.gross_revenue || 0);
+      const cogs = parseFloat(m.landed_cogs || 0);
+      const opex = parseFloat(m.total_operating_expenses || 0);
+
+      let dailyRev = gross, dailyCogs = cogs, dailyOpex = opex;
+      const cur = currentWaterfallPeriod;
+      if (cur === 'weekly') {
+        dailyRev = gross / 7; dailyCogs = cogs / 7; dailyOpex = opex / 7;
+      } else if (cur === 'monthly') {
+        dailyRev = gross / 30; dailyCogs = cogs / 30; dailyOpex = opex / 30;
+      } else if (cur === 'quarterly') {
+        dailyRev = gross / 90; dailyCogs = cogs / 90; dailyOpex = opex / 90;
+      } else if (cur === 'yearly') {
+        dailyRev = gross / 365; dailyCogs = cogs / 365; dailyOpex = opex / 365;
+      }
+
+      const mults = {
+        Daily: 1,
+        Weekly: 7,
+        Monthly: 30,
+        Quarterly: 90,
+        Yearly: 365
+      };
+
+      const maxYearly = Math.max(dailyRev * 365, dailyCogs * 365, 100);
+
+      Object.keys(mults).forEach(k => {
+        const factor = mults[k];
+        const r = dailyRev * factor;
+        const c = dailyCogs * factor;
+        const o = (dailyOpex || 666.67) * factor;
+
+        const hR = Math.min(100, Math.max(6, (r / maxYearly) * 100));
+        const hC = Math.min(100, Math.max(6, (c / maxYearly) * 100));
+        const hO = Math.min(100, Math.max(4, (o / maxYearly) * 100));
+
+        const elR = document.getElementById('barScale' + k + 'Rev');
+        const elC = document.getElementById('barScale' + k + 'Cogs');
+        const elO = document.getElementById('barScale' + k + 'Opex');
+        const lbl = document.getElementById('lblScale' + k);
+
+        if (elR) elR.style.height = hR + '%';
+        if (elC) elC.style.height = hC + '%';
+        if (elO) elO.style.height = hO + '%';
+
+        if (lbl) {
+          const kRev = r >= 1000000 ? (r / 1000000).toFixed(2) + 'M' : (r >= 1000 ? (r / 1000).toFixed(1) + 'k' : r.toFixed(0));
+          lbl.textContent = '₱' + kRev;
+        }
+      });
+    }
+
+    function runErpBreakEvenSimulation() {
+      const markupInput = document.getElementById('erpSimMarkupInput');
+      const opexInput = document.getElementById('erpSimOpexInput');
+      const basketInput = document.getElementById('erpSimBasketInput');
+      if (!markupInput || !opexInput || !basketInput) return;
+
+      const markup = parseFloat(markupInput.value) || 25;
+      const opex = parseFloat(opexInput.value) || 20000;
+      const basket = parseFloat(basketInput.value) || 1200;
+
+      const fmt = (n) => '₱' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      document.getElementById('erpSimMarkupVal').textContent = markup.toFixed(1) + '%';
+      document.getElementById('erpSimOpexVal').textContent = fmt(opex);
+      document.getElementById('erpSimBasketVal').textContent = fmt(basket);
+
+      const markupDecimal = markup / 100;
+      const marginRatio = markupDecimal / (1 + markupDecimal);
+
+      const monthlyBreakEven = opex / marginRatio;
+      const dailyBreakEven = monthlyBreakEven / 30;
+      const ordersPerDay = Math.ceil(dailyBreakEven / basket);
+
+      document.getElementById('erpSimMonthlyBe').textContent = fmt(monthlyBreakEven);
+      document.getElementById('erpSimDailyBe').textContent = fmt(dailyBreakEven) + ' / day';
+      document.getElementById('erpSimDailyOrders').textContent = ordersPerDay + ' Orders / Day';
     }
 
     async function loadProducts() {
