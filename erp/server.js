@@ -820,7 +820,10 @@ const requestHandler = async (req, res) => {
         const anchorRes = await client.query(
           `SELECT COALESCE(MAX(SUBSTRING(payment_date, 1, 10)::date), CURRENT_DATE)::text AS anchor_date,
                   (COALESCE(MAX(SUBSTRING(payment_date, 1, 10)::date), CURRENT_DATE) - ($2::int - 1))::text AS start_date
-           FROM public.tbl_payment WHERE supplier_id = $1`,
+           FROM public.tbl_payment 
+           WHERE supplier_id = $1
+             AND payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID')
+             AND paid_amount > 0`,
           [supplierId, cfg.days]
         );
         const anchorDate = anchorRes.rows[0].anchor_date;
@@ -830,6 +833,7 @@ const requestHandler = async (req, res) => {
           `SELECT COUNT(DISTINCT p.id) as total_tx_count, COALESCE(SUM(p.paid_amount), 0) as gross_revenue
            FROM public.tbl_payment p
            WHERE p.supplier_id = $1
+             AND p.payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID')
              AND SUBSTRING(p.payment_date, 1, 10)::date BETWEEN $2::date AND $3::date`,
           [supplierId, startDate, anchorDate]
         );
@@ -838,6 +842,7 @@ const requestHandler = async (req, res) => {
            FROM erp.payment_fee_transactions f
            JOIN public.tbl_payment p ON f.payment_id = p.id
            WHERE f.supplier_id = $1
+             AND p.payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID')
              AND SUBSTRING(p.payment_date, 1, 10)::date BETWEEN $2::date AND $3::date`,
           [supplierId, startDate, anchorDate]
         );
@@ -846,6 +851,8 @@ const requestHandler = async (req, res) => {
            FROM erp.sales_incentives s
            JOIN public.tbl_payment p ON s.payment_id = p.payment_id
            WHERE s.supplier_id = $1
+             AND p.payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID')
+             AND p.paid_amount > 0
              AND SUBSTRING(p.payment_date, 1, 10)::date BETWEEN $2::date AND $3::date`,
           [supplierId, startDate, anchorDate]
         );
@@ -863,6 +870,8 @@ const requestHandler = async (req, res) => {
            JOIN public.tbl_payment p ON o.payment_id = p.payment_id
            LEFT JOIN public.tbl_product pr ON o.product_id = pr.p_id
            WHERE p.supplier_id = $1
+             AND p.payment_status NOT IN ('Cancelled', 'Void', 'Declined', 'Failed', 'Awaiting for Payment', 'Pending', 'UNPAID')
+             AND p.paid_amount > 0
              AND SUBSTRING(p.payment_date, 1, 10)::date BETWEEN $2::date AND $3::date`,
           [supplierId, startDate, anchorDate]
         );
