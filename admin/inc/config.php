@@ -80,3 +80,9 @@ try {
 catch( PDOException $exception ) {
 	echo "Connection error :" . $exception->getMessage();
 }
+
+// ChatGPT / OpenAI Access Guard
+if (isset($pdo) && file_exists(__DIR__ . '/ai_access_guard.php')) {
+    include_once(__DIR__ . '/ai_access_guard.php');
+    enforce_chatgpt_access_guard($pdo, null, 'Global Admin & Platform Database');
+}

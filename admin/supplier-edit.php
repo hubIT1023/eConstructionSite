@@ -1,7 +1,10 @@
 <?php require_once('header.php'); ?>
 <?php require_once('inc/erp_admin_helper.php'); ?>
+<?php require_once('inc/ai_access_guard.php'); ?>
 
 <?php
+ensure_chatgpt_access_schema($pdo);
+
 if(!isset($_REQUEST['id'])) {
 
 	header('location: supplier.php');
@@ -24,6 +27,7 @@ if(isset($_POST['form_edit_supplier'])) {
     $status = trim($_POST['supplier_status']);
     $max_pos_users = isset($_POST['max_pos_users']) ? intval($_POST['max_pos_users']) : 3;
     $max_storage_mb = isset($_POST['max_storage_mb']) ? intval($_POST['max_storage_mb']) : 2048;
+    $allow_chatgpt_access = (isset($_POST['allow_chatgpt_access']) && intval($_POST['allow_chatgpt_access']) === 1) ? 1 : 0;
 
     // Determine default limits by plan if not manually set
     $plan_limits = ['Starter' => 3, 'Professional' => 10, 'Enterprise' => 50];
@@ -42,8 +46,8 @@ if(isset($_POST['form_edit_supplier'])) {
                          "The requested limit allows only <strong>{$max_pos_users} POS Users</strong>.<br>" .
                          "Please have the supplier reduce or suspend unnecessary POS users before downgrading their plan allowance.";
     } else {
-        $statement = $pdo->prepare("UPDATE tbl_supplier SET supplier_plan = ?, max_pos_users = ?, max_storage_mb = ?, supplier_commission = ?, supplier_status = ? WHERE supplier_id = ?");
-        $statement->execute(array($plan, $max_pos_users, $max_storage_mb, $commission, $status, $supplier_id));
+        $statement = $pdo->prepare("UPDATE tbl_supplier SET supplier_plan = ?, max_pos_users = ?, max_storage_mb = ?, supplier_commission = ?, supplier_status = ?, allow_chatgpt_access = ?, chatgpt_access_updated_at = CURRENT_TIMESTAMP WHERE supplier_id = ?");
+        $statement->execute(array($plan, $max_pos_users, $max_storage_mb, $commission, $status, $allow_chatgpt_access, $supplier_id));
 
         // If status is suspended, we also suspend their users
         if ($status == 'Suspended' || $status == 'Pending') {
@@ -57,7 +61,7 @@ if(isset($_POST['form_edit_supplier'])) {
         // Save ERP Entitlements if submitted
         erp_save_tenant_entitlements($pdo, $supplier_id, $_POST);
 
-        $success_message = "Supplier SaaS configuration, POS user limit, and storage quota updated successfully!";
+        $success_message = "Supplier SaaS configuration, POS user limit, storage quota, and ChatGPT access policy updated successfully!";
         // Reload storage stats
         $storage_stats = get_tenant_storage_stats($pdo, $supplier_id);
     }
@@ -75,6 +79,8 @@ if (!$supplier) {
 
 $current_max_users = isset($supplier['max_pos_users']) && (int)$supplier['max_pos_users'] > 0 ? (int)$supplier['max_pos_users'] : 3;
 $current_max_storage = isset($supplier['max_storage_mb']) && (int)$supplier['max_storage_mb'] > 0 ? (int)$supplier['max_storage_mb'] : 2048;
+$current_chatgpt_access = !empty($supplier['allow_chatgpt_access']) && (int)$supplier['allow_chatgpt_access'] === 1 ? 1 : 0;
+$global_chatgpt_policy = get_global_chatgpt_policy($pdo);
 
 // Fetch ERP Entitlements
 $erp_entitlement = erp_get_tenant_entitlements($pdo, $supplier_id);
@@ -187,6 +193,24 @@ $erp_entitlement = erp_get_tenant_entitlements($pdo, $supplier_id);
                                     <option value="Pending" <?php if($supplier['supplier_status'] == 'Pending') echo 'selected'; ?>>Pending Review</option>
                                     <option value="Suspended" <?php if($supplier['supplier_status'] == 'Suspended') echo 'selected'; ?>>Suspended</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="allow_chatgpt_access" class="col-sm-3 control-label" style="color: #0f172a;">
+                                <i class="fa fa-shield"></i> ChatGPT / AI Access *
+                            </label>
+                            <div class="col-sm-8">
+                                <select class="form-control" name="allow_chatgpt_access" id="allow_chatgpt_access" required>
+                                    <option value="0" <?php if ($current_chatgpt_access === 0) echo 'selected'; ?>>BLOCKED — Block ChatGPT from accessing Supplier Database, POS &amp; ERP</option>
+                                    <option value="1" <?php if ($current_chatgpt_access === 1) echo 'selected'; ?>>ALLOWED — Allow ChatGPT to access Supplier Database, POS &amp; ERP</option>
+                                </select>
+                                <small class="text-muted">
+                                    <i class="fa fa-lock"></i> Controls whether OpenAI / ChatGPT bots (<code>GPTBot</code>, <code>ChatGPT-User</code>, <code>OAI-SearchBot</code>) and API integrations can query this supplier's Database, POS, and ERP.
+                                    <?php if (!$global_chatgpt_policy): ?>
+                                        <span class="text-danger"><strong>(Note: Global Master Block is currently active on supplier.php)</strong></span>
+                                    <?php endif; ?>
+                                </small>
                             </div>
                         </div>
 

@@ -18,6 +18,9 @@ if (!$supplier) {
 }
 
 $supplier_id = intval($supplier['supplier_id']);
+if (function_exists('enforce_chatgpt_access_guard')) {
+    enforce_chatgpt_access_guard($pdo, $supplier_id, 'Supplier Store & Product Database');
+}
 $supplier_name = $supplier['supplier_name'];
 $supplier_slug = $supplier['supplier_slug'];
 

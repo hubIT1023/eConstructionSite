@@ -150,6 +150,36 @@ async function runPosSyncWorker() {
 // --------------------------------------------------------------------------
 // 2. HTTP SERVER & API ROUTES FOR TENANT ADMIN
 // --------------------------------------------------------------------------
+function isChatGptOrOpenAiRequest(req) {
+  const ua = String(req.headers['user-agent'] || '').toLowerCase();
+  if (ua.includes('gptbot') || ua.includes('chatgpt-user') || ua.includes('oai-searchbot') || ua.includes('chatgpt') || ua.includes('openai')) {
+    return true;
+  }
+  if (req.headers['x-openai-action'] || req.headers['x-chatgpt-integration'] || req.headers['openai-conversation-id']) {
+    return true;
+  }
+  return false;
+}
+
+async function isErpChatGptAllowed(supplierId) {
+  const client = await pool.connect();
+  try {
+    const gRes = await client.query('SELECT global_allow_chatgpt FROM public.tbl_settings WHERE id = 1 LIMIT 1');
+    if (gRes.rows.length > 0 && Number(gRes.rows[0].global_allow_chatgpt) === 0) {
+      return false;
+    }
+    if (supplierId && Number(supplierId) > 0) {
+      const sRes = await client.query('SELECT allow_chatgpt_access FROM public.tbl_supplier WHERE supplier_id = $1 LIMIT 1', [Number(supplierId)]);
+      return sRes.rows.length > 0 && Number(sRes.rows[0].allow_chatgpt_access) === 1;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
 const requestHandler = async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   let pathname = parsedUrl.pathname;
@@ -179,6 +209,22 @@ const requestHandler = async (req, res) => {
   }
 
   try {
+    // Enforce Global Admin ChatGPT / OpenAI Access Policy for ERP
+    if (isChatGptOrOpenAiRequest(req)) {
+      const qSupId = parsedUrl.query.supplier_id || (req.headers.cookie && (req.headers.cookie.match(/erp_supplier_id=(\d+)/) || [])[1]) || 0;
+      const allowed = await isErpChatGptAllowed(qSupId);
+      if (!allowed) {
+        res.setHeader('X-Robots-Tag', 'noai, noimageai');
+        return sendJson(res, 403, {
+          status: 'error',
+          code: 403,
+          error: 'ChatGPT_Access_Blocked',
+          module: 'Supplier ERP',
+          message: 'ChatGPT / OpenAI access to this Supplier ERP and Database is blocked by Global Admin policy.'
+        });
+      }
+    }
+
     // Health Check
     if (pathname === '/api/health' && (method === 'GET' || method === 'HEAD')) {
       if (method === 'HEAD') {
