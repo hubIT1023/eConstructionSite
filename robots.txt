@@ -1,0 +1,65 @@
+# =============================================================
+# eConstruction robots.txt
+# Disallow AI Scrapers and Automated Model Training Crawlers
+# =============================================================
+
+# OpenAI (ChatGPT web browsing & model training crawlers)
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: OAI-SearchBot
+Disallow: /
+
+# Anthropic (Claude AI crawler)
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+# Common Crawl (Mass scraping repository used for LLM datasets)
+User-agent: CCBot
+Disallow: /
+
+# Perplexity AI Scraper
+User-agent: PerplexityBot
+Disallow: /
+
+# ByteDance AI Scraper
+User-agent: Bytespider
+Disallow: /
+
+# Apple AI Scraper
+User-agent: Applebot-Extended
+Disallow: /
+
+# Google-Extended (Blocks Google Gemini/Bard AI training without affecting Google Search indexing)
+User-agent: Google-Extended
+Disallow: /
+
+# =============================================================
+# Disallow Private Portals & System Directories for All Crawlers
+# =============================================================
+User-agent: *
+Disallow: /supplier/
+Disallow: /admin/
+Disallow: /inc/
+Disallow: /scratch/
+Disallow: /api/
+Disallow: /pos.php
+Disallow: /webpos.php
+Disallow: /cart.php
+Disallow: /checkout.php
+Disallow: /payment/
+
+# =============================================================
+# Allow Legitimate Search Engines for Store Visibility
+# =============================================================
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /

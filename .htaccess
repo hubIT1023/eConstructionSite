@@ -2,6 +2,15 @@
     RewriteEngine On
     RewriteBase /
 
+    # -------------------------------------------------------------
+    # 1. Block AI Scrapers & ChatGPT Crawlers (Immediate 403 Forbidden)
+    # -------------------------------------------------------------
+    RewriteCond %{HTTP_USER_AGENT} (GPTBot|ChatGPT-User|OAI-SearchBot|CCBot|ClaudeBot|anthropic-ai|PerplexityBot|Bytespider|Applebot-Extended|Amazonbot) [NC]
+    RewriteRule ^.*$ - [F,L]
+
+    # -------------------------------------------------------------
+    # 2. Existing System Routing (Preserved Exactly)
+    # -------------------------------------------------------------
     # Case-insensitive route: /WebPOS, /webpos, /WEBPOS -> webpos.php
     RewriteRule ^webpos/?$ webpos.php [NC,L,QSA]
 

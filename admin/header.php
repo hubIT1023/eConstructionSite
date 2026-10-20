@@ -32,6 +32,7 @@ if(!isset($_SESSION['user'])) {
 	<title>Admin Panel</title>
 
 	<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+	<meta name="robots" content="noai, noimageai, noindex, nofollow">
 
 	<link rel="stylesheet" href="css/bootstrap.min.css">
 	<link rel="stylesheet" href="css/font-awesome.min.css">

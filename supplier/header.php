@@ -181,6 +181,7 @@ if (!$is_admin && !in_array($cur_page, $allowed_pos_pages)) {
 	<title><?php echo $is_admin ? 'Supplier Admin Panel' : 'Supplier POS Terminal'; ?> - eConstruction Supply</title>
 
 	<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+	<meta name="robots" content="noai, noimageai, noindex, nofollow">
 
 	<link rel="stylesheet" href="css/bootstrap.min.css">
 	<link rel="stylesheet" href="css/font-awesome.min.css">
