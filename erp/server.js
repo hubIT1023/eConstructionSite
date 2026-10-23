@@ -2826,24 +2826,11 @@ function getTenantDashboardHtml() {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body p-4">
-                    <!-- Helper and Template Downloads -->
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-3 border-bottom">
-                      <div>
-                        <div class="fw-bold small text-dark"><i class="fa fa-info-circle text-primary me-1"></i> Fast One-Time PostgreSQL Catalog Sync</div>
-                        <div class="text-muted small" style="font-size: 11.5px;">
-                          Upload your product spreadsheet (supports <strong>Sam & Inri Inventory format</strong>: <code>code</code>, <code>description</code>, <code>stock</code>, <code>minimum_stock</code>, <code>capital_cost</code>, <code>markup_percent</code>, <code>selling_price</code>, <code>unit</code>, <code>supplier</code>). Matches existing products by <strong>Code / ID</strong>, <strong>SKU</strong>, or <strong>Name</strong> and updates stock, costs, and markups atomically.
-                        </div>
-                      </div>
-                      <div class="d-flex gap-2 flex-wrap">
-                        <a href="/api/products/template-excel?format=sam_inri" class="btn btn-outline-success btn-sm text-nowrap" download="Sam_Inri_Inventory_Template.xls" title="Download Sam & Inri Inventory Excel template (.xls)">
-                          <i class="fa fa-file-excel-o me-1"></i> Sam & Inri Format (.xls)
-                        </a>
-                        <a href="/api/products/template-excel" class="btn btn-outline-primary btn-sm text-nowrap" download title="Download clean standard Excel format">
-                          <i class="fa fa-download me-1"></i> Standard Template
-                        </a>
-                        <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="downloadCurrentCatalogExcel()" title="Export current catalog to Excel for editing">
-                          <i class="fa fa-table text-secondary me-1"></i> Export Catalog
-                        </button>
+                    <!-- Helper Notice -->
+                    <div class="mb-3 pb-3 border-bottom">
+                      <div class="fw-bold small text-dark"><i class="fa fa-info-circle text-primary me-1"></i> Fast One-Time PostgreSQL Catalog Sync</div>
+                      <div class="text-muted small" style="font-size: 11.5px;">
+                        Upload your product spreadsheet (supports <strong>Sam & Inri Inventory format</strong>: <code>code</code>, <code>description</code>, <code>stock</code>, <code>minimum_stock</code>, <code>capital_cost</code>, <code>markup_percent</code>, <code>selling_price</code>, <code>unit</code>, <code>supplier</code>). Matches existing products by <strong>Code / ID</strong>, <strong>SKU</strong>, or <strong>Name</strong> and updates stock, costs, and markups atomically.
                       </div>
                     </div>
 
