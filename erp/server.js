@@ -2944,9 +2944,6 @@ function getTenantDashboardHtml() {
                   <span class="input-group-text bg-light text-muted"><i class="fa fa-search"></i></span>
                   <input type="text" id="warehouseSearchInput" class="form-control" placeholder="Search warehouse, SKU..." oninput="onWarehouseSearchInput()">
                 </div>
-                <button class="btn btn-outline-success btn-sm text-nowrap fw-bold" onclick="openExcelUploadModal()" title="Upload and update products via Excel spreadsheet">
-                  <i class="fa fa-file-excel-o text-success me-1"></i> Upload Excel
-                </button>
                 <button class="btn btn-primary btn-sm text-nowrap" onclick="document.getElementById('tab-materials-link').click()">
                   <i class="fa fa-truck"></i> Receive Delivery (GRN)
                 </button>
