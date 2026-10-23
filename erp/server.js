@@ -5,6 +5,7 @@ const url = require('url');
 const fs = require('fs');
 const { Pool } = require('pg');
 const path = require('path');
+const XLSX = require('xlsx');
 require('dotenv').config({ path: path.join(__dirname, '.env.erp') });
 
 const port = process.env.PORT || 4000;
@@ -23,6 +24,31 @@ const pool = new Pool({
 pool.on('error', (err) => {
   console.error('[ERP DB Pool Error]:', err.message);
 });
+
+async function ensureStorageColumns() {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS storage_a character varying(50) DEFAULT '0';
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS storage_b character varying(50) DEFAULT '0';
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS storage_c character varying(50) DEFAULT '0';
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS cost_storage_a character varying(50) DEFAULT '0.00';
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS cost_storage_b character varying(50) DEFAULT '0.00';
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS cost_storage_c character varying(50) DEFAULT '0.00';
+        ALTER TABLE public.tbl_product ADD COLUMN IF NOT EXISTS cost_storage_nq character varying(50) DEFAULT '0.00';
+      `);
+      console.log('[ERP Migration]: Ensured storage and cost columns in tbl_product');
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    if (!err.message.includes('must be owner')) {
+      console.error('[ERP Migration Error]:', err.message);
+    }
+  }
+}
+ensureStorageColumns();
 
 // Helpers
 function sendJson(res, statusCode, data) {
@@ -234,6 +260,34 @@ const requestHandler = async (req, res) => {
       return sendJson(res, 200, { status: 'UP', service: 'eConstructionSite ERP Tenant Hub', port });
     }
 
+    // Static file handler for product photos & uploads
+    if (pathname.startsWith('/assets/uploads/')) {
+      const safeRelPath = pathname.replace(/^\/+/, '');
+      const filePath = path.join(__dirname, '..', safeRelPath);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.svg': 'image/svg+xml'
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=86400' });
+        return fs.createReadStream(filePath).pipe(res);
+      } else {
+        const placeholderPath = path.join(__dirname, '..', 'assets', 'uploads', 'product_photos', 'general_products.png');
+        if (fs.existsSync(placeholderPath)) {
+          res.writeHead(200, { 'Content-Type': 'image/png' });
+          return fs.createReadStream(placeholderPath).pipe(res);
+        }
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        return res.end('Image Not Found');
+      }
+    }
+
     // 1. Tenants List (for Tenant Switcher)
     if (pathname === '/api/tenants' && method === 'GET') {
       const client = await pool.connect();
@@ -245,19 +299,591 @@ const requestHandler = async (req, res) => {
       }
     }
 
-    // 2. Products List (for Stock Receiving)
+    // 2. Products List (for Stock Receiving & Store Catalog)
     if (pathname === '/api/products' && method === 'GET') {
       const supplierId = parseInt(parsedUrl.query.supplier_id || '1', 10);
       const client = await pool.connect();
       try {
         const q = await client.query(
-          `SELECT p_id, p_name, p_qty, p_capital_price, p_current_price 
-           FROM public.tbl_product 
-           WHERE supplier_id = $1 
-           ORDER BY p_name ASC`,
+          `SELECT p.p_id, p.p_name, p.p_sku, p.p_featured_photo, p.ecat_id, p.p_qty, p.p_new_qty, p.p_s_level, 
+                  p.p_capital_price, p.p_markup, p.p_current_price, p.p_new_price,
+                  COALESCE(p.storage_a, '0') AS storage_a,
+                  COALESCE(p.cost_storage_a, '0.00') AS cost_storage_a,
+                  COALESCE(p.storage_b, '0') AS storage_b,
+                  COALESCE(p.cost_storage_b, '0.00') AS cost_storage_b,
+                  COALESCE(p.storage_c, '0') AS storage_c,
+                  COALESCE(p.cost_storage_c, '0.00') AS cost_storage_c,
+                  COALESCE(p.cost_storage_nq, '0.00') AS cost_storage_nq,
+                  ec.ecat_name
+           FROM public.tbl_product p
+           LEFT JOIN public.tbl_end_category ec ON p.ecat_id = ec.ecat_id
+           WHERE p.supplier_id = $1 
+           ORDER BY ec.ecat_name ASC NULLS LAST, p.p_name ASC`,
           [supplierId]
         );
         return sendJson(res, 200, q.rows);
+      } finally {
+        client.release();
+      }
+    }
+
+    // 2b. Inline Product Update (for Store Catalog & Available Stock inline editing across all columns)
+    if (pathname === '/api/products/update' && (method === 'POST' || method === 'PUT')) {
+      const body = await getRequestBody(req);
+      const productId = parseInt(body.p_id, 10);
+      if (!productId) {
+        return sendJson(res, 400, { error: 'Product ID is required.' });
+      }
+
+      const client = await pool.connect();
+      try {
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (body.p_name !== undefined && String(body.p_name).trim()) {
+          fields.push(`p_name = $${idx++}`);
+          values.push(String(body.p_name).trim());
+        }
+        if (body.p_sku !== undefined) {
+          fields.push(`p_sku = $${idx++}`);
+          values.push(String(body.p_sku).trim());
+        }
+        if (body.p_featured_photo !== undefined) {
+          fields.push(`p_featured_photo = $${idx++}`);
+          values.push(String(body.p_featured_photo).trim());
+        }
+        if (body.ecat_id !== undefined && !isNaN(parseInt(body.ecat_id, 10)) && parseInt(body.ecat_id, 10) > 0) {
+          fields.push(`ecat_id = $${idx++}`);
+          values.push(parseInt(body.ecat_id, 10));
+        }
+        if (body.storage_a !== undefined) {
+          fields.push(`storage_a = $${idx++}`);
+          values.push(String(body.storage_a || '0').trim());
+        }
+        if (body.storage_b !== undefined) {
+          fields.push(`storage_b = $${idx++}`);
+          values.push(String(body.storage_b || '0').trim());
+        }
+        if (body.storage_c !== undefined) {
+          fields.push(`storage_c = $${idx++}`);
+          values.push(String(body.storage_c || '0').trim());
+        }
+        if (body.cost_storage_a !== undefined && !isNaN(parseFloat(body.cost_storage_a))) {
+          fields.push(`cost_storage_a = $${idx++}`);
+          values.push(parseFloat(body.cost_storage_a).toFixed(2));
+        }
+        if (body.cost_storage_b !== undefined && !isNaN(parseFloat(body.cost_storage_b))) {
+          fields.push(`cost_storage_b = $${idx++}`);
+          values.push(parseFloat(body.cost_storage_b).toFixed(2));
+        }
+        if (body.cost_storage_c !== undefined && !isNaN(parseFloat(body.cost_storage_c))) {
+          fields.push(`cost_storage_c = $${idx++}`);
+          values.push(parseFloat(body.cost_storage_c).toFixed(2));
+        }
+        if (body.cost_storage_nq !== undefined && !isNaN(parseFloat(body.cost_storage_nq))) {
+          fields.push(`cost_storage_nq = $${idx++}`);
+          values.push(parseFloat(body.cost_storage_nq).toFixed(2));
+        }
+        if (body.p_qty !== undefined && !isNaN(parseInt(body.p_qty, 10))) {
+          fields.push(`p_qty = $${idx++}`);
+          values.push(parseInt(body.p_qty, 10));
+        }
+        if (body.p_new_qty !== undefined && !isNaN(parseInt(body.p_new_qty, 10))) {
+          fields.push(`p_new_qty = $${idx++}`);
+          values.push(parseInt(body.p_new_qty, 10));
+        }
+        if (body.p_s_level !== undefined && !isNaN(parseInt(body.p_s_level, 10))) {
+          fields.push(`p_s_level = $${idx++}`);
+          values.push(parseInt(body.p_s_level, 10));
+        }
+        if (body.p_capital_price !== undefined && !isNaN(parseFloat(body.p_capital_price))) {
+          const cap = parseFloat(body.p_capital_price);
+          fields.push(`p_capital_price = $${idx++}`);
+          values.push(cap.toFixed(2));
+        }
+        if (body.p_markup !== undefined && !isNaN(parseFloat(body.p_markup))) {
+          fields.push(`p_markup = $${idx++}`);
+          values.push(String(body.p_markup));
+        }
+        if (body.p_current_price !== undefined && !isNaN(parseFloat(body.p_current_price))) {
+          const price = parseFloat(body.p_current_price);
+          fields.push(`p_current_price = $${idx++}`);
+          values.push(price.toFixed(2));
+          fields.push(`p_new_price = $${idx++}`);
+          values.push(price.toFixed(2));
+        }
+
+        if (fields.length === 0) {
+          return sendJson(res, 400, { error: 'No editable fields provided.' });
+        }
+
+        values.push(productId);
+        const updateSql = `UPDATE public.tbl_product SET ${fields.join(', ')} WHERE p_id = $${idx} RETURNING p_id, p_name, p_sku, p_featured_photo, ecat_id, p_qty, p_new_qty, p_s_level, p_capital_price, p_markup, p_current_price, storage_a, storage_b, storage_c, cost_storage_a, cost_storage_b, cost_storage_c, cost_storage_nq`;
+        const result = await client.query(updateSql, values);
+
+        if (result.rows.length === 0) {
+          return sendJson(res, 404, { error: 'Product not found.' });
+        }
+
+        return sendJson(res, 200, {
+          success: true,
+          message: 'Product updated successfully.',
+          product: result.rows[0]
+        });
+      } catch (err) {
+        console.error('[Product Update Error]:', err);
+        return sendJson(res, 500, { error: err.message });
+      } finally {
+        client.release();
+      }
+    }
+
+    // 2c. Upload or Assign Product Photo
+    if (pathname === '/api/products/upload-photo' && method === 'POST') {
+      const body = await getRequestBody(req);
+      const productId = parseInt(body.p_id, 10);
+      if (!productId) {
+        return sendJson(res, 400, { error: 'Product ID required' });
+      }
+
+      let photoFilename = body.filename ? path.basename(body.filename) : null;
+      if (body.image_base64) {
+        const matches = body.image_base64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+        let ext = '.jpg';
+        let base64Data = body.image_base64;
+        if (matches) {
+          ext = '.' + matches[1].replace('jpeg', 'jpg');
+          base64Data = matches[2];
+        }
+        if (!photoFilename) {
+          photoFilename = `product-photo-${productId}-${Date.now()}${ext}`;
+        }
+        const uploadsDir = path.join(__dirname, '..', 'assets', 'uploads');
+        const targetPath = path.join(uploadsDir, photoFilename);
+        fs.writeFileSync(targetPath, Buffer.from(base64Data, 'base64'));
+      } else if (body.photo_path) {
+        photoFilename = body.photo_path.trim();
+      }
+
+      if (!photoFilename) {
+        return sendJson(res, 400, { error: 'No photo provided' });
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('UPDATE public.tbl_product SET p_featured_photo = $1 WHERE p_id = $2', [photoFilename, productId]);
+        return sendJson(res, 200, { success: true, p_featured_photo: photoFilename });
+      } finally {
+        client.release();
+      }
+    }
+
+    // 2d. Category List for Store Catalog dropdown
+    if (pathname === '/api/categories' && method === 'GET') {
+      const client = await pool.connect();
+      try {
+        const q = await client.query('SELECT ecat_id, ecat_name FROM public.tbl_end_category ORDER BY ecat_name ASC');
+        return sendJson(res, 200, q.rows);
+      } finally {
+        client.release();
+      }
+    }
+
+    // 2e. Batch Import / Update Products from Excel / Spreadsheet (One-Time Excel to SQL)
+    if (pathname === '/api/products/batch-import-excel' && method === 'POST') {
+      const body = await getRequestBody(req);
+      const supplierId = parseInt(body.supplier_id || '2', 10);
+      const rows = body.products || [];
+      const updateExisting = body.update_existing !== false;
+      const insertNew = body.insert_new !== false;
+
+      if (!rows || rows.length === 0) {
+        return sendJson(res, 400, { error: 'No product rows provided for Excel import.' });
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Preload existing categories for lookup by name if ecat_id is missing or name is provided
+        const catRes = await client.query('SELECT ecat_id, ecat_name FROM public.tbl_end_category');
+        const catMap = new Map();
+        catRes.rows.forEach(c => {
+          catMap.set(String(c.ecat_id), c.ecat_id);
+          catMap.set(c.ecat_name.toLowerCase().trim(), c.ecat_id);
+        });
+
+        // Preload supplier\'s existing products for fast ID / SKU / Name matching
+        const existingRes = await client.query(
+          'SELECT p_id, p_sku, LOWER(p_name) as lower_name FROM public.tbl_product WHERE supplier_id = $1',
+          [supplierId]
+        );
+        const existingById = new Set(existingRes.rows.map(r => r.p_id));
+        const existingBySku = new Map();
+        const existingByName = new Map();
+        existingRes.rows.forEach(r => {
+          if (r.p_sku) existingBySku.set(r.p_sku.trim().toLowerCase(), r.p_id);
+          if (r.lower_name) existingByName.set(r.lower_name.trim(), r.p_id);
+        });
+
+        let updatedCount = 0;
+        let insertedCount = 0;
+        const errors = [];
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+
+          // Normalize values with complete alignment for Sam & Inri inventory headers & standard headers
+          let rawPid = row.p_id || row.id || row.ID || row['Product ID'] || row.code || row.Code || row['Item Code'] || row.item_code || '';
+          let pid = parseInt(String(rawPid).replace(/[^0-9]/g, ''), 10);
+          if (isNaN(pid)) pid = 0;
+
+          const p_name = String(
+            row.p_name || row.name || row['Product Name'] || row.Title || row.title || 
+            row.description || row.Description || row.desc || row.Desc || row['Item Description'] || ''
+          ).trim();
+          if (!p_name && !pid) {
+            continue;
+          }
+
+          const p_sku = String(row.p_sku || row.sku || row.SKU || row['Item Code'] || row.item_code || (pid > 0 ? '' : (row.code || ''))).trim();
+
+          // Resolve ecat_id
+          let ecat_id = 1;
+          const rawCat = row.ecat_id || row.category || row.Category || row['Category Name'] || '';
+          if (rawCat) {
+            const cleanCatStr = String(rawCat).trim().toLowerCase();
+            if (catMap.has(cleanCatStr)) {
+              ecat_id = catMap.get(cleanCatStr);
+            } else {
+              const numericCat = parseInt(cleanCatStr, 10);
+              if (!isNaN(numericCat) && catMap.has(String(numericCat))) {
+                ecat_id = numericCat;
+              }
+            }
+          }
+
+          const p_qty = parseInt(String(
+            row.p_qty || row.qty || row.Stock || row.stock || row['Available Stock'] || row['Available Stock (Q)'] || row.quantity || row.Quantity || 0
+          ).replace(/[^0-9-]/g, ''), 10) || 0;
+
+          const p_new_qty = parseInt(String(
+            row.p_new_qty || row.new_qty || row['New Batch'] || row['New Batch (NQ)'] || row.incoming || 0
+          ).replace(/[^0-9-]/g, ''), 10) || 0;
+
+          const p_s_level = parseInt(String(
+            row.p_s_level || row.s_level || row['Safety Level'] || row['Safety Level (S)'] || 
+            row.minimum_stock || row.min_stock || row['Minimum Stock'] || 10
+          ).replace(/[^0-9]/g, ''), 10) || 10;
+
+          const p_capital_price = parseFloat(String(
+            row.p_capital_price || row.capital_price || row.capital_cost || row['Capital Cost'] || 
+            row['Landed Cost'] || row['Cost Price'] || row.cost || 0
+          ).replace(/[^0-9.-]/g, '')) || 0;
+
+          let p_markup = parseFloat(String(
+            row.p_markup || row.markup || row['Markup'] || row['Markup (PHP)'] || row['Markup (₱)'] || 0
+          ).replace(/[^0-9.-]/g, '')) || 0;
+
+          const markup_percent = parseFloat(String(
+            row.markup_percent || row['Markup Percent'] || row['Markup %'] || row.markup_percentage || 0
+          ).replace(/[^0-9.-]/g, '')) || 0;
+
+          let p_current_price = parseFloat(String(
+            row.p_current_price || row.current_price || row.price || row.selling_price || 
+            row['Selling Price'] || row['Retail Price'] || row['Current Price'] || row.srp || 0
+          ).replace(/[^0-9.-]/g, '')) || 0;
+
+          // Auto-calculate markup or retail price
+          if (p_current_price > 0 && p_capital_price > 0 && p_markup === 0) {
+            p_markup = p_current_price - p_capital_price;
+          } else if (p_current_price === 0 && p_capital_price > 0 && markup_percent > 0) {
+            p_markup = p_capital_price * (markup_percent / 100);
+            p_current_price = p_capital_price + p_markup;
+          } else if (p_current_price === 0 && p_capital_price > 0 && p_markup > 0) {
+            p_current_price = p_capital_price + p_markup;
+          } else if (p_markup === 0 && p_capital_price > 0 && markup_percent > 0) {
+            p_markup = p_capital_price * (markup_percent / 100);
+          }
+
+          const unit = String(row.unit || row.Unit || row.uom || '').trim();
+          const supplierName = String(row.supplier || row.Supplier || row.vendor || row.Vendor || '').trim();
+          const shortDesc = unit ? ('Unit: ' + unit) : '';
+          const featureDesc = supplierName ? ('Supplier: ' + supplierName) : '';
+
+          const p_featured_photo = String(row.p_featured_photo || row.photo || row.Photo || row.Image || 'product_photos/general_products.png').trim() || 'product_photos/general_products.png';
+
+          // Match strategy:
+          // 1. By ID if exists in active store
+          // 2. By SKU if exists in active store
+          // 3. By Name if exists in active store
+          let targetPid = 0;
+          if (pid > 0 && existingById.has(pid)) {
+            targetPid = pid;
+          } else if (p_sku && existingBySku.has(p_sku.toLowerCase())) {
+            targetPid = existingBySku.get(p_sku.toLowerCase());
+          } else if (p_name && existingByName.has(p_name.toLowerCase())) {
+            targetPid = existingByName.get(p_name.toLowerCase());
+          }
+
+          if (targetPid > 0) {
+            if (updateExisting) {
+              await client.query(
+                `UPDATE public.tbl_product 
+                 SET p_name = COALESCE(NULLIF($1, ''), p_name),
+                     p_sku = COALESCE(NULLIF($2, ''), p_sku),
+                     ecat_id = $3,
+                     p_qty = $4,
+                     p_new_qty = $5,
+                     p_s_level = $6,
+                     p_capital_price = $7,
+                     p_markup = $8,
+                     p_current_price = $9,
+                     p_new_price = $9,
+                     p_featured_photo = COALESCE(NULLIF($10, ''), p_featured_photo),
+                     p_short_description = CASE WHEN $13 <> '' AND (p_short_description IS NULL OR p_short_description = '') THEN $13 ELSE p_short_description END,
+                     p_feature = CASE WHEN $14 <> '' AND (p_feature IS NULL OR p_feature = '') THEN $14 ELSE p_feature END
+                 WHERE p_id = $11 AND supplier_id = $12`,
+                [
+                  p_name,
+                  p_sku,
+                  ecat_id,
+                  p_qty,
+                  p_new_qty,
+                  p_s_level,
+                  p_capital_price.toFixed(2),
+                  p_markup.toFixed(2),
+                  p_current_price.toFixed(2),
+                  p_featured_photo,
+                  targetPid,
+                  supplierId,
+                  shortDesc,
+                  featureDesc
+                ]
+              );
+              updatedCount++;
+            }
+          } else if (insertNew && p_name) {
+            const insertSql = `
+              INSERT INTO public.tbl_product (
+                supplier_id, p_name, p_old_price, p_current_price, p_new_price,
+                p_qty, p_new_qty, p_s_level, p_capital_price, p_markup,
+                p_featured_photo, p_description, p_short_description, p_feature,
+                p_condition, p_return_policy, p_total_view, p_is_featured,
+                p_is_active, ecat_id, p_sku
+              ) VALUES (
+                $1, $2, $3, $4, $4,
+                $5, $6, $7, $8, $9,
+                $10, $11, $12, $13,
+                $14, $15, 0, 0,
+                1, $16, $17
+              ) RETURNING p_id
+            `;
+            const insRes = await client.query(insertSql, [
+              supplierId,
+              p_name,
+              p_current_price.toFixed(2),
+              p_current_price.toFixed(2),
+              p_qty,
+              p_new_qty,
+              p_s_level,
+              p_capital_price.toFixed(2),
+              p_markup.toFixed(2),
+              p_featured_photo,
+              '', shortDesc, featureDesc, '', '',
+              ecat_id,
+              p_sku
+            ]);
+            const newId = insRes.rows[0].p_id;
+            existingById.add(newId);
+            if (p_sku) existingBySku.set(p_sku.toLowerCase(), newId);
+            if (p_name) existingByName.set(p_name.toLowerCase(), newId);
+            insertedCount++;
+          }
+        }
+
+        await client.query('COMMIT');
+
+        return sendJson(res, 200, {
+          success: true,
+          message: `Successfully processed ${updatedCount + insertedCount} products from Excel (${updatedCount} updated, ${insertedCount} inserted).`,
+          updated_count: updatedCount,
+          inserted_count: insertedCount,
+          total_rows: rows.length,
+          errors
+        });
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[Excel Batch Import Error]:', err);
+        return sendJson(res, 500, { error: 'Failed to import Excel data into PostgreSQL: ' + err.message });
+      } finally {
+        client.release();
+      }
+    }
+
+    // 2f. Download Blank Excel Template for Products (Standard & Sam & Inri formats)
+    if (pathname === '/api/products/template-excel' && (method === 'GET' || method === 'HEAD')) {
+      const isSamInri = (parsedUrl.query.format === 'sam_inri' || parsedUrl.query.format === 'saminri');
+      
+      const templateData = isSamInri ? [
+        {
+          "code": 1163,
+          "description": "7/8 PowerNails ( pack)",
+          "unit": "pc",
+          "stock": 50,
+          "minimum_stock": 0,
+          "supplier": "Tool Mate",
+          "supplier_contact": "",
+          "capital_cost": 18.00,
+          "markup_percent": 111.11,
+          "selling_price": 38.00
+        },
+        {
+          "code": 254,
+          "description": "Angle Bar - 1/4 x 1\" orange",
+          "unit": "pc",
+          "stock": 280,
+          "minimum_stock": 25,
+          "supplier": "Evergold",
+          "supplier_contact": "",
+          "capital_cost": 420.00,
+          "markup_percent": 30.00,
+          "selling_price": 546.00
+        },
+        {
+          "code": "",
+          "description": "Sample New Item (Leave code blank to auto-insert new item)",
+          "unit": "pc",
+          "stock": 100,
+          "minimum_stock": 10,
+          "supplier": "General Supplies",
+          "supplier_contact": "",
+          "capital_cost": 50.00,
+          "markup_percent": 20.00,
+          "selling_price": 60.00
+        }
+      ] : [
+        {
+          "ID": 56,
+          "SKU": "AB-ORANGE-01",
+          "Product Name": "Angle Bar - 1/4 x 2\" orange",
+          "Category": "Angle Bars",
+          "Available Stock (Q)": 50,
+          "New Batch (NQ)": 0,
+          "Safety Level (S)": 25,
+          "Landed Cost": 875.00,
+          "Markup": 306.00,
+          "Retail Price": 1181.00,
+          "Photo": "product-featured-56.jpg"
+        },
+        {
+          "ID": "",
+          "SKU": "NEW-ITEM-001",
+          "Product Name": "Sample New Product (Leave ID blank for new items)",
+          "Category": "Common Nails",
+          "Available Stock (Q)": 100,
+          "New Batch (NQ)": 20,
+          "Safety Level (S)": 15,
+          "Landed Cost": 45.00,
+          "Markup": 15.00,
+          "Retail Price": 60.00,
+          "Photo": "product_photos/general_products.png"
+        }
+      ];
+
+      const ws = XLSX.utils.json_to_sheet(templateData);
+      ws['!cols'] = isSamInri ? [
+        { wch: 10 },
+        { wch: 38 },
+        { wch: 8 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 14 }
+      ] : [
+        { wch: 8 },
+        { wch: 16 },
+        { wch: 38 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 28 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, isSamInri ? "Sam_Inri_Inventory" : "Product_Catalog");
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: isSamInri ? 'biff8' : 'xlsx' });
+
+      res.writeHead(200, {
+        'Content-Type': isSamInri ? 'application/vnd.ms-excel' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="' + (isSamInri ? 'Sam_Inri_Inventory_Template.xls' : 'eConstruction_Product_Template.xlsx') + '"',
+        'Content-Length': buffer.length
+      });
+      return res.end(buffer);
+    }
+
+    // 2g. Export Active Store Catalog to Excel
+    if (pathname === '/api/products/export-excel' && (method === 'GET' || method === 'HEAD')) {
+      const supplierId = parseInt(parsedUrl.query.supplier_id || '2', 10);
+      const client = await pool.connect();
+      try {
+        const q = await client.query(
+          `SELECT p.p_id, p.p_sku, p.p_name, ec.ecat_name, p.p_qty, p.p_new_qty, p.p_s_level, 
+                  p.p_capital_price, p.p_markup, p.p_current_price, p.p_featured_photo
+           FROM public.tbl_product p
+           LEFT JOIN public.tbl_end_category ec ON p.ecat_id = ec.ecat_id
+           WHERE p.supplier_id = $1 
+           ORDER BY p.p_id ASC`,
+          [supplierId]
+        );
+
+        const rows = q.rows.map(r => ({
+          "ID": r.p_id,
+          "SKU": r.p_sku || '',
+          "Product Name": r.p_name || '',
+          "Category": r.ecat_name || 'General',
+          "Available Stock (Q)": parseInt(r.p_qty || 0, 10),
+          "New Batch (NQ)": parseInt(r.p_new_qty || 0, 10),
+          "Safety Level (S)": parseInt(r.p_s_level || 10, 10),
+          "Landed Cost": parseFloat(r.p_capital_price || 0),
+          "Markup": parseFloat(r.p_markup || 0),
+          "Retail Price": parseFloat(r.p_current_price || 0),
+          "Photo": r.p_featured_photo || 'product_photos/general_products.png'
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [
+          { wch: 8 },
+          { wch: 18 },
+          { wch: 40 },
+          { wch: 24 },
+          { wch: 18 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 14 },
+          { wch: 12 },
+          { wch: 14 },
+          { wch: 30 }
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Store_Catalog");
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="Store_Catalog_Supplier_${supplierId}.xlsx"`,
+          'Content-Length': buffer.length
+        });
+        return res.end(buffer);
       } finally {
         client.release();
       }
@@ -991,20 +1617,43 @@ const requestHandler = async (req, res) => {
 
 const httpServer = http.createServer(requestHandler);
 
-// SSL Certificate Detection for Production (Let's Encrypt / Production or Custom)
-const certPath = process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/econstruction-supply.site/fullchain.pem';
-const keyPath = process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/econstruction-supply.site/privkey.pem';
+// SSL Certificate Detection: Production Let's Encrypt, or Local Development Fallback
+const certCandidates = [
+  {
+    name: "Production (Let's Encrypt)",
+    cert: process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/econstruction-supply.site/fullchain.pem',
+    key: process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/econstruction-supply.site/privkey.pem'
+  },
+  {
+    name: "Local Dev (Mounted /etc/letsencrypt/dev)",
+    cert: '/etc/letsencrypt/dev/fullchain.pem',
+    key: '/etc/letsencrypt/dev/privkey.pem'
+  },
+  {
+    name: "Local Dev (Project Root ssl/dev)",
+    cert: path.join(__dirname, '../ssl/dev/fullchain.pem'),
+    key: path.join(__dirname, '../ssl/dev/privkey.pem')
+  },
+  {
+    name: "Local Dev (ERP Subdir ssl/dev)",
+    cert: path.join(__dirname, 'ssl/dev/fullchain.pem'),
+    key: path.join(__dirname, 'ssl/dev/privkey.pem')
+  }
+];
 
 let httpsServer = null;
-if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+for (const cand of certCandidates) {
   try {
-    httpsServer = https.createServer({
-      cert: fs.readFileSync(certPath),
-      key: fs.readFileSync(keyPath)
-    }, requestHandler);
-    console.log('[ERP SSL]: Loaded Let\'s Encrypt certificates successfully from', certPath);
+    if (fs.existsSync(cand.cert) && fs.existsSync(cand.key)) {
+      httpsServer = https.createServer({
+        cert: fs.readFileSync(cand.cert),
+        key: fs.readFileSync(cand.key)
+      }, requestHandler);
+      console.log(`[ERP SSL]: Loaded ${cand.name} certificates successfully from ${cand.cert}`);
+      break;
+    }
   } catch (sslErr) {
-    console.warn('[ERP SSL Warning]: Could not initialize HTTPS server:', sslErr.message);
+    console.warn(`[ERP SSL Warning]: Failed loading certs from ${cand.cert}:`, sslErr.message);
   }
 }
 
@@ -1014,8 +1663,15 @@ const tcpServer = net.createServer((socket) => {
     socket.pause();
     socket.unshift(buffer);
     // 0x16 (22) is TLS Handshake record type in SSLv3/TLS1.x
-    if (buffer[0] === 22 && httpsServer) {
-      httpsServer.emit('connection', socket);
+    if (buffer[0] === 22) {
+      if (httpsServer) {
+        httpsServer.emit('connection', socket);
+      } else {
+        // Plain HTTP only mode, but client attempted TLS handshake
+        // Destroy socket cleanly to prevent HTTP parser from throwing "Invalid method encountered"
+        socket.destroy();
+        return;
+      }
     } else {
       httpServer.emit('connection', socket);
     }
@@ -1023,7 +1679,7 @@ const tcpServer = net.createServer((socket) => {
   });
 
   socket.on('error', (err) => {
-    if (err.code !== 'ECONNRESET') {
+    if (err.code !== 'ECONNRESET' && err.code !== 'EPIPE') {
       console.warn('[ERP Socket Error]:', err.message);
     }
   });
@@ -1041,6 +1697,7 @@ function getTenantDashboardHtml() {
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -1289,6 +1946,20 @@ function getTenantDashboardHtml() {
       margin-top: 4px;
       color: #0f172a;
     }
+
+    /* Warehouse Stock Paired Column Groups */
+    .wh-col-group-a {
+      background-color: #e6e0d1 !important;
+    }
+    .wh-col-group-b {
+      background-color: #c2d0ed !important;
+    }
+    .wh-col-group-c {
+      background-color: #d1cfcd !important;
+    }
+    .wh-col-group-nq {
+      background-color: #d1e6d6 !important;
+    }
   </style>
 </head>
 <body>
@@ -1381,6 +2052,13 @@ function getTenantDashboardHtml() {
           <i class="fa fa-cubes" style="color: #38bdf8;"></i> <span>Catalog &amp; Available Stock</span>
         </a>
       </li>
+
+      <li class="header">WAREHOUSE</li>
+      <li id="nav-li-warehouse">
+        <a id="tab-warehouse-link" href="javascript:void(0)" onclick="activateSidebarItem('nav-li-warehouse', 'tab-warehouse', 'Warehouse Stock')">
+          <i class="fa fa-building-o" style="color: #fb923c;"></i> <span>Warehouse Stock</span>
+        </a>
+      </li>
       <li id="nav-li-materials">
         <a id="tab-materials-link" href="javascript:void(0)" onclick="activateSidebarItem('nav-li-materials', 'tab-materials', 'Receive Materials (GRN)')">
           <i class="fa fa-truck" style="color: #f472b6;"></i> <span>Receive Materials (GRN)</span>
@@ -1411,38 +2089,38 @@ function getTenantDashboardHtml() {
     </div>
 
     <div class="content-body">
-      <!-- Top KPI Strip -->
-      <div class="row">
-        <div class="col-md-3 col-sm-6">
-          <div class="kpi-box" style="border-left-color: #10b981;">
-            <div class="kpi-label">Gross POS Revenue (<span class="kpiPeriodLabel">Daily</span>)</div>
-            <div class="kpi-val text-success" id="kpiGross">₱0.00</div>
-          </div>
-        </div>
-        <div class="col-md-3 col-sm-6">
-          <div class="kpi-box" style="border-left-color: #f59e0b;">
-            <div class="kpi-label">True Landed COGS (<span class="kpiPeriodLabel">Daily</span>)</div>
-            <div class="kpi-val text-danger" id="kpiCogs">-₱0.00</div>
-          </div>
-        </div>
-        <div class="col-md-3 col-sm-6">
-          <div class="kpi-box" style="border-left-color: #6366f1;">
-            <div class="kpi-label">Store OPEX &amp; Bills (<span class="kpiPeriodLabel">Daily</span>)</div>
-            <div class="kpi-val text-danger" id="kpiOpex">-₱0.00</div>
-          </div>
-        </div>
-        <div class="col-md-3 col-sm-6">
-          <div class="kpi-box" style="border-left-color: #0284c7;">
-            <div class="kpi-label">Net Operating Profit (<span class="kpiPeriodLabel">Daily</span>)</div>
-            <div class="kpi-val" id="kpiNet">₱0.00</div>
-          </div>
-        </div>
-      </div>
-
       <div class="tab-content" id="mainTabsContent">
 
         <!-- TAB 1: P&L WATERFALL -->
         <div class="tab-pane fade show active" id="tab-pnl">
+          <!-- Top KPI Strip (Financial Waterfall Only) -->
+          <div class="row">
+            <div class="col-md-3 col-sm-6">
+              <div class="kpi-box" style="border-left-color: #10b981;">
+                <div class="kpi-label">Gross POS Revenue (<span class="kpiPeriodLabel">Daily</span>)</div>
+                <div class="kpi-val text-success" id="kpiGross">₱0.00</div>
+              </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+              <div class="kpi-box" style="border-left-color: #f59e0b;">
+                <div class="kpi-label">True Landed COGS (<span class="kpiPeriodLabel">Daily</span>)</div>
+                <div class="kpi-val text-danger" id="kpiCogs">-₱0.00</div>
+              </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+              <div class="kpi-box" style="border-left-color: #6366f1;">
+                <div class="kpi-label">Store OPEX &amp; Bills (<span class="kpiPeriodLabel">Daily</span>)</div>
+                <div class="kpi-val text-danger" id="kpiOpex">-₱0.00</div>
+              </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+              <div class="kpi-box" style="border-left-color: #0284c7;">
+                <div class="kpi-label">Net Operating Profit (<span class="kpiPeriodLabel">Daily</span>)</div>
+                <div class="kpi-val" id="kpiNet">₱0.00</div>
+              </div>
+            </div>
+          </div>
+
           <div class="row">
             <div class="col-lg-7">
               <div class="card p-4">
@@ -2015,32 +2693,336 @@ function getTenantDashboardHtml() {
         <!-- TAB 5: CATALOG & AVAILABLE STOCK -->
         <div class="tab-pane fade" id="tab-catalog">
           <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
               <div>
                 <h5 class="mb-0 fw-bold"><i class="fa fa-cubes text-info"></i> Store Catalog &amp; Available Stock</h5>
-                <p class="text-muted small mb-0">Live inventory levels synchronized with Port 9090 POS registers and landed capital costs.</p>
+                <p class="text-muted small mb-0">Inline inventory management with live PostgreSQL sync. Edit stock, safety thresholds, and prices directly in table cells.</p>
               </div>
-              <button class="btn btn-primary btn-sm" onclick="document.getElementById('tab-materials-link').click()">
-                <i class="fa fa-truck"></i> Receive Delivery (GRN)
-              </button>
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="btn-group btn-group-sm" role="group" id="catalogFilterGroup">
+                  <button type="button" id="catBtnFilterCritical" class="btn btn-danger active fw-bold" onclick="setCatalogFilter('critical')">
+                    <i class="fa fa-exclamation-triangle"></i> Critical Only (<span id="catCountCritical">0</span>)
+                  </button>
+                  <button type="button" id="catBtnFilterLow" class="btn btn-outline-warning fw-bold text-dark" onclick="setCatalogFilter('low')">
+                    <i class="fa fa-bell-o"></i> Low Stock (<span id="catCountLow">0</span>)
+                  </button>
+                  <button type="button" id="catBtnFilterAll" class="btn btn-outline-secondary fw-bold" onclick="setCatalogFilter('all')">
+                    <i class="fa fa-list"></i> All Items (<span id="catCountAll">0</span>)
+                  </button>
+                </div>
+                <div class="input-group input-group-sm" style="width: 220px;">
+                  <span class="input-group-text bg-light text-muted"><i class="fa fa-search"></i></span>
+                  <input type="text" id="catalogSearchInput" class="form-control" placeholder="Search product, SKU..." oninput="onCatalogSearchInput()">
+                </div>
+                <button class="btn btn-outline-success btn-sm text-nowrap fw-bold" onclick="openExcelUploadModal()" title="Upload and update products via Excel spreadsheet">
+                  <i class="fa fa-file-excel-o text-success me-1"></i> Upload Excel
+                </button>
+                <button class="btn btn-primary btn-sm text-nowrap" onclick="document.getElementById('tab-materials-link').click()">
+                  <i class="fa fa-truck"></i> Receive Delivery (GRN)
+                </button>
+              </div>
             </div>
+
+            <!-- Notice Banner for Critical Status View -->
+            <div class="alert alert-danger py-2 px-3 d-flex align-items-center justify-content-between mb-3 small" id="catalogCriticalAlert">
+              <div>
+                <i class="fa fa-exclamation-circle text-danger me-1"></i>
+                <strong id="catalogFilterLabel">Displaying Critical Status Items:</strong>
+                <span id="catalogFilterDesc" class="text-muted">Showing items at or below 50% safety stock or completely out of stock. Type directly into input boxes to edit inline; press Enter or click Save to apply updates.</span>
+              </div>
+              <span class="badge bg-danger ms-2 text-nowrap" id="criticalBadgeNotice">Critical Filter Active</span>
+            </div>
+
             <div class="table-responsive">
               <table class="table table-sm table-hover small align-middle">
-                <thead>
+                <thead class="table-light">
                   <tr>
-                    <th>ID</th>
-                    <th>Product Name</th>
-                    <th>Available POS Stock</th>
-                    <th>Landed / Capital Cost</th>
-                    <th>Retail Price</th>
-                    <th>Status</th>
-                    <th>Action</th>
+                    <th style="width: 60px;">ID</th>
+                    <th class="text-center" style="width: 65px;">Image</th>
+                    <th style="min-width: 100px;">SKU</th>
+                    <th style="min-width: 180px;">Product Name</th>
+                    <th style="min-width: 140px;">Category</th>
+                    <th class="text-center" style="min-width: 105px;">Available Stock (Q)</th>
+                    <th class="text-center" style="min-width: 95px;">New Batch (NQ)</th>
+                    <th class="text-center" style="min-width: 95px;">Safety Level (S)</th>
+                    <th class="text-end" style="min-width: 115px;">Landed Cost</th>
+                    <th class="text-end" style="min-width: 115px;">Markup (₱)</th>
+                    <th class="text-end" style="min-width: 115px;">Retail Price</th>
+                    <th class="text-center" style="min-width: 110px;">Status</th>
+                    <th class="text-center" style="min-width: 140px;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="catalogStockTable">
-                  <tr><td colspan="7" class="text-center text-muted">Loading catalog...</td></tr>
+                  <tr><td colspan="13" class="text-center text-muted">Loading catalog...</td></tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Catalog Pagination & Page Size Toolbar -->
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 pt-2 border-top small" id="catalogPaginationBar">
+              <div class="d-flex align-items-center gap-2 text-muted">
+                <span>Show</span>
+                <select id="catalogPageSize" class="form-select form-select-sm" style="width: auto; min-width: 75px;" onchange="onCatalogPageSizeChange()">
+                  <option value="15">15</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+                <span>items per page</span>
+                <span class="mx-2 text-secondary">|</span>
+                <span id="catalogPaginationInfo" class="fw-bold text-dark">Showing 0 of 0 products</span>
+              </div>
+              <nav aria-label="Catalog pagination">
+                <ul class="pagination pagination-sm mb-0" id="catalogPaginationControls">
+                  <!-- Generated dynamically in JS -->
+                </ul>
+              </nav>
+            </div>
+
+            <!-- Modal for Editing / Uploading Product Photo -->
+            <div class="modal fade" id="productPhotoModal" tabindex="-1" aria-labelledby="productPhotoModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content shadow border-0">
+                  <div class="modal-header bg-dark text-white py-2">
+                    <h6 class="modal-title fw-bold" id="productPhotoModalLabel"><i class="fa fa-camera me-1"></i> Edit Product Photo</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body p-3">
+                    <div class="text-center mb-3">
+                      <img id="photoModalPreview" src="/assets/uploads/product_photos/general_products.png" class="rounded border shadow-sm" style="width: 120px; height: 120px; object-fit: cover;" onerror="this.onerror=null;this.src=&apos;/assets/uploads/product_photos/general_products.png&apos;;">
+                      <div class="small fw-bold mt-2" id="photoModalTitle">Product #</div>
+                    </div>
+                    <input type="hidden" id="photoModalPid" value="">
+                    
+                    <div class="mb-3">
+                      <label class="form-label small fw-bold text-muted mb-1"><i class="fa fa-upload me-1"></i> Upload Image File</label>
+                      <input type="file" id="photoModalFileInput" class="form-control form-control-sm" accept="image/*" onchange="previewSelectedPhotoFile(event)">
+                      <div class="form-text small" style="font-size: 11px;">Uploads from local device directly into store inventory assets.</div>
+                    </div>
+
+                    <div class="mb-2">
+                      <label class="form-label small fw-bold text-muted mb-1"><i class="fa fa-link me-1"></i> Or Enter Image Path / Filename</label>
+                      <input type="text" id="photoModalPathInput" class="form-control form-control-sm" placeholder="e.g. rotary_hammer.jpg or product-featured-56.jpg" oninput="previewEnteredPhotoPath()">
+                      <div class="form-text small" style="font-size: 11px;">Relative to <code>assets/uploads/</code>.</div>
+                    </div>
+                  </div>
+                  <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="btnSavePhotoModal" class="btn btn-primary btn-sm" onclick="saveProductPhotoFromModal()"><i class="fa fa-check"></i> Apply Photo</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Modal for Excel Product List Upload & Batch SQL Update -->
+            <div class="modal fade" id="excelUploadModal" tabindex="-1" aria-labelledby="excelUploadModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content shadow border-0">
+                  <div class="modal-header bg-success text-white py-2">
+                    <h6 class="modal-title fw-bold" id="excelUploadModalLabel">
+                      <i class="fa fa-file-excel-o me-2"></i> Update Product List via Excel (Excel &rarr; SQL)
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body p-4">
+                    <!-- Helper and Template Downloads -->
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-3 border-bottom">
+                      <div>
+                        <div class="fw-bold small text-dark"><i class="fa fa-info-circle text-primary me-1"></i> Fast One-Time PostgreSQL Catalog Sync</div>
+                        <div class="text-muted small" style="font-size: 11.5px;">
+                          Upload your product spreadsheet (supports <strong>Sam & Inri Inventory format</strong>: <code>code</code>, <code>description</code>, <code>stock</code>, <code>minimum_stock</code>, <code>capital_cost</code>, <code>markup_percent</code>, <code>selling_price</code>, <code>unit</code>, <code>supplier</code>). Matches existing products by <strong>Code / ID</strong>, <strong>SKU</strong>, or <strong>Name</strong> and updates stock, costs, and markups atomically.
+                        </div>
+                      </div>
+                      <div class="d-flex gap-2 flex-wrap">
+                        <a href="/api/products/template-excel?format=sam_inri" class="btn btn-outline-success btn-sm text-nowrap" download="Sam_Inri_Inventory_Template.xls" title="Download Sam & Inri Inventory Excel template (.xls)">
+                          <i class="fa fa-file-excel-o me-1"></i> Sam & Inri Format (.xls)
+                        </a>
+                        <a href="/api/products/template-excel" class="btn btn-outline-primary btn-sm text-nowrap" download title="Download clean standard Excel format">
+                          <i class="fa fa-download me-1"></i> Standard Template
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="downloadCurrentCatalogExcel()" title="Export current catalog to Excel for editing">
+                          <i class="fa fa-table text-secondary me-1"></i> Export Catalog
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- File Drop / Select Area -->
+                    <div class="p-4 border-2 border-dashed rounded text-center mb-3 bg-light" id="excelDropZone" style="border: 2px dashed #cbd5e1; cursor: pointer;" onclick="document.getElementById('excelProductFileInput').click()">
+                      <i class="fa fa-cloud-upload fa-3x text-success mb-2 d-block"></i>
+                      <h6 class="fw-bold mb-1">Click to browse or drop your Excel file here</h6>
+                      <p class="text-muted small mb-0">Supports <strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong></p>
+                      <input type="file" id="excelProductFileInput" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleExcelFileSelect(event)">
+                    </div>
+
+                    <!-- Parse Status & Preview Section (initially hidden) -->
+                    <div id="excelPreviewSection" style="display:none;">
+                      <!-- Quick Stats Badges -->
+                      <div class="row g-2 mb-3 text-center">
+                        <div class="col-md-4">
+                          <div class="p-2 border rounded bg-white">
+                            <span class="text-muted small d-block">Total Rows Parsed</span>
+                            <strong class="fs-5 text-dark" id="excelStatTotal">0</strong>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="p-2 border rounded bg-white">
+                            <span class="text-muted small d-block">Matched to Update (SQL)</span>
+                            <strong class="fs-5 text-success" id="excelStatUpdate">0</strong>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="p-2 border rounded bg-white">
+                            <span class="text-muted small d-block">New Items to Insert</span>
+                            <strong class="fs-5 text-primary" id="excelStatInsert">0</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Options Checkboxes -->
+                      <div class="d-flex align-items-center gap-3 mb-2 small bg-light p-2 rounded border">
+                        <div class="form-check form-check-inline mb-0">
+                          <input class="form-check-input" type="checkbox" id="chkExcelUpdateExisting" checked>
+                          <label class="form-check-label fw-bold" for="chkExcelUpdateExisting">Update existing products (ID / SKU / Name)</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                          <input class="form-check-input" type="checkbox" id="chkExcelInsertNew" checked>
+                          <label class="form-check-label fw-bold" for="chkExcelInsertNew">Insert new items not found in catalog</label>
+                        </div>
+                      </div>
+
+                      <!-- Preview Table -->
+                      <div class="table-responsive border rounded mb-2" style="max-height: 220px;">
+                        <table class="table table-sm table-striped small align-middle mb-0">
+                          <thead class="table-light small">
+                            <tr>
+                              <th>#</th>
+                              <th>ID</th>
+                              <th>SKU</th>
+                              <th>Product Name</th>
+                              <th>Category</th>
+                              <th class="text-center">Stock (Q)</th>
+                              <th class="text-end">Cost</th>
+                              <th class="text-end">Markup</th>
+                              <th class="text-end">Retail</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody id="excelPreviewTableBody">
+                            <!-- Populated on file parse -->
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="text-muted small mb-0 fst-italic" id="excelPreviewNote" style="font-size: 11px;">
+                        * Displaying first preview rows. Ready to execute one-time update to PostgreSQL.
+                      </div>
+                    </div>
+
+                    <!-- Progress / Result Alert -->
+                    <div id="excelImportResultAlert" class="mt-3" style="display:none;"></div>
+                  </div>
+                  <div class="modal-footer py-2 d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" id="btnExecuteExcelImport" class="btn btn-success btn-sm fw-bold px-3" onclick="executeBatchExcelImport()" disabled>
+                      <i class="fa fa-database me-1"></i> Apply Updates to PostgreSQL (1-Click)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: WAREHOUSE STOCK -->
+        <div class="tab-pane fade" id="tab-warehouse">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+              <div>
+                <h5 class="mb-0 fw-bold"><i class="fa fa-building-o text-warning"></i> Warehouse Stock</h5>
+                <p class="text-muted small mb-0">Warehouse inventory &amp; reserve replenishment management with live PostgreSQL sync. Edit warehouse stock, safety thresholds, and prices directly in table cells.</p>
+              </div>
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="btn-group btn-group-sm" role="group" id="warehouseFilterGroup">
+                  <button type="button" id="whBtnFilterCritical" class="btn btn-danger active fw-bold" onclick="setWarehouseFilter('critical')">
+                    <i class="fa fa-exclamation-triangle"></i> Critical Only (<span id="whCountCritical">0</span>)
+                  </button>
+                  <button type="button" id="whBtnFilterLow" class="btn btn-outline-warning fw-bold text-dark" onclick="setWarehouseFilter('low')">
+                    <i class="fa fa-bell-o"></i> Low Stock (<span id="whCountLow">0</span>)
+                  </button>
+                  <button type="button" id="whBtnFilterAll" class="btn btn-outline-secondary fw-bold" onclick="setWarehouseFilter('all')">
+                    <i class="fa fa-list"></i> All Items (<span id="whCountAll">0</span>)
+                  </button>
+                </div>
+                <div class="input-group input-group-sm" style="width: 220px;">
+                  <span class="input-group-text bg-light text-muted"><i class="fa fa-search"></i></span>
+                  <input type="text" id="warehouseSearchInput" class="form-control" placeholder="Search warehouse, SKU..." oninput="onWarehouseSearchInput()">
+                </div>
+                <button class="btn btn-outline-success btn-sm text-nowrap fw-bold" onclick="openExcelUploadModal()" title="Upload and update products via Excel spreadsheet">
+                  <i class="fa fa-file-excel-o text-success me-1"></i> Upload Excel
+                </button>
+                <button class="btn btn-primary btn-sm text-nowrap" onclick="document.getElementById('tab-materials-link').click()">
+                  <i class="fa fa-truck"></i> Receive Delivery (GRN)
+                </button>
+              </div>
+            </div>
+
+            <!-- Notice Banner for Critical Status View -->
+            <div class="alert alert-danger py-2 px-3 d-flex align-items-center justify-content-between mb-3 small" id="warehouseCriticalAlert">
+              <div>
+                <i class="fa fa-exclamation-circle text-danger me-1"></i>
+                <strong id="warehouseFilterLabel">Displaying Critical Status Items:</strong>
+                <span id="warehouseFilterDesc" class="text-muted">Showing warehouse items at or below 50% safety stock or completely out of stock. Type directly into input boxes to edit inline; press Enter or click Save to apply updates.</span>
+              </div>
+              <span class="badge bg-danger ms-2 text-nowrap" id="warehouseCriticalBadgeNotice">Critical Filter Active</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm table-hover small align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th class="text-center" style="width: 65px;">Image</th>
+                    <th style="min-width: 100px;">SKU</th>
+                    <th style="min-width: 180px;">Product Name</th>
+                    <th class="text-center wh-col-group-a" style="min-width: 90px; background-color: #e6e0d1 !important; color: #3f3928;">Storage_A</th>
+                    <th class="text-end wh-col-group-a" style="min-width: 110px; background-color: #e6e0d1 !important; color: #3f3928;">Landed Cost(A)</th>
+                    <th class="text-center wh-col-group-b" style="min-width: 90px; background-color: #c2d0ed !important; color: #1e3a5f;">Storage_B</th>
+                    <th class="text-end wh-col-group-b" style="min-width: 110px; background-color: #c2d0ed !important; color: #1e3a5f;">Landed Cost(B)</th>
+                    <th class="text-center wh-col-group-c" style="min-width: 90px; background-color: #d1cfcd !important; color: #2e2c2a;">Storage_C</th>
+                    <th class="text-end wh-col-group-c" style="min-width: 110px; background-color: #d1cfcd !important; color: #2e2c2a;">Landed Cost(C)</th>
+                    <th class="text-center wh-col-group-nq" style="min-width: 95px; background-color: #d1e6d6 !important; color: #1e4620;">Reserve Batch (NQ)</th>
+                    <th class="text-end wh-col-group-nq" style="min-width: 110px; background-color: #d1e6d6 !important; color: #1e4620;">Landed Cost(NQ)</th>
+                    <th class="text-center" style="min-width: 105px;">Store Stock(Q)</th>
+                    <th class="text-end" style="min-width: 115px;">Landed Cost</th>
+                    <th class="text-center" style="min-width: 110px;">Status</th>
+                    <th class="text-center" style="min-width: 140px;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="warehouseStockTable">
+                  <tr><td colspan="15" class="text-center text-muted">Loading warehouse stock...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Warehouse Pagination & Page Size Toolbar -->
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 pt-2 border-top small" id="warehousePaginationBar">
+              <div class="d-flex align-items-center gap-2 text-muted">
+                <span>Show</span>
+                <select id="warehousePageSize" class="form-select form-select-sm" style="width: auto; min-width: 75px;" onchange="onWarehousePageSizeChange()">
+                  <option value="15">15</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+                <span>items per page</span>
+                <span class="mx-2 text-secondary">|</span>
+                <span id="warehousePaginationInfo" class="fw-bold text-dark">Showing 0 of 0 products</span>
+              </div>
+              <nav aria-label="Warehouse pagination">
+                <ul class="pagination pagination-sm mb-0" id="warehousePaginationControls">
+                  <!-- Generated dynamically in JS -->
+                </ul>
+              </nav>
             </div>
           </div>
         </div>
@@ -2761,42 +3743,1541 @@ function getTenantDashboardHtml() {
       document.getElementById('erpSimDailyOrders').textContent = ordersPerDay + ' Orders / Day';
     }
 
+    let currentCatalogFilter = 'critical'; // Default: display only critical status items
+    let catalogCurrentPage = 1;
+    let catalogPageSize = 25;
+
+    let currentWarehouseFilter = 'critical';
+    let warehouseCurrentPage = 1;
+    let warehousePageSize = 25;
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function onCatalogSearchInput() {
+      catalogCurrentPage = 1;
+      filterCatalogStockTable();
+    }
+
+    function onCatalogPageSizeChange() {
+      const sel = document.getElementById('catalogPageSize');
+      if (sel) {
+        const val = sel.value;
+        catalogPageSize = (val === 'all') ? 'all' : parseInt(val, 10);
+        catalogCurrentPage = 1;
+        filterCatalogStockTable();
+      }
+    }
+
+    function goToCatalogPage(page) {
+      catalogCurrentPage = page;
+      filterCatalogStockTable();
+      const tableEl = document.getElementById('catalogStockTable');
+      if (tableEl) {
+        const cardEl = tableEl.closest('.card');
+        if (cardEl && cardEl.getBoundingClientRect().top < 0) {
+          cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }
+
+    function setCatalogFilter(mode) {
+      currentCatalogFilter = mode;
+      catalogCurrentPage = 1;
+      const btnCrit = document.getElementById('catBtnFilterCritical');
+      const btnLow = document.getElementById('catBtnFilterLow');
+      const btnAll = document.getElementById('catBtnFilterAll');
+      const alertEl = document.getElementById('catalogCriticalAlert');
+      const labelEl = document.getElementById('catalogFilterLabel');
+      const descEl = document.getElementById('catalogFilterDesc');
+      const badgeEl = document.getElementById('criticalBadgeNotice');
+
+      if (btnCrit) {
+        btnCrit.className = mode === 'critical' ? 'btn btn-danger active fw-bold' : 'btn btn-outline-danger fw-bold';
+      }
+      if (btnLow) {
+        btnLow.className = mode === 'low' ? 'btn btn-warning active fw-bold text-dark' : 'btn btn-outline-warning fw-bold text-dark';
+      }
+      if (btnAll) {
+        btnAll.className = mode === 'all' ? 'btn btn-secondary active fw-bold' : 'btn btn-outline-secondary fw-bold';
+      }
+
+      if (alertEl) {
+        if (mode === 'critical') {
+          alertEl.className = 'alert alert-danger py-2 px-3 d-flex align-items-center justify-content-between mb-3 small';
+          alertEl.style.display = 'flex';
+          if (labelEl) labelEl.textContent = 'Displaying Critical Status Items:';
+          if (descEl) descEl.textContent = 'Showing items at or below 50% safety stock or out of stock requiring immediate replenishment. Modify stock, safety thresholds, or prices inline and click Save (or press Enter).';
+          if (badgeEl) { badgeEl.className = 'badge bg-danger ms-2 text-nowrap'; badgeEl.textContent = 'Critical Filter Active'; }
+        } else if (mode === 'low') {
+          alertEl.className = 'alert alert-warning py-2 px-3 d-flex align-items-center justify-content-between mb-3 small';
+          alertEl.style.display = 'flex';
+          if (labelEl) labelEl.textContent = 'Displaying Reorder & Low Stock Items:';
+          if (descEl) descEl.textContent = 'Showing all items needing replenishment (at or below safety stock level). Modify values inline and save.';
+          if (badgeEl) { badgeEl.className = 'badge bg-warning text-dark ms-2 text-nowrap'; badgeEl.textContent = 'Low Stock Filter'; }
+        } else {
+          alertEl.className = 'alert alert-light border py-2 px-3 d-flex align-items-center justify-content-between mb-3 small';
+          alertEl.style.display = 'flex';
+          if (labelEl) labelEl.textContent = 'Displaying All Store Catalog Items:';
+          if (descEl) descEl.textContent = 'Showing entire active store inventory across all categories. Inline editing enabled across all products.';
+          if (badgeEl) { badgeEl.className = 'badge bg-secondary ms-2 text-nowrap'; badgeEl.textContent = 'All Products'; }
+        }
+      }
+
+      filterCatalogStockTable();
+    }
+
+    function renderCatalogPagination(totalMatching, totalPages, startIdx, endIdx) {
+      const infoEl = document.getElementById('catalogPaginationInfo');
+      const controlsEl = document.getElementById('catalogPaginationControls');
+      if (!infoEl || !controlsEl) return;
+
+      if (totalMatching === 0) {
+        infoEl.textContent = 'Showing 0 products';
+        controlsEl.innerHTML = '';
+        return;
+      }
+
+      const displayStart = startIdx + 1;
+      const displayEnd = Math.min(startIdx + (catalogPageSize === 'all' ? totalMatching : catalogPageSize), totalMatching);
+      infoEl.textContent = 'Showing ' + displayStart + ' to ' + displayEnd + ' of ' + totalMatching.toLocaleString() + ' products';
+
+      if (catalogPageSize === 'all' || totalPages <= 1) {
+        controlsEl.innerHTML = '<li class="page-item active"><span class="page-link">1</span></li>';
+        return;
+      }
+
+      let html = '';
+
+      // First & Previous buttons
+      if (catalogCurrentPage > 1) {
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToCatalogPage(1)" title="First Page">&laquo;</a></li>';
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToCatalogPage(' + (catalogCurrentPage - 1) + ')" title="Previous Page">&lsaquo;</a></li>';
+      } else {
+        html += '<li class="page-item disabled"><span class="page-link">&laquo;</span></li>';
+        html += '<li class="page-item disabled"><span class="page-link">&lsaquo;</span></li>';
+      }
+
+      // Page numbers window
+      let pagesToShow = [];
+      if (totalPages <= 7) {
+        for (let i = 1; i <= totalPages; i++) pagesToShow.push(i);
+      } else {
+        if (catalogCurrentPage <= 4) {
+          pagesToShow = [1, 2, 3, 4, 5, '...', totalPages];
+        } else if (catalogCurrentPage >= totalPages - 3) {
+          pagesToShow = [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+        } else {
+          pagesToShow = [1, '...', catalogCurrentPage - 1, catalogCurrentPage, catalogCurrentPage + 1, '...', totalPages];
+        }
+      }
+
+      for (const p of pagesToShow) {
+        if (p === '...') {
+          html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+        } else if (p === catalogCurrentPage) {
+          html += '<li class="page-item active"><span class="page-link fw-bold">' + p + '</span></li>';
+        } else {
+          html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToCatalogPage(' + p + ')">' + p + '</a></li>';
+        }
+      }
+
+      // Next & Last buttons
+      if (catalogCurrentPage < totalPages) {
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToCatalogPage(' + (catalogCurrentPage + 1) + ')" title="Next Page">&rsaquo;</a></li>';
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToCatalogPage(' + totalPages + ')" title="Last Page">&raquo;</a></li>';
+      } else {
+        html += '<li class="page-item disabled"><span class="page-link">&rsaquo;</span></li>';
+        html += '<li class="page-item disabled"><span class="page-link">&raquo;</span></li>';
+      }
+
+      controlsEl.innerHTML = html;
+    }
+
+    function filterCatalogStockTable() {
+      const q = (document.getElementById('catalogSearchInput')?.value || '').trim().toLowerCase();
+      const rows = document.querySelectorAll('#catalogStockTable tr');
+      const matchingRows = [];
+
+      rows.forEach(tr => {
+        if (tr.id === 'catalogEmptyRow') return;
+
+        const isCritical = tr.getAttribute('data-critical') === 'true';
+        const isLow = tr.getAttribute('data-low') === 'true';
+        const searchHaystack = (tr.getAttribute('data-search') || tr.textContent).toLowerCase();
+
+        // Status filter condition
+        let matchesStatus = false;
+        if (currentCatalogFilter === 'critical') {
+          matchesStatus = isCritical;
+        } else if (currentCatalogFilter === 'low') {
+          matchesStatus = isCritical || isLow;
+        } else {
+          matchesStatus = true; // 'all'
+        }
+
+        // Search text condition
+        const matchesSearch = !q || searchHaystack.includes(q);
+
+        if (matchesStatus && matchesSearch) {
+          matchingRows.push(tr);
+        } else {
+          tr.style.display = 'none';
+        }
+      });
+
+      const totalMatching = matchingRows.length;
+      const pageSize = (catalogPageSize === 'all') ? (totalMatching || 1) : parseInt(catalogPageSize, 10);
+      const totalPages = (pageSize > 0 && totalMatching > 0) ? Math.ceil(totalMatching / pageSize) : 1;
+
+      if (catalogCurrentPage > totalPages) {
+        catalogCurrentPage = totalPages;
+      }
+      if (catalogCurrentPage < 1) {
+        catalogCurrentPage = 1;
+      }
+
+      const startIdx = (catalogCurrentPage - 1) * pageSize;
+      const endIdx = startIdx + pageSize;
+
+      matchingRows.forEach((tr, idx) => {
+        if (catalogPageSize === 'all' || (idx >= startIdx && idx < endIdx)) {
+          tr.style.display = '';
+        } else {
+          tr.style.display = 'none';
+        }
+      });
+
+      let emptyRow = document.getElementById('catalogEmptyRow');
+      if (totalMatching === 0) {
+        if (!emptyRow) {
+          emptyRow = document.createElement('tr');
+          emptyRow.id = 'catalogEmptyRow';
+          const catBody = document.getElementById('catalogStockTable');
+          if (catBody) catBody.appendChild(emptyRow);
+        }
+        emptyRow.style.display = '';
+        const filterDesc = currentCatalogFilter === 'critical' ? 'critical status' : (currentCatalogFilter === 'low' ? 'low stock' : '');
+        emptyRow.innerHTML = '<td colspan="13" class="text-center text-muted py-4">' +
+          '<i class="fa fa-info-circle fa-lg text-secondary mb-2 d-block"></i>' +
+          'No ' + filterDesc + ' products match ' + (q ? ('search &quot;' + escapeHtml(q) + '&quot;') : 'the active filter') + '.' +
+          '<br><button class="btn btn-sm btn-outline-secondary mt-2" onclick="setCatalogFilter(&apos;all&apos;)">View All Catalog Items</button>' +
+        '</td>';
+      } else if (emptyRow) {
+        emptyRow.style.display = 'none';
+      }
+
+      renderCatalogPagination(totalMatching, totalPages, startIdx, endIdx);
+    }
+
+    function onWarehouseSearchInput() {
+      warehouseCurrentPage = 1;
+      filterWarehouseStockTable();
+    }
+
+    function onWarehousePageSizeChange() {
+      const sel = document.getElementById('warehousePageSize');
+      if (sel) {
+        const val = sel.value;
+        warehousePageSize = (val === 'all') ? 'all' : parseInt(val, 10);
+        warehouseCurrentPage = 1;
+        filterWarehouseStockTable();
+      }
+    }
+
+    function goToWarehousePage(page) {
+      warehouseCurrentPage = page;
+      filterWarehouseStockTable();
+      const tableEl = document.getElementById('warehouseStockTable');
+      if (tableEl) {
+        const cardEl = tableEl.closest('.card');
+        if (cardEl && cardEl.getBoundingClientRect().top < 0) {
+          cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }
+
+    function setWarehouseFilter(mode) {
+      currentWarehouseFilter = mode;
+      warehouseCurrentPage = 1;
+      const btnCrit = document.getElementById('whBtnFilterCritical');
+      const btnLow = document.getElementById('whBtnFilterLow');
+      const btnAll = document.getElementById('whBtnFilterAll');
+      const alertEl = document.getElementById('warehouseCriticalAlert');
+      const labelEl = document.getElementById('warehouseFilterLabel');
+      const descEl = document.getElementById('warehouseFilterDesc');
+      const badgeEl = document.getElementById('warehouseCriticalBadgeNotice');
+
+      if (btnCrit) {
+        btnCrit.className = mode === 'critical' ? 'btn btn-danger active fw-bold' : 'btn btn-outline-danger fw-bold';
+      }
+      if (btnLow) {
+        btnLow.className = mode === 'low' ? 'btn btn-warning active fw-bold text-dark' : 'btn btn-outline-warning fw-bold text-dark';
+      }
+      if (btnAll) {
+        btnAll.className = mode === 'all' ? 'btn btn-secondary active fw-bold' : 'btn btn-outline-secondary fw-bold';
+      }
+
+      if (alertEl) {
+        if (mode === 'critical') {
+          alertEl.className = 'alert alert-danger py-2 px-3 d-flex align-items-center justify-content-between mb-3 small';
+          alertEl.style.display = 'flex';
+          if (labelEl) labelEl.textContent = 'Displaying Critical Status Items:';
+          if (descEl) descEl.textContent = 'Showing warehouse items at or below 50% safety stock or out of stock requiring immediate replenishment.';
+          if (badgeEl) { badgeEl.className = 'badge bg-danger ms-2 text-nowrap'; badgeEl.textContent = 'Critical Filter Active'; }
+        } else if (mode === 'low') {
+          alertEl.className = 'alert alert-warning py-2 px-3 d-flex align-items-center justify-content-between mb-3 small';
+          alertEl.style.display = 'flex';
+          if (labelEl) labelEl.textContent = 'Displaying Reorder & Low Stock Items:';
+          if (descEl) descEl.textContent = 'Showing all warehouse items needing replenishment (at or below safety stock level).';
+          if (badgeEl) { badgeEl.className = 'badge bg-warning text-dark ms-2 text-nowrap'; badgeEl.textContent = 'Low Stock Filter'; }
+        } else {
+          alertEl.className = 'alert alert-light border py-2 px-3 d-flex align-items-center justify-content-between mb-3 small';
+          alertEl.style.display = 'flex';
+          if (labelEl) labelEl.textContent = 'Displaying All Warehouse Items:';
+          if (descEl) descEl.textContent = 'Showing entire warehouse inventory across all categories. Inline editing enabled across all products.';
+          if (badgeEl) { badgeEl.className = 'badge bg-secondary ms-2 text-nowrap'; badgeEl.textContent = 'All Items'; }
+        }
+      }
+
+      filterWarehouseStockTable();
+    }
+
+    function renderWarehousePagination(totalMatching, totalPages, startIdx, endIdx) {
+      const infoEl = document.getElementById('warehousePaginationInfo');
+      const controlsEl = document.getElementById('warehousePaginationControls');
+      if (!infoEl || !controlsEl) return;
+
+      if (totalMatching === 0) {
+        infoEl.textContent = 'Showing 0 products';
+        controlsEl.innerHTML = '';
+        return;
+      }
+
+      const displayStart = startIdx + 1;
+      const displayEnd = Math.min(startIdx + (warehousePageSize === 'all' ? totalMatching : warehousePageSize), totalMatching);
+      infoEl.textContent = 'Showing ' + displayStart + ' to ' + displayEnd + ' of ' + totalMatching + ' products';
+
+      if (totalPages <= 1) {
+        controlsEl.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      if (warehouseCurrentPage > 1) {
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToWarehousePage(1)" title="First Page">&laquo;</a></li>';
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToWarehousePage(' + (warehouseCurrentPage - 1) + ')" title="Previous Page">&lsaquo;</a></li>';
+      } else {
+        html += '<li class="page-item disabled"><span class="page-link">&laquo;</span></li>';
+        html += '<li class="page-item disabled"><span class="page-link">&lsaquo;</span></li>';
+      }
+
+      let pagesToShow = [];
+      if (totalPages <= 7) {
+        for (let i = 1; i <= totalPages; i++) pagesToShow.push(i);
+      } else {
+        if (warehouseCurrentPage <= 4) {
+          pagesToShow = [1, 2, 3, 4, 5, '...', totalPages];
+        } else if (warehouseCurrentPage >= totalPages - 3) {
+          pagesToShow = [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+        } else {
+          pagesToShow = [1, '...', warehouseCurrentPage - 1, warehouseCurrentPage, warehouseCurrentPage + 1, '...', totalPages];
+        }
+      }
+
+      pagesToShow.forEach(p => {
+        if (p === '...') {
+          html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+        } else if (p === warehouseCurrentPage) {
+          html += '<li class="page-item active"><span class="page-link fw-bold">' + p + '</span></li>';
+        } else {
+          html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToWarehousePage(' + p + ')">' + p + '</a></li>';
+        }
+      });
+
+      if (warehouseCurrentPage < totalPages) {
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToWarehousePage(' + (warehouseCurrentPage + 1) + ')" title="Next Page">&rsaquo;</a></li>';
+        html += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToWarehousePage(' + totalPages + ')" title="Last Page">&raquo;</a></li>';
+      } else {
+        html += '<li class="page-item disabled"><span class="page-link">&rsaquo;</span></li>';
+        html += '<li class="page-item disabled"><span class="page-link">&raquo;</span></li>';
+      }
+
+      controlsEl.innerHTML = html;
+    }
+
+    function filterWarehouseStockTable() {
+      const q = (document.getElementById('warehouseSearchInput')?.value || '').trim().toLowerCase();
+      const rows = document.querySelectorAll('#warehouseStockTable tr');
+      const matchingRows = [];
+
+      rows.forEach(tr => {
+        if (tr.id === 'warehouseEmptyRow') return;
+
+        const isCritical = tr.getAttribute('data-critical') === 'true';
+        const isLow = tr.getAttribute('data-low') === 'true';
+        const searchHaystack = (tr.getAttribute('data-search') || tr.textContent).toLowerCase();
+
+        let matchesStatus = false;
+        if (currentWarehouseFilter === 'critical') {
+          matchesStatus = isCritical;
+        } else if (currentWarehouseFilter === 'low') {
+          matchesStatus = isLow || isCritical;
+        } else {
+          matchesStatus = true;
+        }
+
+        let matchesQuery = true;
+        if (q) {
+          matchesQuery = searchHaystack.includes(q);
+        }
+
+        if (matchesStatus && matchesQuery) {
+          matchingRows.push(tr);
+        } else {
+          tr.style.display = 'none';
+        }
+      });
+
+      const totalMatching = matchingRows.length;
+      const pageSize = (warehousePageSize === 'all') ? totalMatching : warehousePageSize;
+      const totalPages = Math.max(1, Math.ceil(totalMatching / (pageSize || 1)));
+
+      if (warehouseCurrentPage > totalPages) {
+        warehouseCurrentPage = totalPages;
+      }
+      if (warehouseCurrentPage < 1) {
+        warehouseCurrentPage = 1;
+      }
+
+      const startIdx = (warehouseCurrentPage - 1) * pageSize;
+      const endIdx = startIdx + pageSize;
+
+      matchingRows.forEach((tr, idx) => {
+        if (warehousePageSize === 'all' || (idx >= startIdx && idx < endIdx)) {
+          tr.style.display = '';
+        } else {
+          tr.style.display = 'none';
+        }
+      });
+
+      let emptyRow = document.getElementById('warehouseEmptyRow');
+      if (totalMatching === 0) {
+        if (!emptyRow) {
+          emptyRow = document.createElement('tr');
+          emptyRow.id = 'warehouseEmptyRow';
+          const whBody = document.getElementById('warehouseStockTable');
+          if (whBody) whBody.appendChild(emptyRow);
+        }
+        emptyRow.style.display = '';
+        const filterDesc = currentWarehouseFilter === 'critical' ? 'critical status' : (currentWarehouseFilter === 'low' ? 'low stock' : '');
+        emptyRow.innerHTML = '<td colspan="15" class="text-center text-muted py-4">' +
+          '<i class="fa fa-info-circle fa-lg text-secondary mb-2 d-block"></i>' +
+          'No ' + filterDesc + ' products match ' + (q ? ('search &quot;' + escapeHtml(q) + '&quot;') : 'the active filter') + '.' +
+          '<br><button class="btn btn-sm btn-outline-secondary mt-2" onclick="setWarehouseFilter(&apos;all&apos;)">View All Warehouse Items</button>' +
+        '</td>';
+      } else if (emptyRow) {
+        emptyRow.style.display = 'none';
+      }
+
+      renderWarehousePagination(totalMatching, totalPages, startIdx, endIdx);
+    }
+
+    let categoriesList = [];
+
+    async function loadCategories() {
+      if (categoriesList && categoriesList.length > 0) return categoriesList;
+      try {
+        const res = await fetch('/api/categories');
+        if (res.ok) {
+          categoriesList = await res.json();
+        }
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+      }
+      return categoriesList || [];
+    }
+
+    let currentPhotoBase64 = null;
+
+    function getProductPhotoUrl(photo) {
+      if (!photo) return '/assets/uploads/product_photos/general_products.png';
+      if (photo.startsWith('http://') || photo.startsWith('https://') || photo.startsWith('/')) return photo;
+      return '/assets/uploads/' + photo;
+    }
+
+    function openEditPhotoModal(productId) {
+      const prod = (productsList || []).find(p => p.p_id === productId);
+      const hiddenInput = document.getElementById('inlinePhoto_' + productId);
+      const currentPhoto = hiddenInput ? hiddenInput.value : (prod ? prod.p_featured_photo : '');
+
+      document.getElementById('photoModalPid').value = productId;
+      document.getElementById('photoModalTitle').textContent = prod ? ('#' + prod.p_id + ' - ' + prod.p_name) : ('Product #' + productId);
+      document.getElementById('photoModalPathInput').value = currentPhoto || '';
+      document.getElementById('photoModalFileInput').value = '';
+      document.getElementById('photoModalPreview').src = getProductPhotoUrl(currentPhoto);
+      currentPhotoBase64 = null;
+
+      const modalEl = document.getElementById('productPhotoModal');
+      if (window.bootstrap && modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.show();
+      } else {
+        promptEditProductPhoto(productId);
+      }
+    }
+
+    function previewSelectedPhotoFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          currentPhotoBase64 = e.target.result;
+          document.getElementById('photoModalPreview').src = currentPhotoBase64;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function previewEnteredPhotoPath() {
+      const val = document.getElementById('photoModalPathInput').value.trim();
+      currentPhotoBase64 = null;
+      document.getElementById('photoModalPreview').src = getProductPhotoUrl(val);
+    }
+
+    async function saveProductPhotoFromModal() {
+      const pid = parseInt(document.getElementById('photoModalPid').value, 10);
+      const pathVal = document.getElementById('photoModalPathInput').value.trim();
+      const btn = document.getElementById('btnSavePhotoModal');
+      
+      if (!pid) return;
+
+      if (currentPhotoBase64) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Uploading...';
+        try {
+          const fileInput = document.getElementById('photoModalFileInput');
+          const filename = fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '';
+          const res = await fetch('/api/products/upload-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              p_id: pid,
+              filename: filename,
+              image_base64: currentPhotoBase64
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            const newPhoto = data.p_featured_photo;
+            const hiddenInput = document.getElementById('inlinePhoto_' + pid);
+            if (hiddenInput) hiddenInput.value = newPhoto;
+            const imgEl = document.getElementById('inlineImg_' + pid);
+            if (imgEl) imgEl.src = getProductPhotoUrl(newPhoto);
+            markCatalogRowDirty(pid);
+            showErpToast('Photo Uploaded', 'New photo saved for product #' + pid, 'success');
+            
+            const modalEl = document.getElementById('productPhotoModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+          } else {
+            showErpToast('Upload Failed', data.error || 'Could not upload photo', 'danger');
+          }
+        } catch (err) {
+          showErpToast('Error', err.message, 'danger');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa fa-check"></i> Apply Photo';
+        }
+      } else {
+        const hiddenInput = document.getElementById('inlinePhoto_' + pid);
+        if (hiddenInput) hiddenInput.value = pathVal;
+        const imgEl = document.getElementById('inlineImg_' + pid);
+        if (imgEl) imgEl.src = getProductPhotoUrl(pathVal);
+        markCatalogRowDirty(pid);
+        
+        const modalEl = document.getElementById('productPhotoModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+      }
+    }
+
+    function promptEditProductPhoto(productId) {
+      const currentPhotoInput = document.getElementById('inlinePhoto_' + productId);
+      const currentPhoto = currentPhotoInput ? currentPhotoInput.value : '';
+      const newPhoto = prompt('Enter image filename or path in assets/uploads/ (e.g. rotary_hammer.jpg, product-featured-56.jpg):', currentPhoto);
+      if (newPhoto !== null) {
+        const cleanPhoto = newPhoto.trim();
+        if (currentPhotoInput) currentPhotoInput.value = cleanPhoto;
+        const imgEl = document.getElementById('inlineImg_' + productId);
+        if (imgEl) imgEl.src = getProductPhotoUrl(cleanPhoto);
+        markCatalogRowDirty(productId);
+      }
+    }
+
+    let parsedExcelProducts = [];
+
+    function openExcelUploadModal() {
+      parsedExcelProducts = [];
+      const fileInput = document.getElementById('excelProductFileInput');
+      if (fileInput) fileInput.value = '';
+      
+      const prevSection = document.getElementById('excelPreviewSection');
+      if (prevSection) prevSection.style.display = 'none';
+
+      const alertEl = document.getElementById('excelImportResultAlert');
+      if (alertEl) alertEl.style.display = 'none';
+
+      const btnExec = document.getElementById('btnExecuteExcelImport');
+      if (btnExec) {
+        btnExec.disabled = true;
+        btnExec.className = 'btn btn-success btn-sm fw-bold px-3';
+        btnExec.innerHTML = '<i class="fa fa-database me-1"></i> Apply Updates to PostgreSQL (1-Click)';
+      }
+
+      const modalEl = document.getElementById('excelUploadModal');
+      if (window.bootstrap && modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.show();
+      }
+    }
+
+    function downloadCurrentCatalogExcel() {
+      window.location.href = '/api/products/export-excel?supplier_id=' + currentSupplierId;
+    }
+
+    function handleExcelFileSelect(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          if (typeof XLSX === 'undefined') {
+            alert('Spreadsheet parser library is loading. Please try again in a moment.');
+            return;
+          }
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+          if (!rawRows || rawRows.length === 0) {
+            alert('No data rows found in the selected Excel sheet.');
+            return;
+          }
+
+          // Build fast lookup set of current products in store
+          const currentIds = new Set((productsList || []).map(p => p.p_id));
+          const currentSkus = new Set((productsList || []).filter(p => p.p_sku).map(p => p.p_sku.trim().toLowerCase()));
+          const currentNames = new Set((productsList || []).filter(p => p.p_name).map(p => p.p_name.trim().toLowerCase()));
+
+          parsedExcelProducts = [];
+          let matchCount = 0;
+          let newCount = 0;
+
+          rawRows.forEach(row => {
+            let rawPid = '';
+            let p_sku = '';
+            let p_name = '';
+            let category = '';
+            let p_qty = '';
+            let p_new_qty = '';
+            let p_s_level = '';
+            let p_capital_price = '';
+            let p_markup = '';
+            let markup_percent = '';
+            let p_current_price = '';
+            let p_featured_photo = '';
+            let unit = '';
+            let supplier = '';
+
+            for (const key of Object.keys(row)) {
+              const cleanKey = key.trim().toLowerCase().replace(/[\\s_]+/g, ' ');
+              const rawVal = row[key];
+              const val = (rawVal !== null && rawVal !== undefined) ? String(rawVal).trim() : '';
+
+              if (['id', 'p id', 'product id', '#', 'code', 'product code', 'item code'].indexOf(cleanKey) !== -1) {
+                if (!rawPid) rawPid = val;
+                if (!p_sku) p_sku = val;
+              } else if (['sku', 'p sku', 'barcode', 'item sku'].indexOf(cleanKey) !== -1) {
+                p_sku = val;
+              } else if (['product name', 'name', 'p name', 'title', 'description', 'item description', 'desc', 'product description'].indexOf(cleanKey) !== -1) {
+                p_name = val;
+              } else if (['category', 'category name', 'ecat id', 'cat', 'end category'].indexOf(cleanKey) !== -1) {
+                category = val;
+              } else if (['available stock', 'available stock (q)', 'stock', 'qty', 'quantity', 'q', 'p qty', 'current stock', 'on hand'].indexOf(cleanKey) !== -1) {
+                p_qty = val;
+              } else if (['new batch', 'new batch (nq)', 'nq', 'p new qty', 'incoming', 'incoming stock'].indexOf(cleanKey) !== -1) {
+                p_new_qty = val;
+              } else if (['minimum stock', 'min stock', 'safety level', 'safety level (s)', 'safety stock', 'alert level', 's', 's level', 'p s level'].indexOf(cleanKey) !== -1) {
+                p_s_level = val;
+              } else if (['capital cost', 'landed cost', 'cost', 'cost price', 'capital price', 'p capital price', 'ca', 'unit cost'].indexOf(cleanKey) !== -1) {
+                p_capital_price = val;
+              } else if (['markup percent', 'markup %', 'markup percentage'].indexOf(cleanKey) !== -1) {
+                markup_percent = val;
+              } else if (['markup', 'markup (php)', 'markup (₱)', 'p markup', 'markup amount'].indexOf(cleanKey) !== -1) {
+                p_markup = val;
+              } else if (['selling price', 'retail price', 'retail', 'current price', 'price', 'p current price', 'srp'].indexOf(cleanKey) !== -1) {
+                p_current_price = val;
+              } else if (['unit', 'unit of measure', 'uom'].indexOf(cleanKey) !== -1) {
+                unit = val;
+              } else if (['supplier', 'vendor', 'brand', 'supplier name'].indexOf(cleanKey) !== -1) {
+                supplier = val;
+              } else if (['photo', 'image', 'featured photo', 'p featured photo', 'picture'].indexOf(cleanKey) !== -1) {
+                p_featured_photo = val;
+              }
+            }
+
+            const pidNum = parseInt(String(rawPid).replace(/[^0-9]/g, ''), 10) || 0;
+            const cleanName = String(p_name || '').trim();
+            const cleanSku = String(p_sku || '').trim();
+
+            if (!cleanName && !pidNum) return;
+
+            let costVal = parseFloat(String(p_capital_price).replace(/[^0-9.-]/g, '')) || 0;
+            let retailVal = parseFloat(String(p_current_price).replace(/[^0-9.-]/g, '')) || 0;
+            let markupVal = parseFloat(String(p_markup).replace(/[^0-9.-]/g, '')) || 0;
+            const markupPctVal = parseFloat(String(markup_percent).replace(/[^0-9.-]/g, '')) || 0;
+
+            if (retailVal > 0 && costVal > 0 && markupVal === 0) {
+              markupVal = retailVal - costVal;
+            } else if (retailVal === 0 && costVal > 0 && markupPctVal > 0) {
+              markupVal = costVal * (markupPctVal / 100);
+              retailVal = costVal + markupVal;
+            } else if (retailVal === 0 && costVal > 0 && markupVal > 0) {
+              retailVal = costVal + markupVal;
+            } else if (markupVal === 0 && costVal > 0 && markupPctVal > 0) {
+              markupVal = costVal * (markupPctVal / 100);
+            }
+
+            const isMatched = (pidNum > 0 && currentIds.has(pidNum)) ||
+                              (cleanSku && currentSkus.has(cleanSku.toLowerCase())) ||
+                              (cleanName && currentNames.has(cleanName.toLowerCase()));
+
+            if (isMatched) {
+              matchCount++;
+            } else {
+              newCount++;
+            }
+
+            parsedExcelProducts.push({
+              p_id: pidNum,
+              p_sku: cleanSku,
+              p_name: cleanName,
+              category: String(category || '').trim(),
+              p_qty: p_qty,
+              p_new_qty: p_new_qty,
+              p_s_level: p_s_level,
+              p_capital_price: costVal,
+              p_markup: markupVal,
+              markup_percent: markupPctVal,
+              p_current_price: retailVal,
+              unit: unit,
+              supplier: supplier,
+              p_featured_photo: String(p_featured_photo || '').trim(),
+              is_matched: isMatched
+            });
+          });
+
+          // Update Preview Stats
+          document.getElementById('excelStatTotal').textContent = parsedExcelProducts.length.toLocaleString();
+          document.getElementById('excelStatUpdate').textContent = matchCount.toLocaleString();
+          document.getElementById('excelStatInsert').textContent = newCount.toLocaleString();
+
+          // Render first 6 preview rows
+          const tbody = document.getElementById('excelPreviewTableBody');
+          const previewRows = parsedExcelProducts.slice(0, 6);
+          let previewHtml = '';
+
+          previewRows.forEach((r, idx) => {
+            const costVal = parseFloat(r.p_capital_price) || 0;
+            const markupVal = parseFloat(r.p_markup) || 0;
+            const retailVal = parseFloat(r.p_current_price) || 0;
+            const badge = r.is_matched
+              ? '<span class="badge bg-success bg-opacity-10 text-success border border-success">Update Existing</span>'
+              : '<span class="badge bg-primary bg-opacity-10 text-primary border border-primary">Insert New</span>';
+
+            previewHtml += '<tr>' +
+              '<td>' + (idx + 1) + '</td>' +
+              '<td><code>' + (r.p_id ? ('#' + r.p_id) : '—') + '</code></td>' +
+              '<td><span class="font-monospace small">' + escapeHtml(r.p_sku || '—') + '</span></td>' +
+              '<td><strong>' + escapeHtml(r.p_name || '—') + '</strong></td>' +
+              '<td>' + escapeHtml(r.category || 'General') + '</td>' +
+              '<td class="text-center fw-bold">' + (r.p_qty || 0) + '</td>' +
+              '<td class="text-end">₱' + costVal.toFixed(2) + '</td>' +
+              '<td class="text-end text-success">+₱' + markupVal.toFixed(2) + '</td>' +
+              '<td class="text-end text-primary fw-bold">₱' + retailVal.toFixed(2) + '</td>' +
+              '<td>' + badge + '</td>' +
+            '</tr>';
+          });
+
+          tbody.innerHTML = previewHtml;
+
+          document.getElementById('excelPreviewSection').style.display = 'block';
+          const btnExec = document.getElementById('btnExecuteExcelImport');
+          btnExec.disabled = false;
+          btnExec.innerHTML = '<i class="fa fa-database me-1"></i> Apply Updates to PostgreSQL (' + parsedExcelProducts.length + ' Items)';
+        } catch (err) {
+          console.error('[Excel Parse Error]:', err);
+          alert('Error parsing Excel file: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    async function executeBatchExcelImport() {
+      if (!parsedExcelProducts || parsedExcelProducts.length === 0) {
+        alert('Please choose an Excel file to import first.');
+        return;
+      }
+
+      const btnExec = document.getElementById('btnExecuteExcelImport');
+      const alertEl = document.getElementById('excelImportResultAlert');
+      const updateExisting = document.getElementById('chkExcelUpdateExisting')?.checked ?? true;
+      const insertNew = document.getElementById('chkExcelInsertNew')?.checked ?? true;
+
+      btnExec.disabled = true;
+      btnExec.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Updating PostgreSQL Database...';
+
+      try {
+        const res = await fetch('/api/products/batch-import-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            supplier_id: currentSupplierId,
+            products: parsedExcelProducts,
+            update_existing: updateExisting,
+            insert_new: insertNew
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alertEl.className = 'alert alert-success mt-3 small shadow-sm';
+          alertEl.innerHTML = '<div class="fw-bold"><i class="fa fa-check-circle fa-lg me-1"></i> PostgreSQL Database Updated Successfully!</div>' +
+            '<div class="mt-1">' + data.message + '</div>' +
+            '<div class="mt-2 text-muted" style="font-size: 11px;">Store inventory and POS stock thresholds have been synchronized in active database table.</div>';
+          alertEl.style.display = 'block';
+
+          btnExec.className = 'btn btn-secondary btn-sm';
+          btnExec.innerHTML = '<i class="fa fa-check me-1"></i> Completed';
+
+          showErpToast('Excel Import Success', data.message, 'success');
+
+          // Refresh catalog table
+          await loadProducts();
+        } else {
+          alertEl.className = 'alert alert-danger mt-3 small';
+          alertEl.innerHTML = '<i class="fa fa-exclamation-triangle me-1"></i> ' + (data.error || 'Failed to update database.');
+          alertEl.style.display = 'block';
+          btnExec.disabled = false;
+          btnExec.innerHTML = '<i class="fa fa-database me-1"></i> Retry Import';
+        }
+      } catch (err) {
+        alertEl.className = 'alert alert-danger mt-3 small';
+        alertEl.innerHTML = '<i class="fa fa-exclamation-triangle me-1"></i> Network error: ' + err.message;
+        alertEl.style.display = 'block';
+        btnExec.disabled = false;
+        btnExec.innerHTML = '<i class="fa fa-database me-1"></i> Retry Import';
+      }
+    }
+
+    function onCatalogInlineChange(productId) {
+      const qtyInput = document.getElementById('inlineQty_' + productId);
+      const sInput = document.getElementById('inlineSLevel_' + productId);
+      if (!qtyInput || !sInput) return;
+
+      const qty = parseInt(qtyInput.value || 0, 10);
+      const sLevel = parseInt(sInput.value || 10, 10);
+      const threshold = sLevel > 0 ? sLevel : 10;
+
+      const isCrit = (qty <= 0) || (qty <= Math.ceil(threshold * 0.5));
+      const isLow = (qty > Math.ceil(threshold * 0.5)) && (qty <= threshold);
+
+      let statusBadge = '';
+      if (qty <= 0) {
+        statusBadge = '<span class="badge bg-danger"><i class="fa fa-times-circle"></i> Out of Stock (0)</span>';
+      } else if (qty <= Math.ceil(threshold * 0.5)) {
+        statusBadge = '<span class="badge bg-danger bg-opacity-75"><i class="fa fa-exclamation-circle"></i> Critical (' + qty + ')</span>';
+      } else if (qty <= threshold) {
+        statusBadge = '<span class="badge bg-warning text-dark"><i class="fa fa-bell-o"></i> Low Stock (' + qty + ')</span>';
+      } else {
+        statusBadge = '<span class="badge bg-success"><i class="fa fa-check-circle"></i> In Stock (' + qty + ')</span>';
+      }
+
+      const statusEl = document.getElementById('inlineStatus_' + productId);
+      if (statusEl) statusEl.innerHTML = statusBadge;
+
+      const tr = document.getElementById('catalogRow_' + productId);
+      if (tr) {
+        tr.setAttribute('data-critical', isCrit ? 'true' : 'false');
+        tr.setAttribute('data-low', isLow ? 'true' : 'false');
+      }
+
+      if (qty <= 0) {
+        qtyInput.className = 'form-control form-control-sm text-center fw-bold text-danger border-danger';
+      } else if (isCrit) {
+        qtyInput.className = 'form-control form-control-sm text-center fw-bold text-danger';
+      } else {
+        qtyInput.className = 'form-control form-control-sm text-center fw-bold text-dark';
+      }
+
+      markCatalogRowDirty(productId);
+    }
+
+    function onCatalogCapChange(productId) {
+      const capInput = document.getElementById('inlineCap_' + productId);
+      const markupInput = document.getElementById('inlineMarkup_' + productId);
+      const retailInput = document.getElementById('inlineRetail_' + productId);
+      if (!capInput || !markupInput || !retailInput) return;
+
+      const cap = parseFloat(capInput.value || 0);
+      const markup = parseFloat(markupInput.value || 0);
+      const retail = Math.max(0, cap + markup);
+      retailInput.value = retail.toFixed(2);
+      markCatalogRowDirty(productId);
+    }
+
+    function onCatalogMarkupChange(productId) {
+      const capInput = document.getElementById('inlineCap_' + productId);
+      const markupInput = document.getElementById('inlineMarkup_' + productId);
+      const retailInput = document.getElementById('inlineRetail_' + productId);
+      if (!capInput || !markupInput || !retailInput) return;
+
+      const cap = parseFloat(capInput.value || 0);
+      const markup = parseFloat(markupInput.value || 0);
+      const retail = Math.max(0, cap + markup);
+      retailInput.value = retail.toFixed(2);
+      markCatalogRowDirty(productId);
+    }
+
+    function onCatalogRetailChange(productId) {
+      const capInput = document.getElementById('inlineCap_' + productId);
+      const markupInput = document.getElementById('inlineMarkup_' + productId);
+      const retailInput = document.getElementById('inlineRetail_' + productId);
+      if (!capInput || !markupInput || !retailInput) return;
+
+      const cap = parseFloat(capInput.value || 0);
+      const retail = parseFloat(retailInput.value || 0);
+      const markup = Math.max(0, retail - cap);
+      markupInput.value = markup.toFixed(2);
+      markCatalogRowDirty(productId);
+    }
+
+    function markCatalogRowDirty(productId) {
+      const btn = document.getElementById('btnSaveInline_' + productId);
+      if (btn && !btn.disabled) {
+        btn.className = 'btn btn-success btn-sm py-0 px-2 text-nowrap shadow-sm';
+        btn.innerHTML = '<i class="fa fa-save"></i> Save *';
+      }
+    }
+
+    async function saveCatalogInline(productId) {
+      const btn = document.getElementById('btnSaveInline_' + productId);
+      const nameInput = document.getElementById('inlineName_' + productId);
+      const skuInput = document.getElementById('inlineSku_' + productId);
+      const photoInput = document.getElementById('inlinePhoto_' + productId);
+      const ecatInput = document.getElementById('inlineEcat_' + productId);
+      const qtyInput = document.getElementById('inlineQty_' + productId);
+      const nqInput = document.getElementById('inlineNq_' + productId);
+      const sInput = document.getElementById('inlineSLevel_' + productId);
+      const capInput = document.getElementById('inlineCap_' + productId);
+      const markupInput = document.getElementById('inlineMarkup_' + productId);
+      const retInput = document.getElementById('inlineRetail_' + productId);
+
+      if (!btn || !qtyInput || !sInput || !capInput || !retInput) return;
+
+      const item = (productsList || []).find(p => p.p_id === productId) || {};
+      const p_name = nameInput ? nameInput.value.trim() : (item.p_name || '');
+      const p_sku = skuInput ? skuInput.value.trim() : (item.p_sku || '');
+      const p_featured_photo = photoInput ? photoInput.value.trim() : (item.p_featured_photo || '');
+      const ecat_id = ecatInput ? parseInt(ecatInput.value || 0, 10) : (item.ecat_id || 0);
+      const p_qty = parseInt(qtyInput.value || 0, 10);
+      const p_new_qty = nqInput ? parseInt(nqInput.value || 0, 10) : 0;
+      const p_s_level = parseInt(sInput.value || 10, 10);
+      const p_capital_price = parseFloat(capInput.value || 0);
+      const p_markup = markupInput ? parseFloat(markupInput.value || 0) : Math.max(0, parseFloat(retInput.value || 0) - p_capital_price);
+      const p_current_price = parseFloat(retInput.value || 0);
+
+      btn.disabled = true;
+      btn.className = 'btn btn-secondary btn-sm py-0 px-2 text-nowrap';
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
+
+      try {
+        const res = await fetch('/api/products/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            p_id: productId,
+            p_name,
+            p_sku,
+            p_featured_photo,
+            ecat_id,
+            p_qty,
+            p_new_qty,
+            p_s_level,
+            p_capital_price,
+            p_markup,
+            p_current_price
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const item = (productsList || []).find(p => p.p_id === productId);
+          if (item) {
+            item.p_name = p_name;
+            item.p_sku = p_sku;
+            item.p_featured_photo = p_featured_photo;
+            item.ecat_id = ecat_id;
+            item.p_qty = p_qty;
+            item.p_new_qty = p_new_qty;
+            item.p_s_level = p_s_level;
+            item.p_capital_price = p_capital_price.toFixed(2);
+            item.p_markup = p_markup.toFixed(2);
+            item.p_current_price = p_current_price.toFixed(2);
+
+            const catObj = (categoriesList || []).find(c => c.ecat_id === ecat_id);
+            const catName = catObj ? catObj.ecat_name : '';
+            item.ecat_name = catName;
+            const searchTokens = (productId + ' ' + p_name + ' ' + p_sku + ' ' + catName).toLowerCase();
+            const tr = document.getElementById('catalogRow_' + productId);
+            if (tr) tr.setAttribute('data-search', searchTokens);
+          }
+
+          btn.className = 'btn btn-success btn-sm py-0 px-2 text-nowrap';
+          btn.innerHTML = '<i class="fa fa-check"></i> Saved';
+
+          showErpToast('Catalog Updated', 'Product #' + productId + ' updated in active POS database.', 'success');
+
+          setTimeout(() => {
+            btn.disabled = false;
+            btn.className = 'btn btn-outline-success btn-sm py-0 px-2 text-nowrap';
+            btn.innerHTML = '<i class="fa fa-save"></i> Save';
+          }, 1500);
+
+          updateCatalogFilterCounters();
+        } else {
+          btn.disabled = false;
+          btn.className = 'btn btn-danger btn-sm py-0 px-2 text-nowrap';
+          btn.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Retry';
+          showErpToast('Update Failed', data.error || 'Could not save updates.', 'danger');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.className = 'btn btn-danger btn-sm py-0 px-2 text-nowrap';
+        btn.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Retry';
+        showErpToast('Network Error', err.message || 'Connection error while saving.', 'danger');
+      }
+    }
+
+    function updateCatalogFilterCounters() {
+      if (!productsList) return;
+      let critCount = 0;
+      let lowCount = 0;
+
+      for (const p of productsList) {
+        const qty = parseInt(p.p_qty || 0, 10);
+        const sLevel = parseInt(p.p_s_level || 10, 10);
+        const threshold = sLevel > 0 ? sLevel : 10;
+        if (qty <= 0 || qty <= Math.ceil(threshold * 0.5)) {
+          critCount++;
+        } else if (qty <= threshold) {
+          lowCount++;
+        }
+      }
+
+      const elCrit = document.getElementById('catCountCritical');
+      if (elCrit) elCrit.textContent = critCount.toLocaleString();
+
+      const elLow = document.getElementById('catCountLow');
+      if (elLow) elLow.textContent = lowCount.toLocaleString();
+
+      const elAll = document.getElementById('catCountAll');
+      if (elAll) elAll.textContent = productsList.length.toLocaleString();
+    }
+
+    function updateWarehouseFilterCounters() {
+      if (!productsList) return;
+      let critCount = 0;
+      let lowCount = 0;
+
+      for (const p of productsList) {
+        const qty = parseInt(p.p_qty || 0, 10);
+        const sLevel = parseInt(p.p_s_level || 10, 10);
+        const threshold = sLevel > 0 ? sLevel : 10;
+        if (qty <= 0 || qty <= Math.ceil(threshold * 0.5)) {
+          critCount++;
+        } else if (qty <= threshold) {
+          lowCount++;
+        }
+      }
+
+      const elCrit = document.getElementById('whCountCritical');
+      if (elCrit) elCrit.textContent = critCount.toLocaleString();
+
+      const elLow = document.getElementById('whCountLow');
+      if (elLow) elLow.textContent = lowCount.toLocaleString();
+
+      const elAll = document.getElementById('whCountAll');
+      if (elAll) elAll.textContent = productsList.length.toLocaleString();
+    }
+
+    function renderWarehouseStockTable() {
+      const whBody = document.getElementById('warehouseStockTable');
+      if (!whBody) return;
+      if (!productsList || productsList.length === 0) {
+        whBody.innerHTML = '<tr><td colspan="15" class="text-center text-muted py-3">No warehouse items found for this store.</td></tr>';
+        updateWarehouseFilterCounters();
+        return;
+      }
+      updateWarehouseFilterCounters();
+      let html = '';
+
+      for (const p of productsList) {
+        const qty = parseInt(p.p_qty || 0, 10);
+        const nq = parseInt(p.p_new_qty || 0, 10);
+        const sLevel = parseInt(p.p_s_level || 10, 10);
+        const capCost = parseFloat(p.p_capital_price || 0);
+        const retailPrice = parseFloat(p.p_current_price || 0);
+
+        let markup = parseFloat(p.p_markup || 0);
+        if (!markup && retailPrice > capCost) {
+          markup = retailPrice - capCost;
+        }
+
+        const safetyThreshold = sLevel > 0 ? sLevel : 10;
+        const isCrit = (qty <= 0) || (qty <= Math.ceil(safetyThreshold * 0.5));
+        const isLow = (qty > Math.ceil(safetyThreshold * 0.5)) && (qty <= safetyThreshold);
+
+        let statusBadge = '';
+        if (qty <= 0) {
+          statusBadge = '<span class="badge bg-danger"><i class="fa fa-times-circle"></i> Out of Stock (0)</span>';
+        } else if (qty <= Math.ceil(safetyThreshold * 0.5)) {
+          statusBadge = '<span class="badge bg-danger bg-opacity-75"><i class="fa fa-exclamation-circle"></i> Critical (' + qty + ')</span>';
+        } else if (qty <= safetyThreshold) {
+          statusBadge = '<span class="badge bg-warning text-dark"><i class="fa fa-bell-o"></i> Low Stock (' + qty + ')</span>';
+        } else {
+          statusBadge = '<span class="badge bg-success"><i class="fa fa-check-circle"></i> In Stock (' + qty + ')</span>';
+        }
+
+        const photoPath = p.p_featured_photo || '';
+        const imgSrc = getProductPhotoUrl(photoPath);
+
+        const imageCell = '<div class="d-inline-block text-center" style="width: 50px;">' +
+          '<img id="whInlineImg_' + p.p_id + '" src="' + escapeHtml(imgSrc) + '" class="rounded border shadow-sm" style="width: 44px; height: 44px; object-fit: cover; background: #fff;" alt="' + escapeHtml(p.p_name || 'Product') + '" onerror="this.onerror=null;this.src=&apos;/assets/uploads/product_photos/general_products.png&apos;;">' +
+          '<input type="hidden" id="whInlinePhoto_' + p.p_id + '" value="' + escapeHtml(photoPath) + '">' +
+        '</div>';
+
+        const capValStr = capCost.toFixed(2);
+        const retValStr = retailPrice.toFixed(2);
+        const markupValStr = markup.toFixed(2);
+        const sLevelVal = sLevel > 0 ? sLevel : 10;
+        const searchTokens = (p.p_id + ' ' + (p.p_name || '') + ' ' + (p.p_sku || '') + ' ' + (p.ecat_name || '')).toLowerCase();
+
+        const costAValStr = parseFloat(p.cost_storage_a !== null && p.cost_storage_a !== undefined ? p.cost_storage_a : 0).toFixed(2);
+        const costBValStr = parseFloat(p.cost_storage_b !== null && p.cost_storage_b !== undefined ? p.cost_storage_b : 0).toFixed(2);
+        const costCValStr = parseFloat(p.cost_storage_c !== null && p.cost_storage_c !== undefined ? p.cost_storage_c : 0).toFixed(2);
+        const costNqValStr = parseFloat(p.cost_storage_nq !== null && p.cost_storage_nq !== undefined ? p.cost_storage_nq : 0).toFixed(2);
+
+        html += '<tr id="warehouseRow_' + p.p_id + '" data-pid="' + p.p_id + '" data-critical="' + isCrit + '" data-low="' + isLow + '" data-search="' + escapeHtml(searchTokens) + '">' +
+          '<td class="text-center align-middle">' + imageCell + '</td>' +
+          '<td>' +
+            '<span class="font-monospace text-dark fw-semibold" style="font-size: 12px;">' + escapeHtml(p.p_sku || '-') + '</span>' +
+            '<input type="hidden" id="whInlineSku_' + p.p_id + '" value="' + escapeHtml(p.p_sku || '') + '">' +
+          '</td>' +
+          '<td>' +
+            '<span class="fw-bold text-dark" style="min-width: 180px; font-size: 13px; line-height: 1.35; display: inline-block;">' + escapeHtml(p.p_name || 'Unnamed Product') + '</span>' +
+            '<input type="hidden" id="whInlineName_' + p.p_id + '" value="' + escapeHtml(p.p_name || '') + '">' +
+          '</td>' +
+          '<td class="text-center wh-col-group-a" style="background-color: #e6e0d1 !important;">' +
+            '<input type="text" id="whInlineStorageA_' + p.p_id + '" class="form-control form-control-sm text-center bg-white" style="width: 75px; margin: 0 auto;" value="' + escapeHtml(p.storage_a !== null && p.storage_a !== undefined ? p.storage_a : '0') + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" placeholder="0" title="Storage A">' +
+          '</td>' +
+          '<td class="text-end wh-col-group-a" style="background-color: #e6e0d1 !important;">' +
+            '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+              '<span class="input-group-text px-1 text-muted bg-white" style="font-size: 11px;">₱</span>' +
+              '<input type="number" step="0.01" id="whInlineCostA_' + p.p_id + '" class="form-control form-control-sm text-end px-1 bg-white" value="' + costAValStr + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Landed Cost (A)">' +
+            '</div>' +
+          '</td>' +
+          '<td class="text-center wh-col-group-b" style="background-color: #c2d0ed !important;">' +
+            '<input type="text" id="whInlineStorageB_' + p.p_id + '" class="form-control form-control-sm text-center bg-white" style="width: 75px; margin: 0 auto;" value="' + escapeHtml(p.storage_b !== null && p.storage_b !== undefined ? p.storage_b : '0') + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" placeholder="0" title="Storage B">' +
+          '</td>' +
+          '<td class="text-end wh-col-group-b" style="background-color: #c2d0ed !important;">' +
+            '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+              '<span class="input-group-text px-1 text-muted bg-white" style="font-size: 11px;">₱</span>' +
+              '<input type="number" step="0.01" id="whInlineCostB_' + p.p_id + '" class="form-control form-control-sm text-end px-1 bg-white" value="' + costBValStr + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Landed Cost (B)">' +
+            '</div>' +
+          '</td>' +
+          '<td class="text-center wh-col-group-c" style="background-color: #d1cfcd !important;">' +
+            '<input type="text" id="whInlineStorageC_' + p.p_id + '" class="form-control form-control-sm text-center bg-white" style="width: 75px; margin: 0 auto;" value="' + escapeHtml(p.storage_c !== null && p.storage_c !== undefined ? p.storage_c : '0') + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" placeholder="0" title="Storage C">' +
+          '</td>' +
+          '<td class="text-end wh-col-group-c" style="background-color: #d1cfcd !important;">' +
+            '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+              '<span class="input-group-text px-1 text-muted bg-white" style="font-size: 11px;">₱</span>' +
+              '<input type="number" step="0.01" id="whInlineCostC_' + p.p_id + '" class="form-control form-control-sm text-end px-1 bg-white" value="' + costCValStr + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Landed Cost (C)">' +
+            '</div>' +
+          '</td>' +
+          '<td class="text-center wh-col-group-nq" style="background-color: #d1e6d6 !important;">' +
+            '<input type="number" id="whInlineNq_' + p.p_id + '" class="form-control form-control-sm text-center bg-white" style="width: 75px; margin: 0 auto;" value="' + nq + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Reserve Batch (NQ)">' +
+          '</td>' +
+          '<td class="text-end wh-col-group-nq" style="background-color: #d1e6d6 !important;">' +
+            '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+              '<span class="input-group-text px-1 text-muted bg-white" style="font-size: 11px;">₱</span>' +
+              '<input type="number" step="0.01" id="whInlineCostNq_' + p.p_id + '" class="form-control form-control-sm text-end px-1 bg-white" value="' + costNqValStr + '" oninput="markWarehouseRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Landed Cost (NQ)">' +
+            '</div>' +
+          '</td>' +
+          '<td class="text-center">' +
+            '<input type="number" id="whInlineQty_' + p.p_id + '" class="form-control form-control-sm text-center fw-bold ' + (qty <= 0 ? 'text-danger border-danger' : 'text-dark') + '" style="width: 80px; margin: 0 auto;" value="' + qty + '" oninput="onWarehouseInlineChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Store Stock(Q)">' +
+          '</td>' +
+          '<td class="text-end">' +
+            '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+              '<span class="input-group-text px-1 text-muted" style="font-size: 11px;">₱</span>' +
+              '<input type="number" step="0.01" id="whInlineCap_' + p.p_id + '" class="form-control form-control-sm text-end px-1" value="' + capValStr + '" oninput="onWarehouseCapChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveWarehouseInline(' + p.p_id + ')" title="Landed Cost">' +
+            '</div>' +
+          '</td>' +
+          '<td class="text-center"><span id="whInlineStatus_' + p.p_id + '">' + statusBadge + '</span></td>' +
+          '<td class="text-center">' +
+            '<div class="d-flex align-items-center justify-content-center gap-1">' +
+              '<button id="btnSaveWhInline_' + p.p_id + '" class="btn btn-outline-success btn-sm py-0 px-2 text-nowrap" onclick="saveWarehouseInline(' + p.p_id + ')" title="Save changes"><i class="fa fa-save"></i> Save</button>' +
+              '<button class="btn btn-outline-primary btn-sm py-0 px-2 text-nowrap" onclick="jumpToGrnForProduct(' + p.p_id + ')" title="Restock item"><i class="fa fa-plus"></i></button>' +
+            '</div>' +
+          '</td>' +
+        '</tr>';
+      }
+
+      whBody.innerHTML = html;
+      warehouseCurrentPage = 1;
+      filterWarehouseStockTable();
+    }
+
+    function markWarehouseRowDirty(productId) {
+      const btn = document.getElementById('btnSaveWhInline_' + productId);
+      if (btn) {
+        btn.className = 'btn btn-primary btn-sm py-0 px-2 text-nowrap';
+        btn.innerHTML = '<i class="fa fa-save"></i> Save *';
+      }
+    }
+
+    function onWarehouseInlineChange(productId) {
+      markWarehouseRowDirty(productId);
+      const qtyEl = document.getElementById('whInlineQty_' + productId);
+      const statusEl = document.getElementById('whInlineStatus_' + productId);
+      const tr = document.getElementById('warehouseRow_' + productId);
+      if (!qtyEl || !statusEl || !tr) return;
+
+      const item = (productsList || []).find(p => p.p_id === productId) || {};
+      const qty = parseInt(qtyEl.value || 0, 10);
+      const sLevel = parseInt(item.p_s_level || 10, 10);
+      const threshold = sLevel > 0 ? sLevel : 10;
+      const isCrit = (qty <= 0) || (qty <= Math.ceil(threshold * 0.5));
+      const isLow = (qty > Math.ceil(threshold * 0.5)) && (qty <= threshold);
+
+      tr.setAttribute('data-critical', String(isCrit));
+      tr.setAttribute('data-low', String(isLow));
+
+      if (qty <= 0) {
+        qtyEl.className = 'form-control form-control-sm text-center fw-bold text-danger border-danger';
+        statusEl.innerHTML = '<span class="badge bg-danger"><i class="fa fa-times-circle"></i> Out of Stock (0)</span>';
+      } else if (qty <= Math.ceil(threshold * 0.5)) {
+        qtyEl.className = 'form-control form-control-sm text-center fw-bold text-danger';
+        statusEl.innerHTML = '<span class="badge bg-danger bg-opacity-75"><i class="fa fa-exclamation-circle"></i> Critical (' + qty + ')</span>';
+      } else if (qty <= threshold) {
+        qtyEl.className = 'form-control form-control-sm text-center fw-bold text-warning';
+        statusEl.innerHTML = '<span class="badge bg-warning text-dark"><i class="fa fa-bell-o"></i> Low Stock (' + qty + ')</span>';
+      } else {
+        qtyEl.className = 'form-control form-control-sm text-center fw-bold text-dark';
+        statusEl.innerHTML = '<span class="badge bg-success"><i class="fa fa-check-circle"></i> In Stock (' + qty + ')</span>';
+      }
+    }
+
+    function onWarehouseCapChange(productId) {
+      markWarehouseRowDirty(productId);
+    }
+
+    async function saveWarehouseInline(productId) {
+      const btn = document.getElementById('btnSaveWhInline_' + productId);
+      const nameInput = document.getElementById('whInlineName_' + productId);
+      const skuInput = document.getElementById('whInlineSku_' + productId);
+      const photoInput = document.getElementById('whInlinePhoto_' + productId);
+      const ecatInput = document.getElementById('whInlineEcat_' + productId);
+      const storageAInput = document.getElementById('whInlineStorageA_' + productId);
+      const storageBInput = document.getElementById('whInlineStorageB_' + productId);
+      const storageCInput = document.getElementById('whInlineStorageC_' + productId);
+      const costAInput = document.getElementById('whInlineCostA_' + productId);
+      const costBInput = document.getElementById('whInlineCostB_' + productId);
+      const costCInput = document.getElementById('whInlineCostC_' + productId);
+      const costNqInput = document.getElementById('whInlineCostNq_' + productId);
+      const qtyInput = document.getElementById('whInlineQty_' + productId);
+      const nqInput = document.getElementById('whInlineNq_' + productId);
+      const capInput = document.getElementById('whInlineCap_' + productId);
+
+      if (!btn || !qtyInput || !capInput) return;
+
+      const item = (productsList || []).find(p => p.p_id === productId) || {};
+      const p_name = nameInput ? nameInput.value.trim() : (item.p_name || '');
+      const p_sku = skuInput ? skuInput.value.trim() : (item.p_sku || '');
+      const p_featured_photo = photoInput ? photoInput.value.trim() : (item.p_featured_photo || '');
+      const ecat_id = ecatInput ? parseInt(ecatInput.value || 0, 10) : (item.ecat_id || 0);
+      const storage_a = storageAInput ? storageAInput.value.trim() : (item.storage_a || '0');
+      const storage_b = storageBInput ? storageBInput.value.trim() : (item.storage_b || '0');
+      const storage_c = storageCInput ? storageCInput.value.trim() : (item.storage_c || '0');
+      const cost_storage_a = costAInput ? parseFloat(costAInput.value || 0).toFixed(2) : (item.cost_storage_a || '0.00');
+      const cost_storage_b = costBInput ? parseFloat(costBInput.value || 0).toFixed(2) : (item.cost_storage_b || '0.00');
+      const cost_storage_c = costCInput ? parseFloat(costCInput.value || 0).toFixed(2) : (item.cost_storage_c || '0.00');
+      const cost_storage_nq = costNqInput ? parseFloat(costNqInput.value || 0).toFixed(2) : (item.cost_storage_nq || '0.00');
+      const p_qty = parseInt(qtyInput.value || 0, 10);
+      const p_new_qty = nqInput ? parseInt(nqInput.value || 0, 10) : (item.p_new_qty || 0);
+      const p_capital_price = parseFloat(capInput.value || 0);
+      const p_s_level = item.p_s_level !== undefined ? parseInt(item.p_s_level, 10) : 10;
+      const p_markup = item.p_markup !== undefined ? String(item.p_markup) : '20';
+      const p_current_price = item.p_current_price !== undefined ? parseFloat(item.p_current_price) : 0;
+
+      btn.disabled = true;
+      btn.className = 'btn btn-secondary btn-sm py-0 px-2 text-nowrap';
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
+
+      try {
+        const res = await fetch('/api/products/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            p_id: productId,
+            p_name,
+            p_sku,
+            p_featured_photo,
+            ecat_id,
+            storage_a,
+            storage_b,
+            storage_c,
+            cost_storage_a,
+            cost_storage_b,
+            cost_storage_c,
+            cost_storage_nq,
+            p_qty,
+            p_new_qty,
+            p_s_level,
+            p_capital_price,
+            p_markup,
+            p_current_price
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          if (item) {
+            item.p_name = p_name;
+            item.p_sku = p_sku;
+            item.p_featured_photo = p_featured_photo;
+            item.ecat_id = ecat_id;
+            item.storage_a = storage_a;
+            item.storage_b = storage_b;
+            item.storage_c = storage_c;
+            item.cost_storage_a = cost_storage_a;
+            item.cost_storage_b = cost_storage_b;
+            item.cost_storage_c = cost_storage_c;
+            item.cost_storage_nq = cost_storage_nq;
+            item.p_qty = p_qty;
+            item.p_new_qty = p_new_qty;
+            item.p_capital_price = p_capital_price.toFixed(2);
+
+            const catObj = (categoriesList || []).find(c => c.ecat_id === ecat_id);
+            const catName = catObj ? catObj.ecat_name : '';
+            item.ecat_name = catName;
+            const searchTokens = (productId + ' ' + p_name + ' ' + p_sku + ' ' + catName + ' ' + storage_a + ' ' + storage_b + ' ' + storage_c).toLowerCase();
+            const whTr = document.getElementById('warehouseRow_' + productId);
+            if (whTr) whTr.setAttribute('data-search', searchTokens);
+            const catTr = document.getElementById('catalogRow_' + productId);
+            if (catTr) catTr.setAttribute('data-search', searchTokens);
+          }
+
+          btn.disabled = false;
+          btn.className = 'btn btn-success btn-sm py-0 px-2 text-nowrap';
+          btn.innerHTML = '<i class="fa fa-check"></i> Saved';
+          showErpToast('Warehouse Stock Updated', 'Product #' + productId + ' updated successfully in PostgreSQL.', 'success');
+
+          setTimeout(() => {
+            btn.className = 'btn btn-outline-success btn-sm py-0 px-2 text-nowrap';
+            btn.innerHTML = '<i class="fa fa-save"></i> Save';
+          }, 1500);
+
+          updateWarehouseFilterCounters();
+          updateCatalogFilterCounters();
+        } else {
+          btn.disabled = false;
+          btn.className = 'btn btn-danger btn-sm py-0 px-2 text-nowrap';
+          btn.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Retry';
+          showErpToast('Update Failed', data.error || 'Could not save updates.', 'danger');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.className = 'btn btn-danger btn-sm py-0 px-2 text-nowrap';
+        btn.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Retry';
+        showErpToast('Network Error', err.message || 'Connection error while saving.', 'danger');
+      }
+    }
+
+    function jumpToGrnForProduct(productId) {
+      if (typeof activateSidebarItem === 'function') {
+        activateSidebarItem('nav-li-materials', 'tab-materials', 'Receive Materials (GRN)');
+      } else {
+        const link = document.getElementById('tab-materials-link');
+        if (link) link.click();
+      }
+      const sel = document.getElementById('grnProduct');
+      if (sel) {
+        sel.value = productId;
+        updateProductCurrentStock();
+      }
+      const qtyInput = document.getElementById('grnQty');
+      if (qtyInput) {
+        qtyInput.focus();
+        qtyInput.select();
+      }
+    }
+
     async function loadProducts() {
+      await loadCategories();
       const res = await fetch('/api/products?supplier_id=' + currentSupplierId);
       productsList = await res.json();
       const sel = document.getElementById('grnProduct');
-      sel.innerHTML = '<option value="">Select Catalog Item...</option>';
-      for (const p of productsList) {
-        const opt = document.createElement('option');
-        opt.value = p.p_id;
-        opt.textContent = p.p_name + ' (Stock: ' + p.p_qty + ')';
-        sel.appendChild(opt);
+      if (sel) {
+        sel.innerHTML = '<option value="">Select Catalog Item...</option>';
+        for (const p of productsList) {
+          const opt = document.createElement('option');
+          opt.value = p.p_id;
+          opt.textContent = p.p_name + ' (Stock: ' + p.p_qty + ')';
+          sel.appendChild(opt);
+        }
       }
 
       const catBody = document.getElementById('catalogStockTable');
       if (catBody) {
-        if (productsList.length === 0) {
-          catBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No products found for this store.</td></tr>';
+        if (!productsList || productsList.length === 0) {
+          catBody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">No products found for this store.</td></tr>';
+          updateCatalogFilterCounters();
         } else {
+          updateCatalogFilterCounters();
           let html = '';
+
           for (const p of productsList) {
             const qty = parseInt(p.p_qty || 0, 10);
-            const badge = qty <= 10
-              ? '<span class="badge bg-danger">Low Stock (' + qty + ')</span>'
-              : '<span class="badge bg-success">In Stock (' + qty + ')</span>';
-            html += '<tr>' +
+            const nq = parseInt(p.p_new_qty || 0, 10);
+            const sLevel = parseInt(p.p_s_level || 10, 10);
+            const capCost = parseFloat(p.p_capital_price || 0);
+            const retailPrice = parseFloat(p.p_current_price || 0);
+
+            let markup = parseFloat(p.p_markup || 0);
+            if (!markup && retailPrice > capCost) {
+              markup = retailPrice - capCost;
+            }
+
+            const safetyThreshold = sLevel > 0 ? sLevel : 10;
+            const isCrit = (qty <= 0) || (qty <= Math.ceil(safetyThreshold * 0.5));
+            const isLow = (qty > Math.ceil(safetyThreshold * 0.5)) && (qty <= safetyThreshold);
+
+            let statusBadge = '';
+            if (qty <= 0) {
+              statusBadge = '<span class="badge bg-danger"><i class="fa fa-times-circle"></i> Out of Stock (0)</span>';
+            } else if (qty <= Math.ceil(safetyThreshold * 0.5)) {
+              statusBadge = '<span class="badge bg-danger bg-opacity-75"><i class="fa fa-exclamation-circle"></i> Critical (' + qty + ')</span>';
+            } else if (qty <= safetyThreshold) {
+              statusBadge = '<span class="badge bg-warning text-dark"><i class="fa fa-bell-o"></i> Low Stock (' + qty + ')</span>';
+            } else {
+              statusBadge = '<span class="badge bg-success"><i class="fa fa-check-circle"></i> In Stock (' + qty + ')</span>';
+            }
+
+            const photoPath = p.p_featured_photo || '';
+            const imgSrc = getProductPhotoUrl(photoPath);
+
+            const imageCell = '<div class="position-relative d-inline-block text-center" style="width: 50px;">' +
+              '<img id="inlineImg_' + p.p_id + '" src="' + escapeHtml(imgSrc) + '" class="rounded border shadow-sm" style="width: 44px; height: 44px; object-fit: cover; cursor: pointer; background: #fff;" onclick="openEditPhotoModal(' + p.p_id + ')" title="Click to view or change photo" onerror="this.onerror=null;this.src=&apos;/assets/uploads/product_photos/general_products.png&apos;;">' +
+              '<input type="hidden" id="inlinePhoto_' + p.p_id + '" value="' + escapeHtml(photoPath) + '">' +
+              '<button type="button" class="btn btn-light btn-sm p-0 position-absolute bottom-0 end-0 rounded-circle border shadow-sm" style="width: 18px; height: 18px; line-height: 16px; font-size: 10px;" onclick="openEditPhotoModal(' + p.p_id + ')" title="Change photo">' +
+                '<i class="fa fa-camera text-secondary" style="font-size: 9px;"></i>' +
+              '</button>' +
+            '</div>';
+
+            let catOptions = '<option value="">-- No Category --</option>';
+            for (const cat of categoriesList) {
+              const isSelected = (cat.ecat_id === p.ecat_id) ? ' selected' : '';
+              catOptions += '<option value="' + cat.ecat_id + '"' + isSelected + '>' + escapeHtml(cat.ecat_name) + ' (#' + cat.ecat_id + ')</option>';
+            }
+
+            const capValStr = capCost.toFixed(2);
+            const retValStr = retailPrice.toFixed(2);
+            const markupValStr = markup.toFixed(2);
+            const sLevelVal = sLevel > 0 ? sLevel : 10;
+            const searchTokens = (p.p_id + ' ' + (p.p_name || '') + ' ' + (p.p_sku || '') + ' ' + (p.ecat_name || '')).toLowerCase();
+
+            html += '<tr id="catalogRow_' + p.p_id + '" data-pid="' + p.p_id + '" data-critical="' + isCrit + '" data-low="' + isLow + '" data-search="' + escapeHtml(searchTokens) + '">' +
               '<td><code>#' + p.p_id + '</code></td>' +
-              '<td><strong>' + p.p_name + '</strong></td>' +
-              '<td><strong>' + qty + ' units</strong></td>' +
-              '<td>₱' + parseFloat(p.p_capital_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '</td>' +
-              '<td class="text-primary fw-bold">₱' + parseFloat(p.p_current_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '</td>' +
-              '<td>' + badge + '</td>' +
-              '<td><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="jumpToGrnForProduct(' + p.p_id + ')"><i class="fa fa-plus"></i> Restock</button></td>' +
+              '<td class="text-center align-middle">' + imageCell + '</td>' +
+              '<td>' +
+                '<input type="text" id="inlineSku_' + p.p_id + '" class="form-control form-control-sm font-monospace" style="min-width: 95px; font-size: 12px;" value="' + escapeHtml(p.p_sku || '') + '" oninput="markCatalogRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" placeholder="SKU">' +
+              '</td>' +
+              '<td>' +
+                '<input type="text" id="inlineName_' + p.p_id + '" class="form-control form-control-sm fw-bold" style="min-width: 180px; font-size: 13px;" value="' + escapeHtml(p.p_name || '') + '" oninput="markCatalogRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" placeholder="Product Name">' +
+              '</td>' +
+              '<td>' +
+                '<select id="inlineEcat_' + p.p_id + '" class="form-select form-select-sm" style="min-width: 135px; font-size: 12px;" onchange="markCatalogRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')">' +
+                  catOptions +
+                '</select>' +
+              '</td>' +
+              '<td class="text-center">' +
+                '<input type="number" id="inlineQty_' + p.p_id + '" class="form-control form-control-sm text-center fw-bold ' + (qty <= 0 ? 'text-danger border-danger' : 'text-dark') + '" style="width: 80px; margin: 0 auto;" value="' + qty + '" oninput="onCatalogInlineChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" title="Available Stock (Q)">' +
+              '</td>' +
+              '<td class="text-center">' +
+                '<input type="number" id="inlineNq_' + p.p_id + '" class="form-control form-control-sm text-center" style="width: 75px; margin: 0 auto;" value="' + nq + '" oninput="markCatalogRowDirty(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" title="New Batch Pending Stock (NQ)">' +
+              '</td>' +
+              '<td class="text-center">' +
+                '<input type="number" id="inlineSLevel_' + p.p_id + '" class="form-control form-control-sm text-center" style="width: 75px; margin: 0 auto;" value="' + sLevelVal + '" oninput="onCatalogInlineChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" title="Safety Threshold Level (S)">' +
+              '</td>' +
+              '<td class="text-end">' +
+                '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+                  '<span class="input-group-text px-1 text-muted" style="font-size: 11px;">₱</span>' +
+                  '<input type="number" step="0.01" id="inlineCap_' + p.p_id + '" class="form-control form-control-sm text-end px-1" value="' + capValStr + '" oninput="onCatalogCapChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" title="Landed / Capital Cost">' +
+                '</div>' +
+              '</td>' +
+              '<td class="text-end">' +
+                '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+                  '<span class="input-group-text px-1 text-success fw-bold" style="font-size: 11px;">+₱</span>' +
+                  '<input type="number" step="0.01" id="inlineMarkup_' + p.p_id + '" class="form-control form-control-sm text-end px-1 text-success fw-bold" value="' + markupValStr + '" oninput="onCatalogMarkupChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" title="Markup in ₱">' +
+                '</div>' +
+              '</td>' +
+              '<td class="text-end">' +
+                '<div class="input-group input-group-sm ms-auto" style="width: 105px;">' +
+                  '<span class="input-group-text px-1 text-primary fw-bold" style="font-size: 11px;">₱</span>' +
+                  '<input type="number" step="0.01" id="inlineRetail_' + p.p_id + '" class="form-control form-control-sm text-end fw-bold text-primary px-1" value="' + retValStr + '" oninput="onCatalogRetailChange(' + p.p_id + ')" onkeydown="if(event.keyCode===13)saveCatalogInline(' + p.p_id + ')" title="POS Retail Price">' +
+                '</div>' +
+              '</td>' +
+              '<td class="text-center"><span id="inlineStatus_' + p.p_id + '">' + statusBadge + '</span></td>' +
+              '<td class="text-center">' +
+                '<div class="d-flex align-items-center justify-content-center gap-1">' +
+                  '<button id="btnSaveInline_' + p.p_id + '" class="btn btn-outline-success btn-sm py-0 px-2 text-nowrap" onclick="saveCatalogInline(' + p.p_id + ')" title="Save inline changes"><i class="fa fa-save"></i> Save</button>' +
+                  '<button class="btn btn-outline-primary btn-sm py-0 px-2 text-nowrap" onclick="jumpToGrnForProduct(' + p.p_id + ')" title="Restock item"><i class="fa fa-plus"></i></button>' +
+                '</div>' +
+              '</td>' +
             '</tr>';
           }
+
           catBody.innerHTML = html;
+
+          catalogCurrentPage = 1;
+          // Apply active filter (defaults to 'critical' so only critical status items display)
+          filterCatalogStockTable();
         }
       }
+
+      renderWarehouseStockTable();
     }
 
     function updateProductCurrentStock() {

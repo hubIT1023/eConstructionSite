@@ -117,14 +117,13 @@ if (!function_exists('recalculate_supplier_checkout_cart')) {
             $item['line_gross'] = $line_gross;
             $gross_sub += $line_gross;
 
-            $disc_amt = 0.00;
+            $disc_amt = isset($item['discount_amount']) ? floatval($item['discount_amount']) : 0.00;
             $disc_pct = isset($item['discount_percent']) ? floatval($item['discount_percent']) : 0.00;
 
-            if ($disc_pct > 0) {
+            if ($disc_amt <= 0 && $disc_pct > 0) {
                 $disc_amt = round($line_gross * ($disc_pct / 100), 2);
-            } elseif (isset($item['discount_amount']) && floatval($item['discount_amount']) > 0) {
-                $disc_amt = floatval($item['discount_amount']);
             }
+            $disc_amt = min($disc_amt, $line_gross);
 
             $item['discount_amount'] = $disc_amt;
             $item['discount_percent'] = $disc_pct;
@@ -516,11 +515,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                     $has_pending_discount = true;
                     $disc_status = $dr ? $dr['status'] : 'PENDING';
                 } elseif (in_array($dr['status'], ['APPROVED', 'APPROVED_MODIFIED'])) {
-                    $disc_pct = floatval($dr['approved_discount_percent']);
-                    $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                    $disc_amt = isset($dr['discount_amount']) ? floatval($dr['discount_amount']) : 0.00;
+                    if ($disc_amt <= 0 && !empty($item['discount_amount'])) {
+                        $disc_amt = floatval($item['discount_amount']);
+                    }
+                    if ($disc_amt <= 0 && !empty($dr['approved_discount_percent']) && floatval($dr['approved_discount_percent']) > 0) {
+                        $disc_pct = floatval($dr['approved_discount_percent']);
+                        $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                    }
+                    $disc_amt = min($disc_amt, $line_gross);
                     $total_discount_savings += $disc_amt;
                     $disc_status = $dr['status'];
                 }
+            } elseif (!empty($item['discount_amount']) && floatval($item['discount_amount']) > 0 && isset($item['discount_status']) && in_array($item['discount_status'], ['APPROVED', 'APPROVED_MODIFIED'])) {
+                $disc_amt = min(floatval($item['discount_amount']), $line_gross);
+                $total_discount_savings += $disc_amt;
+                $disc_status = $item['discount_status'];
             }
 
             $line_net = max(0, $line_gross - $disc_amt);
@@ -604,7 +614,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                         $p_name = trim($item['name']);
                         $p_details = isset($item['product_details']) ? trim($item['product_details']) : '';
                         if (!empty($item['discount_amount']) && $item['discount_amount'] > 0) {
-                            $p_details .= ($p_details ? ' | ' : '') . 'Discount: -₱' . number_format($item['discount_amount'], 2) . ' (' . number_format($item['discount_percent'], 1) . '%)';
+                            $p_details .= ($p_details ? ' | ' : '') . 'Discount: -₱' . number_format($item['discount_amount'], 2);
                         }
                         $so_ref = !empty($item['special_order_reference']) ? trim($item['special_order_reference']) : ('SO-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)));
                         $p_size = $p_details ? (strlen($p_details) > 95 ? substr($p_details, 0, 95) . '...' : $p_details) : 'Special Order';
@@ -622,9 +632,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                             item_type,
                             special_order_reference,
                             product_details,
+                            discount_percent,
+                            discount_amount,
+                            discount_request_id,
                             capital_price,
                             markup_amount
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
@@ -637,6 +650,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                             $item_type,
                             $so_ref,
                             $p_details,
+                            floatval($item['discount_percent'] ?? 0),
+                            floatval($item['discount_amount'] ?? 0),
+                            !empty($item['discount_request_id']) ? $item['discount_request_id'] : null,
                             isset($item['capital_price']) ? floatval($item['capital_price']) : round($p_effective_unit_price / 1.20, 2),
                             isset($item['markup_amount']) ? floatval($item['markup_amount']) : max(0, round($p_effective_unit_price - round($p_effective_unit_price / 1.20, 2), 2))
                         ));
@@ -646,6 +662,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                         $p_size = !empty($item['size']) ? $item['size'] : (!empty($item['spec_label']) ? $item['spec_label'] : 'Standard');
                         $p_color = !empty($item['color']) ? $item['color'] : 'Standard';
                         $p_details = !empty($item['spec_label']) ? $item['spec_label'] : '';
+                        if (!empty($item['discount_amount']) && $item['discount_amount'] > 0) {
+                            $p_details = ($p_details ? ($p_details . ' | ') : '') . 'Discount: -₱' . number_format($item['discount_amount'], 2);
+                        }
                         if (!empty($item['batch_rollover_active'])) {
                             $ro_note = sprintf(
                                 '[Option 1 Batch Rollover: Old Q=%d @ ₱%s -> New Batch NQ=%d @ ₱%s | Capital: ₱%s | Mark-Up: ₱%s | Profit: ₱%s]',
@@ -670,10 +689,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                             payment_id,
                             supplier_id,
                             item_type,
+                            special_order_reference,
                             product_details,
+                            discount_percent,
+                            discount_amount,
+                            discount_request_id,
                             capital_price,
                             markup_amount
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
@@ -684,7 +707,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['form_otc']) || (isse
                             $payment_id,
                             $supplier_id,
                             $item_type,
+                            '',
                             $p_details,
+                            floatval($item['discount_percent'] ?? 0),
+                            floatval($item['discount_amount'] ?? 0),
+                            !empty($item['discount_request_id']) ? $item['discount_request_id'] : null,
                             isset($item['capital_price']) ? floatval($item['capital_price']) : round($p_effective_unit_price / 1.20, 2),
                             isset($item['markup_amount']) ? floatval($item['markup_amount']) : max(0, round($p_effective_unit_price - round($p_effective_unit_price / 1.20, 2), 2))
                         ));
@@ -953,7 +980,7 @@ $grand_total = isset($checkout_cart['grand_total']) ? floatval($checkout_cart['g
                                         <?php endif; ?>
                                         <?php if ($it_disc > 0): ?>
                                             <div style="font-size: 11px; color: #16a34a; font-weight: bold;">
-                                                <i class="fa fa-tag"></i> Approved Discount -&#8369;<?php echo number_format($it_disc, 2); ?> (<?php echo number_format(floatval($it['discount_percent']), 1); ?>%)
+                                                <i class="fa fa-tag"></i> Approved Discount -&#8369;<?php echo number_format($it_disc, 2); ?>
                                             </div>
                                         <?php endif; ?>
                                     </td>
@@ -1225,7 +1252,7 @@ $grand_total = isset($checkout_cart['grand_total']) ? floatval($checkout_cart['g
                                                             <?php if ($disc_amt > 0): ?>
                                                                 <div style="margin-top: 4px;" id="item-disc-badge-<?php echo $idx; ?>">
                                                                     <span class="label label-success" style="background: #10b981; font-size: 10px; font-weight: 700; padding: 2px 6px;">
-                                                                        <i class="fa fa-check-circle"></i> Discount -&#8369;<span id="item-disc-amt-<?php echo $idx; ?>"><?php echo number_format($disc_amt, 2); ?></span> (<?php echo number_format($disc_pct, 1); ?>%) Approved
+                                                                        <i class="fa fa-check-circle"></i> Discount -&#8369;<span id="item-disc-amt-<?php echo $idx; ?>"><?php echo number_format($disc_amt, 2); ?></span> Approved
                                                                     </span>
                                                                 </div>
                                                             <?php endif; ?>

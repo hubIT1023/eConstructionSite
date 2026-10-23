@@ -111,55 +111,23 @@ if ($action === 'request_discount') {
         exit;
     }
 
-    // Process Requested Discount Amount / Percentage
+    // Process Requested Discount Amount (Strictly Amount-Based in ₱)
     $requested_amt_input = isset($_POST['requested_discount_amount']) ? trim($_POST['requested_discount_amount']) : '';
-    $requested_pct_input = isset($_POST['requested_discount_percent']) ? trim($_POST['requested_discount_percent']) : '';
 
-    $discount_amount = 0.00;
-    $requested_pct = 0.00;
-
-    if ($requested_amt_input !== '' && is_numeric($requested_amt_input)) {
-        $discount_amount = round(floatval($requested_amt_input), 2);
-        if ($discount_amount <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Please enter a valid discount amount greater than ₱0.00.']);
-            exit;
-        }
-        if ($discount_amount >= $original_item_value) {
-            echo json_encode([
-                'status' => 'error',
-                'message' => 'Discount amount (₱' . number_format($discount_amount, 2) . ') cannot equal or exceed item gross total (₱' . number_format($original_item_value, 2) . ').'
-            ]);
-            exit;
-        }
-        $requested_pct = round(($discount_amount / $original_item_value) * 100, 4);
-    } elseif ($requested_pct_input !== '' && is_numeric($requested_pct_input)) {
-        $requested_pct = round(floatval($requested_pct_input), 4);
-        if ($requested_pct <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Please enter a valid discount greater than ₱0.00.']);
-            exit;
-        }
-        $discount_amount = round($original_item_value * ($requested_pct / 100), 2);
-        if ($discount_amount >= $original_item_value) {
-            echo json_encode([
-                'status' => 'error',
-                'message' => 'Discount amount (₱' . number_format($discount_amount, 2) . ') cannot equal or exceed item gross total (₱' . number_format($original_item_value, 2) . ').'
-            ]);
-            exit;
-        }
-    } else {
+    if ($requested_amt_input === '' || !is_numeric($requested_amt_input)) {
         echo json_encode(['status' => 'error', 'message' => 'Please enter a valid discount amount greater than ₱0.00.']);
         exit;
     }
 
-    $normal_max_amount = round($original_item_value * ($normal_max / 100), 2);
-    $absolute_max_amount = round($original_item_value * ($absolute_max / 100), 2);
-
-    // LEVEL 3: Prohibited Check (> Absolute Max)
-    if (($requested_pct > $absolute_max + 0.0001) || ($discount_amount > $absolute_max_amount + 0.005)) {
+    $discount_amount = round(floatval($requested_amt_input), 2);
+    if ($discount_amount <= 0) {
+        echo json_encode(['status' => 'error', 'message' => 'Please enter a valid discount amount greater than ₱0.00.']);
+        exit;
+    }
+    if ($discount_amount >= $original_item_value) {
         echo json_encode([
             'status' => 'error',
-            'code' => 'DISCOUNT_PROHIBITED',
-            'message' => "DISCOUNT NOT ALLOWED\n\nRequested Discount: ₱" . number_format($discount_amount, 2) . " (" . number_format($requested_pct, 2) . "%)\nMaximum Permitted: ₱" . number_format($absolute_max_amount, 2) . " (" . number_format($absolute_max, 2) . "%)\n\nThe requested discount exceeds the maximum absolute discount policy for this store."
+            'message' => 'Discount amount (₱' . number_format($discount_amount, 2) . ') cannot equal or exceed item gross total (₱' . number_format($original_item_value, 2) . ').'
         ]);
         exit;
     }
@@ -168,35 +136,17 @@ if ($action === 'request_discount') {
     $requester_role = normalize_supplier_role($user_role);
     $required_approval_role = get_required_approval_role($requester_role);
 
-    // Determine Classification & Approval Level
+    // Classification & Approval (Amount-Based)
     $approval_level = 'SUPPLIER_ADMIN';
     $status = 'PENDING';
-    $approved_pct = null;
-    $final_value = null;
+    $requested_pct = 0.00;
+    $approved_pct = 0.00;
+    $normal_max_pct = isset($normal_max) ? floatval($normal_max) : 0.00;
+    $absolute_max_pct = isset($absolute_max) ? floatval($absolute_max) : 0.00;
+    $final_value = round($original_item_value - $discount_amount, 2);
 
-    if (($requested_pct > $normal_max + 0.0001) || ($discount_amount > $normal_max_amount + 0.005)) {
-        // LEVEL 2: Special Discount
-        if (!$special_enabled) {
-            echo json_encode([
-                'status' => 'error',
-                'code' => 'SPECIAL_DISCOUNT_DISABLED',
-                'message' => "DISCOUNT NOT ALLOWED\n\nRequested Discount: ₱" . number_format($discount_amount, 2) . " (" . number_format($requested_pct, 2) . "%)\nNormal Maximum: ₱" . number_format($normal_max_amount, 2) . " (" . number_format($normal_max, 2) . "%)\n\nDiscounts exceeding ₱" . number_format($normal_max_amount, 2) . " (" . number_format($normal_max, 2) . "%) are disabled by store policy."
-            ]);
-            exit;
-        }
-        $approval_level = 'HIGHER_APPROVER';
-        $status = 'ESCALATED';
-    } else {
-        // LEVEL 1: Normal Discount
-        if (!$require_approval) {
-            // Auto approve if store policy does not require manager intervention
-            $status = 'APPROVED';
-            $approved_pct = $requested_pct;
-            $final_value = round($original_item_value - $discount_amount, 2);
-        } else {
-            $approval_level = 'SUPPLIER_ADMIN';
-            $status = 'PENDING';
-        }
+    if (!$require_approval) {
+        $status = 'APPROVED';
     }
 
     $request_id = generateDiscountRequestId($pdo);
@@ -230,38 +180,46 @@ if ($action === 'request_discount') {
         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
     ");
 
-    $stmt_ins->execute(array(
-        $request_id,
-        $supplier_id,
-        $current_user_id,
-        $current_user_name,
-        $requester_role,
-        $required_approval_role,
-        $product_id,
-        $authoritative_product_name,
-        $sku,
-        $item_type,
-        $special_order_reference,
-        $product_details,
-        $qty,
-        $authoritative_unit_price,
-        $original_item_value,
-        $requested_pct,
-        $normal_max,
-        $absolute_max,
-        $approved_pct,
-        $discount_amount,
-        $final_value,
-        $approval_level,
-        $status,
-        $cashier_remarks
-    ));
+    try {
+        $stmt_ins->execute(array(
+            $request_id,
+            $supplier_id,
+            $current_user_id,
+            $current_user_name,
+            $requester_role,
+            $required_approval_role,
+            $product_id,
+            $authoritative_product_name,
+            $sku,
+            $item_type,
+            $special_order_reference,
+            $product_details,
+            $qty,
+            $authoritative_unit_price,
+            $original_item_value,
+            $requested_pct,
+            $normal_max_pct,
+            $absolute_max_pct,
+            $approved_pct,
+            $discount_amount,
+            $final_value,
+            $approval_level,
+            $status,
+            $cashier_remarks
+        ));
+        $new_id = (int)$stmt_ins->fetchColumn();
+    } catch (PDOException $e) {
+        error_log('Error inserting discount request: ' . $e->getMessage());
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Database error recording discount request: ' . $e->getMessage()
+        ]);
+        exit;
+    }
 
-    $new_id = (int)$stmt_ins->fetchColumn();
-
-    // Calculate preview calculations for display
-    $preview_discount_amt = round($original_item_value * ($requested_pct / 100), 2);
-    $preview_final_val = round($original_item_value - $preview_discount_amt, 2);
+    // Calculations for display
+    $preview_discount_amt = $discount_amount;
+    $preview_final_val = $final_value;
 
     echo json_encode([
         'status' => 'success',
@@ -276,13 +234,13 @@ if ($action === 'request_discount') {
         'original_item_value' => $original_item_value,
         'requested_discount_percent' => $requested_pct,
         'approved_discount_percent' => $approved_pct,
-        'discount_amount' => $discount_amount !== null ? $discount_amount : $preview_discount_amt,
-        'final_item_value' => $final_value !== null ? $final_value : $preview_final_val,
-        'normal_max' => $normal_max,
-        'absolute_max' => $absolute_max,
-        'message' => ($status === 'ESCALATED') 
-            ? 'Special discount request submitted and escalated for higher approval.' 
-            : (($status === 'APPROVED') ? 'Discount auto-approved.' : 'Discount request submitted. Awaiting approval from ' . $required_approval_role . '.')
+        'discount_amount' => $discount_amount,
+        'final_item_value' => $final_value,
+        'normal_max' => $normal_max_pct,
+        'absolute_max' => $absolute_max_pct,
+        'message' => ($status === 'APPROVED') 
+            ? 'Discount auto-approved.' 
+            : 'Discount request submitted. Awaiting approval from ' . $required_approval_role . '.'
     ]);
     exit;
 }
@@ -452,15 +410,17 @@ if ($action === 'approve_discount') {
         exit;
     }
 
-    $approved_pct = floatval($req['requested_discount_percent']);
     $orig_val = floatval($req['original_item_value']);
-    $discount_amt = round($orig_val * ($approved_pct / 100), 2);
+    $discount_amt = floatval($req['discount_amount']);
+    if ($discount_amt <= 0 || $discount_amt >= $orig_val) {
+        $discount_amt = min(max(0, $discount_amt), $orig_val);
+    }
     $final_val = round($orig_val - $discount_amt, 2);
 
     $stmt_up = $pdo->prepare("
         UPDATE tbl_discount_requests SET 
             status = 'APPROVED',
-            approved_discount_percent = ?,
+            approved_discount_percent = 0.00,
             discount_amount = ?,
             final_item_value = ?,
             approver_id = ?,
@@ -471,7 +431,6 @@ if ($action === 'approve_discount') {
         WHERE request_id = ? AND supplier_id = ?
     ");
     $stmt_up->execute(array(
-        $approved_pct,
         $discount_amt,
         $final_val,
         $current_user_id,
@@ -486,7 +445,7 @@ if ($action === 'approve_discount') {
         'status' => 'success',
         'message' => 'Discount request approved successfully.',
         'request_id' => $req_id,
-        'approved_discount_percent' => $approved_pct,
+        'approved_discount_percent' => 0.00,
         'discount_amount' => $discount_amt,
         'final_item_value' => $final_val,
         'approver_role' => $user_role
@@ -544,49 +503,21 @@ if ($action === 'modify_discount') {
 
     $orig_val = floatval($req['original_item_value']);
     $mod_amt_input = isset($_POST['modified_discount_amount']) ? trim($_POST['modified_discount_amount']) : '';
-    $mod_pct_input = isset($_POST['modified_discount_percent']) ? trim($_POST['modified_discount_percent']) : '';
 
-    $discount_amt = 0.00;
-    $mod_pct = 0.00;
-
-    if ($mod_amt_input !== '' && is_numeric($mod_amt_input)) {
-        $discount_amt = round(floatval($mod_amt_input), 2);
-        if ($discount_amt <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Modified discount amount must be greater than ₱0.00.']);
-            exit;
-        }
-        if ($discount_amt >= $orig_val) {
-            echo json_encode([
-                'status' => 'error',
-                'message' => 'Modified discount amount (₱' . number_format($discount_amt, 2) . ') cannot equal or exceed item gross total (₱' . number_format($orig_val, 2) . ').'
-            ]);
-            exit;
-        }
-        $mod_pct = ($orig_val > 0) ? round(($discount_amt / $orig_val) * 100, 4) : 0.00;
-    } elseif ($mod_pct_input !== '' && is_numeric($mod_pct_input)) {
-        $mod_pct = round(floatval($mod_pct_input), 4);
-        if ($mod_pct <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Modified discount must be greater than 0.']);
-            exit;
-        }
-        $discount_amt = round($orig_val * ($mod_pct / 100), 2);
-        if ($discount_amt >= $orig_val) {
-            echo json_encode([
-                'status' => 'error',
-                'message' => 'Modified discount amount cannot equal or exceed item gross total.'
-            ]);
-            exit;
-        }
-    } else {
-        echo json_encode(['status' => 'error', 'message' => 'Please provide a valid modified discount amount.']);
+    if ($mod_amt_input === '' || !is_numeric($mod_amt_input)) {
+        echo json_encode(['status' => 'error', 'message' => 'Please provide a valid modified discount amount in ₱.']);
         exit;
     }
 
-    $max_abs_amount = round($orig_val * ($absolute_max / 100), 2);
-    if (($mod_pct > $absolute_max + 0.0001) || ($discount_amt > $max_abs_amount + 0.005)) {
+    $discount_amt = round(floatval($mod_amt_input), 2);
+    if ($discount_amt <= 0) {
+        echo json_encode(['status' => 'error', 'message' => 'Modified discount amount must be greater than ₱0.00.']);
+        exit;
+    }
+    if ($discount_amt >= $orig_val) {
         echo json_encode([
             'status' => 'error',
-            'message' => "Modified discount amount (₱" . number_format($discount_amt, 2) . " / " . number_format($mod_pct, 2) . "%) exceeds the absolute maximum permitted (₱" . number_format($max_abs_amount, 2) . " / " . number_format($absolute_max, 2) . "%)."
+            'message' => 'Modified discount amount (₱' . number_format($discount_amt, 2) . ') cannot equal or exceed item gross total (₱' . number_format($orig_val, 2) . ').'
         ]);
         exit;
     }
@@ -596,7 +527,7 @@ if ($action === 'modify_discount') {
     $stmt_up = $pdo->prepare("
         UPDATE tbl_discount_requests SET 
             status = 'APPROVED_MODIFIED',
-            approved_discount_percent = ?,
+            approved_discount_percent = 0.00,
             discount_amount = ?,
             final_item_value = ?,
             approver_id = ?,
@@ -607,7 +538,6 @@ if ($action === 'modify_discount') {
         WHERE request_id = ? AND supplier_id = ?
     ");
     $stmt_up->execute(array(
-        $mod_pct,
         $discount_amt,
         $final_val,
         $current_user_id,
@@ -620,9 +550,9 @@ if ($action === 'modify_discount') {
 
     echo json_encode([
         'status' => 'success',
-        'message' => 'Discount modified to ₱' . number_format($discount_amt, 2) . ' (' . number_format($mod_pct, 2) . '%) and approved.',
+        'message' => 'Discount modified to ₱' . number_format($discount_amt, 2) . ' and approved.',
         'request_id' => $req_id,
-        'approved_discount_percent' => $mod_pct,
+        'approved_discount_percent' => 0.00,
         'discount_amount' => $discount_amt,
         'final_item_value' => $final_val,
         'approver_role' => $user_role

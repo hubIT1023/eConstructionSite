@@ -10,7 +10,7 @@
  * ============================================================================
  */
 
-(function(window, document) {
+(function (window, document) {
     'use strict';
 
     /**
@@ -35,13 +35,13 @@
         BUZZER: '\x1B\x42\x02\x02',         // ESC B 2 2 (Buzzer beep 2 times)
         CUT_PARTIAL: '\x1D\x56\x42\x00',    // GS V 66 0 (Feed and partial cut)
         CUT_FULL: '\x1D\x56\x00',           // GS V 0 (Full cut)
-        FEED_LINES: function(n) {
+        FEED_LINES: function (n) {
             return '\x1B\x64' + String.fromCharCode(Math.max(1, Math.min(10, n || 3)));
         }
     };
 
     const POVoucherRenderer = {
-        escapeHtml: function(str) {
+        escapeHtml: function (str) {
             if (str === null || str === undefined) return '';
             return String(str)
                 .replace(/&/g, '&amp;')
@@ -51,12 +51,12 @@
                 .replace(/'/g, '&#039;');
         },
 
-        formatMoney: function(num) {
+        formatMoney: function (num) {
             const val = parseFloat(num) || 0;
             return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         },
 
-        getSettings: function() {
+        getSettings: function () {
             let s = {
                 printerId: 'jk_5802h',
                 printerName: 'JK-5802H 58mm Thermal (USB / Bluetooth)',
@@ -81,11 +81,11 @@
                     const parsed = JSON.parse(raw);
                     s = Object.assign(s, parsed);
                 }
-            } catch(e) {}
+            } catch (e) { }
             return s;
         },
 
-        showToast: function(message, type) {
+        showToast: function (message, type) {
             let container = document.getElementById('pos-toast-container');
             if (!container) {
                 container = document.createElement('div');
@@ -132,19 +132,19 @@
         /**
          * String Formatting Helpers for ESC/POS Column Layouts
          */
-        padRight: function(str, len) {
+        padRight: function (str, len) {
             str = String(str || '');
             if (str.length >= len) return str.substring(0, len);
             return str + ' '.repeat(len - str.length);
         },
 
-        padLeft: function(str, len) {
+        padLeft: function (str, len) {
             str = String(str || '');
             if (str.length >= len) return str.substring(0, len);
             return ' '.repeat(len - str.length) + str;
         },
 
-        twoColumnLine: function(leftStr, rightStr, totalCols) {
+        twoColumnLine: function (leftStr, rightStr, totalCols) {
             leftStr = String(leftStr || '');
             rightStr = String(rightStr || '');
             if (!rightStr) {
@@ -158,14 +158,41 @@
             return leftStr + '\n' + POVoucherRenderer.padLeft(rightStr, totalCols) + '\n';
         },
 
-        dividerLine: function(char, totalCols) {
+        dividerLine: function (char, totalCols) {
             return (char || '-').repeat(totalCols) + '\n';
+        },
+
+        wordWrap: function (text, maxCols) {
+            if (!text) return '';
+            const lines = [];
+            const paragraphs = String(text).split('\n');
+            paragraphs.forEach((p) => {
+                const trimmed = p.trim();
+                if (!trimmed) {
+                    lines.push('');
+                    return;
+                }
+                const words = trimmed.split(/\s+/);
+                let current = '';
+                words.forEach((w) => {
+                    if (!current) {
+                        current = w;
+                    } else if ((current + ' ' + w).length <= maxCols) {
+                        current += ' ' + w;
+                    } else {
+                        lines.push(current);
+                        current = w;
+                    }
+                });
+                if (current) lines.push(current);
+            });
+            return lines.join('\n') + '\n';
         },
 
         /**
          * Generate ESC/POS Binary/String Payload for Official Receipt (PAID)
          */
-        generateESCPOSReceipt: function(data, format, options) {
+        generateESCPOSReceipt: function (data, format, options) {
             const d = this.normalizeReceiptData(data);
             const opts = Object.assign({}, this.getSettings(), options || {});
             const is80 = (format === '80' || format === '80mm' || format === 80 || opts.paperWidthMm === 80);
@@ -292,6 +319,36 @@
             buffer += '*** SALES INVOICE ***\n';
             buffer += ESCPOS.BOLD_OFF;
             buffer += 'THANK YOU FOR YOUR PURCHASE!\n';
+            buffer += '\n';
+
+            // Return / Exchange Policy
+            buffer += ESCPOS.BOLD_ON;
+            buffer += '**RETURN / EXCHANGE POLICY**\n';
+            buffer += ESCPOS.BOLD_OFF;
+            buffer += '\n';
+            buffer += ESCPOS.ALIGN_LEFT;
+            buffer += this.wordWrap('• Change-of-mind returns are not eligible for a cash refund. Exchanges may be allowed within 7 days of purchase with the original receipt, subject to item condition and store approval.', totalCols);
+            buffer += '\n';
+            buffer += this.wordWrap('• Items must be unused, undamaged, and in their original packaging. Proof of purchase is required.', totalCols);
+            buffer += '\n';
+            buffer += this.wordWrap('• This policy does not limit any consumer rights or remedies required by applicable law.', totalCols);
+            buffer += '\n';
+
+            // Customer Balance / Overpayment
+            buffer += ESCPOS.ALIGN_CENTER;
+            buffer += ESCPOS.BOLD_ON;
+            buffer += '**CUSTOMER BALANCE / OVERPAYMENT**\n';
+            buffer += ESCPOS.BOLD_OFF;
+            buffer += '\n';
+            buffer += ESCPOS.ALIGN_LEFT;
+            buffer += this.wordWrap('• Any excess amount must be claimed or used within 7 days from purchase.', totalCols);
+            buffer += '\n';
+            buffer += this.wordWrap('• Unclaimed balances may be subject to the store\'s disclosed balance policy, only where permitted by applicable law.', totalCols);
+            buffer += '\n';
+
+            buffer += ESCPOS.ALIGN_CENTER;
+            buffer += 'Please keep this receipt as proof of purchase.\n';
+            buffer += '\n';
             buffer += 'eConstruction Supply POS\n';
             buffer += this.dividerLine('=', totalCols);
 
@@ -310,7 +367,7 @@
         /**
          * Generate ESC/POS Binary/String Payload for Purchase Order Voucher (UNPAID)
          */
-        generateESCPOSVoucher: function(data, format, options) {
+        generateESCPOSVoucher: function (data, format, options) {
             const d = this.normalizePOData(data);
             const opts = Object.assign({}, this.getSettings(), options || {});
             const is80 = (format === '80' || format === '80mm' || format === 80 || opts.paperWidthMm === 80);
@@ -413,7 +470,7 @@
         /**
          * Generate ESC/POS Diagnostic Test Ticket
          */
-        generateESCPOSDiagnosticTicket: function(options) {
+        generateESCPOSDiagnosticTicket: function (options) {
             const opts = Object.assign({}, this.getSettings(), options || {});
             const totalCols = (opts.paperWidthMm === 80) ? 48 : (opts.printColumns || 32);
 
@@ -464,14 +521,14 @@
         /**
          * Send ESC/POS payload to local daemon (localhost:9100) with fallback
          */
-        sendToESCPOSDaemon: function(escposString, callback) {
+        sendToESCPOSDaemon: function (escposString, callback) {
             const s = this.getSettings();
             const daemonUrl = s.escposDaemonUrl || 'http://127.0.0.1:9100/print';
-            
+
             let base64Data = '';
             try {
                 base64Data = btoa(unescape(encodeURIComponent(escposString)));
-            } catch(e) {
+            } catch (e) {
                 base64Data = btoa(escposString);
             }
 
@@ -491,27 +548,27 @@
                 body: JSON.stringify(payload),
                 signal: controller.signal
             })
-            .then(function(res) {
-                clearTimeout(timeoutId);
-                if (res.ok) {
-                    POVoucherRenderer.showToast('✅ Sent to ESC/POS Thermal Hardware Printer', 'success');
-                    if (typeof callback === 'function') callback(true);
-                } else {
-                    throw new Error('Daemon status: ' + res.status);
-                }
-            })
-            .catch(function(err) {
-                clearTimeout(timeoutId);
-                console.warn('ESC/POS Daemon offline, falling back to Browser Print Dialog:', err);
-                POVoucherRenderer.showToast('ℹ️ ESC/POS local daemon offline — opening high-contrast print preview', 'info');
-                if (typeof callback === 'function') callback(false);
-            });
+                .then(function (res) {
+                    clearTimeout(timeoutId);
+                    if (res.ok) {
+                        POVoucherRenderer.showToast('✅ Sent to ESC/POS Thermal Hardware Printer', 'success');
+                        if (typeof callback === 'function') callback(true);
+                    } else {
+                        throw new Error('Daemon status: ' + res.status);
+                    }
+                })
+                .catch(function (err) {
+                    clearTimeout(timeoutId);
+                    console.warn('ESC/POS Daemon offline, falling back to Browser Print Dialog:', err);
+                    POVoucherRenderer.showToast('ℹ️ ESC/POS local daemon offline — opening high-contrast print preview', 'info');
+                    if (typeof callback === 'function') callback(false);
+                });
         },
 
         /**
          * Execute print job via silent hidden iframe directly to Chrome's native print dialog
          */
-        executeIframePrint: function(htmlContent, title) {
+        executeIframePrint: function (htmlContent, title) {
             let iframe = document.getElementById('thermal-print-frame');
             if (iframe) {
                 iframe.parentNode.removeChild(iframe);
@@ -533,7 +590,7 @@
             doc.close();
 
             iframe.contentWindow.focus();
-            setTimeout(function() {
+            setTimeout(function () {
                 try {
                     iframe.contentWindow.print();
                 } catch (e) {
@@ -545,18 +602,18 @@
         /**
          * Wrap an HTML element or snippet in a thermal printable page with 1-bit high-contrast rendering
          */
-        wrapThermalHtml: function(innerHtml, format) {
+        wrapThermalHtml: function (innerHtml, format) {
             const is80 = (format === '80' || format === '80mm' || format === 80);
             const isA4 = (format === 'a4' || format === 'pdfA4' || format === 'pdf' || format === 'pdf200' || format === 'pdf500' || format === 210 || format === '210');
-            
+
             const savedSettings = this.getSettings();
             const paperWidthMm = isA4 ? 210 : (is80 ? 80 : (savedSettings.paperWidthMm || 58));
-            const printableWidthMm = isA4 
+            const printableWidthMm = isA4
                 ? (savedSettings.printWidthA4Mm || 195)
-                : (is80 
-                    ? (savedSettings.printContentWidthMm_80 || 72) 
+                : (is80
+                    ? (savedSettings.printContentWidthMm_80 || 72)
                     : (savedSettings.printContentWidthMm || parseFloat(localStorage.getItem('pos_printer_content_width')) || 53));
-                    
+
             const fontName = savedSettings.thermalFontName || localStorage.getItem('pos_printer_font_name') || 'Courier New';
             const fontSizeVal = savedSettings.thermalDefaultFontSize || localStorage.getItem('pos_printer_font_size') || (is80 ? 11.5 : (isA4 ? 12 : 10.5));
             const fontSizePt = (typeof fontSizeVal === 'string' && fontSizeVal.endsWith('pt')) ? fontSizeVal : (fontSizeVal + 'pt');
@@ -645,11 +702,11 @@
         /**
          * Normalize PO Data Object
          */
-        normalizePOData: function(data) {
+        normalizePOData: function (data) {
             if (!data || typeof data !== 'object') data = {};
             const items = Array.isArray(data.items) ? data.items : [];
             let calcSubtotal = 0;
-            const normalizedItems = items.map(function(it, idx) {
+            const normalizedItems = items.map(function (it, idx) {
                 const qty = parseInt(it.quantity || it.qty || 1, 10) || 1;
                 const price = parseFloat(it.unit_price || it.price || 0) || 0;
                 const discount = parseFloat(it.discount_amount || 0) || 0;
@@ -695,13 +752,13 @@
         /**
          * Render HTML for PO Voucher from structured data object
          */
-        renderThermalPO: function(data, format) {
+        renderThermalPO: function (data, format) {
             const d = this.normalizePOData(data);
             const is80 = (format === '80' || format === '80mm' || format === 80);
             const maxWidth = is80 ? '72mm' : '53mm';
 
             let itemsHtml = '';
-            d.items.forEach(function(item) {
+            d.items.forEach(function (item) {
                 const isSp = (item.item_type === 'SPECIAL_ORDER');
                 let specs = '';
                 if (item.size) specs += 'Size: ' + POVoucherRenderer.escapeHtml(item.size) + ' ';
@@ -806,14 +863,14 @@
             </div>`;
         },
 
-        render: function(data, format) {
+        render: function (data, format) {
             return this.renderThermalPO(data, format);
         },
 
         /**
          * Print PO Voucher with Smart Dispatcher (ESC/POS vs Browser)
          */
-        print: function(dataOrElement, format, options) {
+        print: function (dataOrElement, format, options) {
             const s = this.getSettings();
             const opts = Object.assign({}, s, options || {});
             const fmt = format || (opts.paperWidthMm ? String(opts.paperWidthMm) : '58');
@@ -849,11 +906,11 @@
         /**
          * Normalize Receipt Data
          */
-        normalizeReceiptData: function(data) {
+        normalizeReceiptData: function (data) {
             if (!data || typeof data !== 'object') data = {};
             const items = Array.isArray(data.items) ? data.items : [];
             let calcSubtotal = 0;
-            const normalizedItems = items.map(function(it, idx) {
+            const normalizedItems = items.map(function (it, idx) {
                 const qty = parseInt(it.quantity || it.qty || 1, 10) || 1;
                 const price = parseFloat(it.unit_price || it.price || 0) || 0;
                 const discount = parseFloat(it.discount_amount || 0) || 0;
@@ -886,11 +943,11 @@
                 (data.credit_balance !== undefined && parseFloat(data.credit_balance) > 0) ||
                 (data.payment_method && (data.payment_method.indexOf('Terms') > -1 || data.payment_method.indexOf('Credit') > -1))
             );
-            const amountPaid = (data.amount_paid !== undefined && data.amount_paid !== null && (parseFloat(data.amount_paid) < grandTotal || !isCredit)) 
-                ? parseFloat(data.amount_paid) 
+            const amountPaid = (data.amount_paid !== undefined && data.amount_paid !== null && (parseFloat(data.amount_paid) < grandTotal || !isCredit))
+                ? parseFloat(data.amount_paid)
                 : (isCredit ? parseFloat(data.amount_tendered || data.amount_paid || 0) : grandTotal);
-            const creditBalance = (data.credit_balance !== undefined && data.credit_balance !== null && parseFloat(data.credit_balance) > 0) 
-                ? parseFloat(data.credit_balance) 
+            const creditBalance = (data.credit_balance !== undefined && data.credit_balance !== null && parseFloat(data.credit_balance) > 0)
+                ? parseFloat(data.credit_balance)
                 : (isCredit ? Math.max(0, grandTotal - amountPaid) : 0);
 
             return {
@@ -925,13 +982,13 @@
         /**
          * Render HTML for Official Receipt from structured data object
          */
-        renderThermalReceipt: function(data, format) {
+        renderThermalReceipt: function (data, format) {
             const d = this.normalizeReceiptData(data);
             const is80 = (format === '80' || format === '80mm' || format === 80);
             const maxWidth = is80 ? '72mm' : '53mm';
 
             let itemsHtml = '';
-            d.items.forEach(function(item) {
+            d.items.forEach(function (item) {
                 const isSp = (item.item_type === 'SPECIAL_ORDER');
                 const isRet = (item.item_type === 'RETURN_CREDIT');
                 let specs = '';
@@ -1091,7 +1148,21 @@
                 <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
                     <div style="font-weight: bold;">*** SALES INVOICE ***</div>
                     <div style="margin-top: 3px;">THANK YOU FOR YOUR PURCHASE!</div>
-                    <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+
+                    <div style="margin-top: 8px; text-align: left; font-size: 8pt; line-height: 1.35; border-top: 1px dashed #000; padding-top: 6px;">
+                        <div style="font-weight: bold; text-align: center; margin-bottom: 5px;">**RETURN / EXCHANGE POLICY**</div>
+                        <div style="margin-bottom: 5px;">&bull; Change-of-mind returns are not eligible for a cash refund. Exchanges may be allowed within 7 days of purchase with the original receipt, subject to item condition and store approval.</div>
+                        <div style="margin-bottom: 5px;">&bull; Items must be unused, undamaged, and in their original packaging. Proof of purchase is required.</div>
+                        <div style="margin-bottom: 7px;">&bull; This policy does not limit any consumer rights or remedies required by applicable law.</div>
+
+                        <div style="font-weight: bold; text-align: center; margin: 8px 0 5px 0;">**CUSTOMER BALANCE / OVERPAYMENT**</div>
+                        <div style="margin-bottom: 5px;">&bull; Any excess amount must be claimed or used within 7 days from purchase.</div>
+                        <div style="margin-bottom: 7px;">&bull; Unclaimed balances may be subject to the store's disclosed balance policy, only where permitted by applicable law.</div>
+
+                        <div style="text-align: center; font-style: italic; margin-top: 6px;">Please keep this receipt as proof of purchase.</div>
+                    </div>
+
+                    <div style="font-size: 9pt; margin-top: 6px;">eConstruction Supply POS</div>
                 </div>
                 <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin: 3px 0; overflow: hidden; white-space: nowrap;">================================</div>
             </div>`;
@@ -1100,7 +1171,7 @@
         /**
          * Render HTML for Credit Settlement / Collection Receipt
          */
-        renderThermalSettlementReceipt: function(data, format) {
+        renderThermalSettlementReceipt: function (data, format) {
             const is80 = (format === '80' || format === '80mm' || format === 80);
             const maxWidth = is80 ? '72mm' : '53mm';
 
@@ -1114,7 +1185,7 @@
             const storeAddress = data.supplier_address || data.store_address || '';
             const cashierName = data.cashier_name || 'Cashier';
             const paymentDate = data.payment_date || new Date().toLocaleString();
-            
+
             const invoiceTotal = parseFloat(data.invoice_total || data.grand_total || 0);
             const amountPaidNow = parseFloat(data.amount_paid_now || data.amount_paid || 0);
             const totalPaid = parseFloat(data.total_paid || data.new_paid_total || amountPaidNow);
@@ -1220,7 +1291,7 @@
         /**
          * Generate ESC/POS Binary/String Payload for Credit Settlement / Collection Receipt
          */
-        generateESCPOSSettlementReceipt: function(data, format, options) {
+        generateESCPOSSettlementReceipt: function (data, format, options) {
             const opts = Object.assign({}, this.getSettings(), options || {});
             const is80 = (format === '80' || format === '80mm' || format === 80 || opts.paperWidthMm === 80);
             const totalCols = is80 ? 48 : (opts.printColumns || 32);
@@ -1235,7 +1306,7 @@
             const storeAddress = data.supplier_address || data.store_address || '';
             const cashierName = data.cashier_name || 'Cashier';
             const paymentDate = data.payment_date || new Date().toLocaleString();
-            
+
             const invoiceTotal = parseFloat(data.invoice_total || data.grand_total || 0);
             const amountPaidNow = parseFloat(data.amount_paid_now || data.amount_paid || 0);
             const totalPaid = parseFloat(data.total_paid || data.new_paid_total || amountPaidNow);
@@ -1338,7 +1409,7 @@
             return buffer;
         },
 
-        renderReceipt: function(data, format) {
+        renderReceipt: function (data, format) {
             if (data && (data.receipt_type === 'SETTLEMENT' || data.is_settlement === true || data.amount_paid_now !== undefined)) {
                 return this.renderThermalSettlementReceipt(data, format);
             }
@@ -1348,7 +1419,7 @@
         /**
          * Print Official Receipt with Smart Dispatcher (ESC/POS vs Browser)
          */
-        printReceiptData: function(dataOrElement, format, options) {
+        printReceiptData: function (dataOrElement, format, options) {
             const s = this.getSettings();
             const opts = Object.assign({}, s, options || {});
             const fmt = format || (opts.paperWidthMm ? String(opts.paperWidthMm) : '58');
@@ -1401,14 +1472,14 @@
     /**
      * Switch PO Voucher Paper Preview width (58mm / 80mm)
      */
-    window.switchPOVoucherPreview = function(poId, format) {
+    window.switchPOVoucherPreview = function (poId, format) {
         const fmt = String(format || '58');
         try {
             localStorage.setItem('pos_preferred_thermal_format', fmt);
-        } catch(e) {}
+        } catch (e) { }
 
         const printable = document.getElementById('po-printable-voucher-' + poId) ||
-                          document.getElementById('poPrintVoucher-' + poId);
+            document.getElementById('poPrintVoucher-' + poId);
         if (printable) {
             printable.style.maxWidth = (fmt === '80' ? '72mm' : '53mm');
             return;
@@ -1423,12 +1494,12 @@
     /**
      * Print PO Voucher directly
      */
-    window.printPOVoucher = function(poId, format) {
+    window.printPOVoucher = function (poId, format) {
         const fmt = format || '58';
 
         const thermalEl = document.getElementById('po-printable-thermal-' + poId) ||
-                          document.getElementById('po-printable-voucher-' + poId) ||
-                          document.getElementById('poPrintVoucher-' + poId);
+            document.getElementById('po-printable-voucher-' + poId) ||
+            document.getElementById('poPrintVoucher-' + poId);
         if (thermalEl) {
             POVoucherRenderer.print(thermalEl, fmt);
             return;
@@ -1448,11 +1519,11 @@
     /**
      * Switch Receipt Paper Preview width (Compatibility)
      */
-    window.switchReceiptPreview = function(receiptId, format) {
+    window.switchReceiptPreview = function (receiptId, format) {
         const fmt = String(format || '58');
         try {
             localStorage.setItem('pos_preferred_thermal_format', fmt);
-        } catch(e) {}
+        } catch (e) { }
 
         const printable = document.getElementById('receipt-printable-' + receiptId);
         if (printable) {
@@ -1469,11 +1540,11 @@
     /**
      * Print Official Receipt directly
      */
-    window.printReceiptModal = function(receiptId, format) {
+    window.printReceiptModal = function (receiptId, format) {
         const fmt = format || '58';
 
         const thermalEl = document.getElementById('receipt-printable-thermal-' + receiptId) ||
-                          document.getElementById('receipt-printable-' + receiptId);
+            document.getElementById('receipt-printable-' + receiptId);
         if (thermalEl) {
             POVoucherRenderer.printReceiptData(thermalEl, fmt);
             return;
@@ -1493,7 +1564,7 @@
     /**
      * Compatibility wrapper for po-created.php reprint button
      */
-    window.reprintPOCreated = function(elementId, requestedWidthMm) {
+    window.reprintPOCreated = function (elementId, requestedWidthMm) {
         let fmt = requestedWidthMm ? String(requestedWidthMm) : (localStorage.getItem('pos_preferred_thermal_format') || '58');
         if (fmt.indexOf('80') !== -1) fmt = '80';
         else fmt = '58';
@@ -1506,10 +1577,10 @@
 
     // Auto-sync format selector when modal opens
     if (typeof $ !== 'undefined') {
-        $(document).on('shown.bs.modal', function(e) {
+        $(document).on('shown.bs.modal', function (e) {
             const modal = $(e.target);
             const savedFmt = localStorage.getItem('pos_preferred_thermal_format') || '58';
-            
+
             const poSelect = modal.find('select[id^="po-format-"]');
             if (poSelect.length) {
                 poSelect.val(savedFmt);

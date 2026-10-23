@@ -1417,6 +1417,278 @@ if (!function_exists('can_user_delete_return')) {
     }
 }
 
+if (!function_exists('search_pos_products_by_relevance')) {
+    /**
+     * Search and rank POS products by relevance, returning a maximum of 5 items.
+     * Ranking priority:
+     * 1. Exact barcode or SKU match
+     * 2. Exact item-name match
+     * 3. Prefix barcode or SKU match
+     * 4. Prefix item-name match
+     * 5. Word-boundary / phrase match in item-name
+     * 6. Partial match across name, SKU, barcode, category
+     * 7. Multi-term individual word match
+     * Secondary sort: In-stock first, shorter name length, alphabetical
+     */
+    function search_pos_products_by_relevance($pdo, $supplier_id, $query, $category_id = 0, $limit = 5) {
+        $supplier_id = (int)$supplier_id;
+        $limit = max(1, min(5, intval($limit)));
+        $q = trim((string)$query);
+        $cat_id = intval($category_id);
+
+        if ($q === '' && $cat_id <= 0) {
+            return [];
+        }
+
+        $exact_q = strtolower($q);
+        $prefix_q = $exact_q . '%';
+        $boundary_q = '% ' . $exact_q . '%';
+        $contains_q = '%' . $exact_q . '%';
+
+        // Multi-term support (split terms on space)
+        $words = array_values(array_filter(array_map('trim', explode(' ', $exact_q))));
+        $word_clauses = [];
+        $word_params = [];
+        if (count($words) > 1) {
+            foreach ($words as $idx => $w) {
+                $param_key = ":w_" . $idx;
+                $word_clauses[] = "(LOWER(p.p_name) LIKE $param_key OR LOWER(COALESCE(p.p_sku, '')) LIKE $param_key OR LOWER(COALESCE(p.p_barcode, '')) LIKE $param_key)";
+                $word_params[$param_key] = '%' . $w . '%';
+            }
+        }
+        $all_words_sql = !empty($word_clauses) ? ('(' . implode(' AND ', $word_clauses) . ')') : 'FALSE';
+
+        $sql = "SELECT 
+            p.p_id, p.p_name, p.p_old_price, p.p_current_price, p.p_new_price,
+            p.p_qty, p.p_new_qty, p.p_capital_price, p.p_markup,
+            p.p_featured_photo, p.p_sku, p.p_barcode, p.p_brand,
+            ec.ecat_id, ec.ecat_name, mc.mcat_name, tc.tcat_name,
+            CASE
+                WHEN :exact_q = '' THEN 10
+                -- 1. Exact barcode or SKU match
+                WHEN (COALESCE(p.p_barcode, '') <> '' AND LOWER(TRIM(p.p_barcode)) = :exact_q) 
+                  OR (COALESCE(p.p_sku, '') <> '' AND LOWER(TRIM(p.p_sku)) = :exact_q) THEN 1
+                -- 2. Exact item-name match
+                WHEN LOWER(TRIM(p.p_name)) = :exact_q THEN 2
+                -- 3. Prefix barcode or SKU match
+                WHEN (COALESCE(p.p_barcode, '') <> '' AND LOWER(p.p_barcode) LIKE :prefix_q) 
+                  OR (COALESCE(p.p_sku, '') <> '' AND LOWER(p.p_sku) LIKE :prefix_q) THEN 3
+                -- 4. Prefix item-name match
+                WHEN LOWER(p.p_name) LIKE :prefix_q THEN 4
+                -- 5. Word boundary / phrase match in item-name
+                WHEN LOWER(p.p_name) LIKE :boundary_q THEN 5
+                -- 6. Partial match across barcode, SKU, name, or category
+                WHEN LOWER(p.p_name) LIKE :contains_q 
+                  OR (COALESCE(p.p_sku, '') <> '' AND LOWER(p.p_sku) LIKE :contains_q) 
+                  OR (COALESCE(p.p_barcode, '') <> '' AND LOWER(p.p_barcode) LIKE :contains_q) 
+                  OR LOWER(COALESCE(ec.ecat_name, '')) LIKE :contains_q THEN 6
+                -- 7. All words matched individually
+                WHEN $all_words_sql THEN 7
+                ELSE 8
+            END AS relevance_score
+        FROM tbl_product p
+        LEFT JOIN tbl_end_category ec ON p.ecat_id = ec.ecat_id
+        LEFT JOIN tbl_mid_category mc ON ec.mcat_id = mc.mcat_id
+        LEFT JOIN tbl_top_category tc ON mc.tcat_id = tc.tcat_id
+        WHERE p.p_is_active = 1
+          AND p.supplier_id = :supplier_id
+          AND (:category_id = 0 OR p.ecat_id = :category_id)
+          AND (
+              :exact_q = ''
+              OR LOWER(p.p_name) LIKE :contains_q
+              OR LOWER(COALESCE(p.p_sku, '')) LIKE :contains_q
+              OR LOWER(COALESCE(p.p_barcode, '')) LIKE :contains_q
+              OR LOWER(COALESCE(ec.ecat_name, '')) LIKE :contains_q
+              OR $all_words_sql
+          )
+        ORDER BY 
+            relevance_score ASC,
+            CASE WHEN (p.p_qty + COALESCE(p.p_new_qty, 0)) > 0 THEN 0 ELSE 1 END ASC,
+            LENGTH(p.p_name) ASC,
+            p.p_name ASC
+        LIMIT $limit";
+
+        $params = array_merge([
+            ':exact_q' => $exact_q,
+            ':prefix_q' => $prefix_q,
+            ':boundary_q' => $boundary_q,
+            ':contains_q' => $contains_q,
+            ':category_id' => $cat_id,
+            ':supplier_id' => $supplier_id
+        ], $word_params);
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $formatted = [];
+        foreach ($rows as $prod) {
+            $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
+            $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
+            $clean_new_qty = isset($prod['p_new_qty']) && $prod['p_new_qty'] !== '' ? max(0, intval(preg_replace('/[^0-9]/', '', strval($prod['p_new_qty'])))) : 0;
+            $effective_stock = ($clean_new_qty > 0) ? ($clean_stock + $clean_new_qty) : $clean_stock;
+            $is_out_of_stock = ($effective_stock <= 0);
+
+            $clean_new_price = isset($prod['p_new_price']) && $prod['p_new_price'] !== '' ? floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_new_price']))) : 0;
+            $clean_old_price = isset($prod['p_old_price']) && $prod['p_old_price'] !== '' ? floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_old_price']))) : $clean_price;
+
+            $uploads_disk_path = dirname(__DIR__, 2) . '/assets/uploads/';
+            $img_src = (!empty($prod['p_featured_photo']) && file_exists($uploads_disk_path . $prod['p_featured_photo']))
+                ? '../assets/uploads/' . $prod['p_featured_photo']
+                : '../assets/uploads/photo-6.jpg';
+
+            $variant_sku = !empty($prod['p_sku']) ? trim($prod['p_sku']) : ('SKU-' . str_pad($prod['p_id'], 5, '0', STR_PAD_LEFT));
+            $variant_barcode = !empty($prod['p_barcode']) ? trim($prod['p_barcode']) : '';
+            $ecat_name = !empty($prod['ecat_name']) ? trim($prod['ecat_name']) : 'General';
+            $dept_name = !empty($prod['tcat_name']) ? trim($prod['tcat_name']) : (!empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Hardware');
+
+            $parsed_spec = function_exists('parseConstructionProductDetails') ? parseConstructionProductDetails($prod['p_name']) : [
+                'base_name' => $prod['p_name'],
+                'spec_label' => '',
+                'size' => '',
+                'thickness' => '',
+                'diameter' => '',
+                'color' => '',
+                'material' => '',
+                'weight_pack' => '',
+                'voltage' => '',
+                'power' => '',
+                'rated_current' => '',
+                'length' => ''
+            ];
+
+            $formatted[] = [
+                'id' => (int)$prod['p_id'],
+                'item_type' => 'STANDARD',
+                'sku' => (string)$variant_sku,
+                'barcode' => (string)$variant_barcode,
+                'name' => (string)$prod['p_name'],
+                'base_name' => !empty($parsed_spec['base_name']) ? (string)$parsed_spec['base_name'] : (string)$prod['p_name'],
+                'spec_label' => !empty($parsed_spec['spec_label']) ? (string)$parsed_spec['spec_label'] : '',
+                'size' => (string)($parsed_spec['size'] ?? ''),
+                'thickness' => (string)($parsed_spec['thickness'] ?? ''),
+                'diameter' => (string)($parsed_spec['diameter'] ?? ''),
+                'color' => (string)($parsed_spec['color'] ?? ''),
+                'material' => (string)($parsed_spec['material'] ?? ''),
+                'weight_pack' => (string)($parsed_spec['weight_pack'] ?? ''),
+                'voltage' => (string)($parsed_spec['voltage'] ?? ''),
+                'power' => (string)($parsed_spec['power'] ?? ''),
+                'rated_current' => (string)($parsed_spec['rated_current'] ?? ''),
+                'length' => (string)($parsed_spec['length'] ?? ''),
+                'brand' => !empty($prod['p_brand']) ? (string)$prod['p_brand'] : 'Generic',
+                'ecat_id' => (int)($prod['ecat_id'] ?? 0),
+                'ecat_name' => (string)$ecat_name,
+                'dept_name' => (string)$dept_name,
+                'price' => $clean_price,
+                'orig_price' => $clean_old_price,
+                'new_price' => $clean_new_price,
+                'capital_price' => floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_capital_price'] ?? 0))),
+                'markup' => floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_markup'] ?? 0))),
+                'stock' => $effective_stock,
+                'orig_stock' => $clean_stock,
+                'new_qty' => $clean_new_qty,
+                'is_out_of_stock' => $is_out_of_stock,
+                'photo' => $img_src,
+                'relevance_score' => (int)$prod['relevance_score']
+            ];
+        }
+
+        return $formatted;
+    }
+}
+
+if (!function_exists('ensure_credit_schema')) {
+    function ensure_credit_schema($pdo) {
+        static $checked = false;
+        if ($checked) return;
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS tbl_credit_payments (
+                    id SERIAL PRIMARY KEY,
+                    payment_id VARCHAR(100) NOT NULL,
+                    supplier_id INT NOT NULL,
+                    payment_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    amount_paid NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+                    payment_method VARCHAR(100) NOT NULL DEFAULT 'Cash',
+                    reference_no VARCHAR(255) DEFAULT '',
+                    remaining_balance NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+                    cashier_name VARCHAR(100) DEFAULT 'Cashier',
+                    notes TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_credit_payments_pid ON tbl_credit_payments (payment_id);
+                CREATE INDEX IF NOT EXISTS idx_credit_payments_supplier ON tbl_credit_payments (supplier_id);
+            ");
+            $checked = true;
+        } catch (Exception $e) {
+            // Table created or exists
+        }
+    }
+}
+
+if (!function_exists('parse_credit_markup')) {
+    function parse_credit_markup($row) {
+        $tx = is_array($row) ? ($row['bank_transaction_info'] ?? '') : strval($row);
+        $res = ['amount' => 0.0, 'label' => ''];
+        if (preg_match('/Credit Mark[\s-]*Up:\s*\+?(?:[^\d\s]+\s*)?([0-9,.]+)(?:\s*\(([^)]+)\))?/u', $tx, $m)) {
+            $res['amount'] = floatval(str_replace(',', '', $m[1]));
+            if (!empty($m[2])) {
+                $res['label'] = trim($m[2]);
+            }
+        }
+        return $res;
+    }
+}
+
+if (!function_exists('parse_order_delivery_fee')) {
+    function parse_order_delivery_fee($row) {
+        $tx = is_array($row) ? ($row['bank_transaction_info'] ?? '') : strval($row);
+        if (preg_match('/Delivery (?:Fee|Cost):\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            return floatval(str_replace(',', '', $m[1]));
+        }
+        return 0.0;
+    }
+}
+
+if (!function_exists('parse_order_due_date')) {
+    function parse_order_due_date($tx_info, $payment_date, $payment_method) {
+        if (preg_match('/(?:Due Date|Due)[:\s]+([0-9]{4}-[0-9]{2}-[0-9]{2})/i', $tx_info, $m)) {
+            return $m[1];
+        }
+        $days = 15;
+        if (preg_match('/([0-9]+)\s*Days/i', $payment_method . ' ' . $tx_info, $m_d)) {
+            $days = (int)$m_d[1];
+        }
+        return date('Y-m-d', strtotime($payment_date . " +$days days"));
+    }
+}
+
+if (!function_exists('parse_invoice_total')) {
+    function parse_invoice_total($row, $items_subtotal = 0) {
+        $tx = is_array($row) ? ($row['bank_transaction_info'] ?? '') : strval($row);
+        // 1. Total Payable
+        if (preg_match('/Total Payable:\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            $v = floatval(str_replace(',', '', $m[1]));
+            if ($v > 0) return $v;
+        }
+        // 2. Total Invoice or Total Amount
+        if (preg_match('/Total (?:Invoice|Amount):\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            $v = floatval(str_replace(',', '', $m[1]));
+            if ($v > 0) return $v;
+        }
+        // 3. Standalone Total (excluding Base Total)
+        if (preg_match('/(?:^|\|)\s*(?<!Base )Total:\s*(?:[^\d\s]+\s*)?([0-9,.]+)/u', $tx, $m)) {
+            $v = floatval(str_replace(',', '', $m[1]));
+            if ($v > 0) return $v;
+        }
+        // Fallback: items_subtotal + markup + delivery
+        $cm = parse_credit_markup($row);
+        $df = parse_order_delivery_fee($row);
+        $computed = floatval($items_subtotal) + $cm['amount'] + $df;
+        $paid = is_array($row) ? floatval($row['paid_amount'] ?? 0) : 0.0;
+        return max($paid, $computed);
+    }
+}
+
 if (file_exists(dirname(__DIR__, 2) . '/admin/inc/CategoryEngine.php')) {
     require_once dirname(__DIR__, 2) . '/admin/inc/CategoryEngine.php';
 }

@@ -808,6 +808,26 @@ require_once('header.php');
     background: #15803d;
     color: #fff;
 }
+.credit-btn-register {
+    background: #0284c7;
+    color: #fff;
+    border: 1px solid #0369a1;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+.credit-btn-register:hover, .credit-btn-register:focus {
+    background: #0369a1;
+    color: #fff;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+}
 .credit-terms-pill {
     display: inline-flex;
     align-items: center;
@@ -1166,6 +1186,9 @@ require_once('header.php');
                         </td>
                         <td style="text-align: right; white-space: nowrap;">
                             <?php if (!$is_settled): ?>
+                                <a href="pos.php?settle_credit=1&payment_id=<?php echo urlencode($pay_id); ?>" class="credit-btn-register" title="Send to POS Cash Register to Settle">
+                                    <i class="fa fa-shopping-cart"></i> Register
+                                </a>
                                 <button type="button" class="credit-btn-settle" onclick="openSettleModal('<?php echo htmlspecialchars($pay_id, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($cust_name, ENT_QUOTES); ?>', <?php echo $total_amt; ?>, <?php echo $paid_amt; ?>, <?php echo $bal_amt; ?>, '<?php echo htmlspecialchars($row['card_number'] ?? '', ENT_QUOTES); ?>')" title="Record full balance settlement or installment payment">
                                     <i class="fa fa-money"></i> Settle
                                 </button>
@@ -1654,7 +1677,7 @@ require_once('header.php');
                 </div>
 
                 <div class="modal-body" style="padding: 18px 20px; background: #fff;">
-                    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+                    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
                         <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
                             <span style="color: #64748b;">Account / Invoice:</span>
                             <strong style="font-family: monospace; color: #1e3a8a;" id="settleModalInvoiceDisplay"></strong>
@@ -1675,6 +1698,17 @@ require_once('header.php');
                             <span style="color: #dc2626;">Current Balance Due:</span>
                             <span style="color: #dc2626; font-size: 17px;" id="settleModalBalanceDisplay">₱0.00</span>
                         </div>
+                    </div>
+
+                    <!-- Settle at POS Register Shortcut Card -->
+                    <div style="background: #e0f2fe; border: 1.5px solid #bae6fd; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                        <div>
+                            <strong style="color: #0369a1; font-size: 13px;"><i class="fa fa-desktop"></i> Settle at POS Cash Register</strong>
+                            <div style="font-size: 11.5px; color: #0284c7; line-height: 1.3;">Tender cash, calculate change, or print thermal collection receipt via POS register terminal.</div>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="sendSettleToPOSRegister()" style="font-weight: 800; background-color: #0284c7; border-color: #0369a1; white-space: nowrap; border-radius: 5px; box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);">
+                            <i class="fa fa-shopping-cart"></i> Send to Register &rarr;
+                        </button>
                     </div>
 
                     <!-- Payment Method Dropdown -->
@@ -1720,11 +1754,16 @@ require_once('header.php');
                     </div>
                 </div>
 
-                <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between;">
+                <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600;">Cancel</button>
-                    <button type="submit" id="settleSubmitBtn" class="btn btn-success" style="font-weight: 800; padding: 8px 18px;">
-                        <i class="fa fa-check-circle"></i> Confirm Payment &amp; Print Receipt
-                    </button>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn btn-primary" onclick="sendSettleToPOSRegister()" style="font-weight: 800; padding: 8px 16px; background-color: #0284c7; border-color: #0369a1; border-radius: 5px;">
+                            <i class="fa fa-shopping-cart"></i> Send to POS Register
+                        </button>
+                        <button type="submit" id="settleSubmitBtn" class="btn btn-success" style="font-weight: 800; padding: 8px 18px; border-radius: 5px;">
+                            <i class="fa fa-check-circle"></i> Quick Record Payment
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -1849,6 +1888,27 @@ function setSettlePreset(type) {
     } else if (type === '50') {
         document.getElementById('settleModalAmount').value = (currentSettleMaxBalance * 0.5).toFixed(2);
     }
+}
+
+function sendSettleToPOSRegister() {
+    const paymentId = document.getElementById('settleModalPaymentId').value;
+    const amountInput = document.getElementById('settleModalAmount');
+    let amountVal = parseFloat(amountInput ? amountInput.value : currentSettleMaxBalance);
+
+    if (!paymentId) {
+        alert('Invalid Payment / Invoice ID.');
+        return;
+    }
+    if (isNaN(amountVal) || amountVal <= 0) {
+        amountVal = currentSettleMaxBalance;
+    }
+    if (amountVal > (currentSettleMaxBalance + 0.01)) {
+        alert('Settlement amount (₱' + amountVal.toFixed(2) + ') cannot exceed outstanding balance (₱' + currentSettleMaxBalance.toFixed(2) + ').');
+        return;
+    }
+
+    const targetUrl = 'pos.php?settle_credit=1&payment_id=' + encodeURIComponent(paymentId) + '&settle_amount=' + encodeURIComponent(amountVal.toFixed(2));
+    window.location.href = targetUrl;
 }
 
 function handleSettlePaymentSubmit(event) {

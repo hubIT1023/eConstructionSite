@@ -1518,7 +1518,21 @@ if (!function_exists('resolve_paid_order_cashier')) {
                                                              <div style="text-align: center; line-height: 1.35; padding: 2px 0;">
                                                                  <div style="font-weight: bold;">*** SALES INVOICE ***</div>
                                                                  <div style="margin-top: 3px;">THANK YOU FOR YOUR PURCHASE!</div>
-                                                                 <div style="font-size: 9pt; margin-top: 2px;">eConstruction Supply POS</div>
+
+                                                                 <div style="margin-top: 8px; text-align: left; font-size: 8pt; line-height: 1.35; border-top: 1px dashed #000; padding-top: 6px;">
+                                                                     <div style="font-weight: bold; text-align: center; margin-bottom: 5px;">**RETURN / EXCHANGE POLICY**</div>
+                                                                     <div style="margin-bottom: 5px;">&bull; Change-of-mind returns are not eligible for a cash refund. Exchanges may be allowed within 7 days of purchase with the original receipt, subject to item condition and store approval.</div>
+                                                                     <div style="margin-bottom: 5px;">&bull; Items must be unused, undamaged, and in their original packaging. Proof of purchase is required.</div>
+                                                                     <div style="margin-bottom: 7px;">&bull; This policy does not limit any consumer rights or remedies required by applicable law.</div>
+
+                                                                     <div style="font-weight: bold; text-align: center; margin: 8px 0 5px 0;">**CUSTOMER BALANCE / OVERPAYMENT**</div>
+                                                                     <div style="margin-bottom: 5px;">&bull; Any excess amount must be claimed or used within 7 days from purchase.</div>
+                                                                     <div style="margin-bottom: 7px;">&bull; Unclaimed balances may be subject to the store's disclosed balance policy, only where permitted by applicable law.</div>
+
+                                                                     <div style="text-align: center; font-style: italic; margin-top: 6px;">Please keep this receipt as proof of purchase.</div>
+                                                                 </div>
+
+                                                                 <div style="font-size: 9pt; margin-top: 6px;">eConstruction Supply POS</div>
                                                              </div>
                                                              <div style="text-align: center; font-weight: bold; overflow: hidden; white-space: nowrap;">================================</div>
                                                          </div>

@@ -3,6 +3,40 @@
 <?php
 $supplier_id = $_SESSION['supplier_user']['supplier_id'];
 
+// POS Product Relevance Search API (AJAX / Fetch)
+if (isset($_REQUEST['pos_action']) && $_REQUEST['pos_action'] === 'search_products') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    if (!isset($_SESSION['supplier_user']) || empty($_SESSION['supplier_user']['supplier_id'])) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Unauthorized access. Please log in.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $current_supplier_id = (int)$_SESSION['supplier_user']['supplier_id'];
+    $search_query = isset($_REQUEST['q']) ? trim((string)$_REQUEST['q']) : '';
+    $cat_filter_id = isset($_REQUEST['category_id']) ? intval($_REQUEST['category_id']) : 0;
+
+    try {
+        $items = search_pos_products_by_relevance($pdo, $current_supplier_id, $search_query, $cat_filter_id, 5);
+        echo json_encode([
+            'status' => 'success',
+            'count' => count($items),
+            'query' => $search_query,
+            'category_id' => $cat_filter_id,
+            'items' => $items
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Database error executing product search: ' . $e->getMessage()
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 if (!function_exists('parseConstructionProductDetails')) {
 function parseConstructionProductDetails($raw_name) {
     $name = trim($raw_name);
@@ -207,13 +241,115 @@ try {
     $held_pos_count = 0;
 }
 
+// Credit Account Settlement Mode Detection & Initialization
+$is_credit_settlement = false;
+$credit_settle_data = null;
+$credit_settle_error = null;
+$cs_invoice_total = 0.0;
+$cs_paid_amount = 0.0;
+$cs_balance_due = 0.0;
+$cs_settle_amount = 0.0;
+$credit_ref_no = '';
+
+$target_settle_param = (!empty($_GET['settle_credit']) || !empty($_POST['is_credit_settlement'])) 
+    ? (!empty($_POST['settle_payment_id']) ? trim($_POST['settle_payment_id']) : (!empty($_GET['payment_id']) ? trim($_GET['payment_id']) : (!empty($_GET['po_id']) ? trim($_GET['po_id']) : '')))
+    : '';
+
+if (!empty($target_settle_param)) {
+    try {
+        $stmt_cs_check = $pdo->prepare("SELECT * FROM tbl_payment WHERE (payment_id = ? OR txnid = ?) AND supplier_id = ? LIMIT 1");
+        $stmt_cs_check->execute([$target_settle_param, $target_settle_param, $supplier_id]);
+        $cs_found = $stmt_cs_check->fetch(PDO::FETCH_ASSOC);
+
+        if (!$cs_found) {
+            $credit_settle_error = "Credit Account (" . htmlspecialchars($target_settle_param) . ") was not found or unauthorized.";
+        } elseif (strtolower($cs_found['payment_status'] ?? '') === 'paid') {
+            $credit_settle_error = "This Credit Account (" . htmlspecialchars($cs_found['payment_id']) . ") has already been fully paid and settled.";
+        } else {
+            $stmt_cs_sum = $pdo->prepare("SELECT COALESCE(SUM(NULLIF(regexp_replace(quantity, '[^0-9.]', '', 'g'), '')::numeric * NULLIF(regexp_replace(unit_price, '[^0-9.-]', '', 'g'), '')::numeric), 0) as items_subtotal FROM tbl_order WHERE payment_id = ? AND supplier_id = ?");
+            $stmt_cs_sum->execute([$cs_found['payment_id'], $supplier_id]);
+            $cs_sum_r = $stmt_cs_sum->fetch(PDO::FETCH_ASSOC);
+            $raw_cs_subtotal = floatval($cs_sum_r['items_subtotal'] ?? 0);
+
+            $cs_invoice_total = parse_invoice_total($cs_found, $raw_cs_subtotal);
+            $cs_paid_amount = floatval($cs_found['paid_amount'] ?? 0);
+            $cs_balance_due = max(0, $cs_invoice_total - $cs_paid_amount);
+
+            if ($cs_balance_due <= 0.009) {
+                $credit_settle_error = "This Credit Account (" . htmlspecialchars($cs_found['payment_id']) . ") has zero remaining balance.";
+            } else {
+                $is_credit_settlement = true;
+                $credit_settle_data = $cs_found;
+
+                $cs_settle_amount = $cs_balance_due;
+                if (isset($_GET['settle_amount']) && is_numeric($_GET['settle_amount'])) {
+                    $sa_req = floatval($_GET['settle_amount']);
+                    if ($sa_req > 0 && $sa_req <= ($cs_balance_due + 0.01)) {
+                        $cs_settle_amount = $sa_req;
+                    }
+                }
+
+                $credit_ref_no = !empty($cs_found['card_number']) ? $cs_found['card_number'] : ($cs_found['credit_ref_no'] ?? '');
+                if (empty($credit_ref_no) && preg_match('/Credit Ref\s*(?:#|No|Number)?[:\s]+([A-Z0-9-]+)/i', $cs_found['bank_transaction_info'] ?? '', $m_cr)) {
+                    $credit_ref_no = trim($m_cr[1]);
+                }
+
+                $settle_cart_item = [
+                    'id' => 0,
+                    'item_type' => 'CREDIT_SETTLEMENT',
+                    'name' => 'Credit Settlement: ' . ($cs_found['txnid'] ?: $cs_found['payment_id']),
+                    'base_name' => 'Credit Account Settlement',
+                    'spec_label' => 'Inv: ' . ($cs_found['txnid'] ?: $cs_found['payment_id']) . (!empty($credit_ref_no) ? ' | Ref: ' . $credit_ref_no : '') . ' | Bal: ₱' . number_format($cs_balance_due, 2),
+                    'sku' => !empty($credit_ref_no) ? $credit_ref_no : ('SETTLE-' . $cs_found['payment_id']),
+                    'barcode' => '',
+                    'size' => '',
+                    'color' => '',
+                    'qty' => 1,
+                    'price' => $cs_settle_amount,
+                    'orig_price' => $cs_settle_amount,
+                    'stock' => 999999,
+                    'is_out_of_stock' => false,
+                    'discount_percent' => 0,
+                    'discount_amount' => 0,
+                    'special_order_reference' => $cs_found['payment_id'],
+                    'product_details' => 'Settlement for Invoice ' . $cs_found['payment_id'] . (!empty($credit_ref_no) ? ' (Credit Ref: ' . $credit_ref_no . ')' : '') . ' | Invoiced Total: ₱' . number_format($cs_invoice_total, 2) . ' | Remaining Balance: ₱' . number_format($cs_balance_due, 2)
+                ];
+
+                $active_pos_cart = [$settle_cart_item];
+                $_SESSION['pos_cart'] = $active_pos_cart;
+                $_SESSION['supplier_checkout_cart'] = [
+                    'items' => $active_pos_cart,
+                    'customer' => [
+                        'customer_type' => (!empty($cs_found['customer_id']) && $cs_found['customer_id'] > 0) ? 'registered' : 'walkin',
+                        'customer_id' => (int)($cs_found['customer_id'] ?? 0),
+                        'customer_name' => $cs_found['customer_name'] ?: 'Walk-in Customer',
+                        'customer_phone' => $cs_found['customer_phone'] ?? '',
+                        'customer_email' => $cs_found['customer_email'] ?? '',
+                        'customer_address' => $cs_found['customer_address'] ?? 'Walk-in counter account',
+                        'is_location_active' => 0,
+                        'location_brgy_id' => 0
+                    ],
+                    'fulfillment' => [
+                        'delivery_type' => 'pickup',
+                        'delivery_cost' => 0.0
+                    ],
+                    'payment_method' => 'Cash (OTC)'
+                ];
+            }
+        }
+    } catch (Exception $e) {
+        $credit_settle_error = "Error loading credit account: " . $e->getMessage();
+    }
+}
+
 // Existing Purchase Order Payment Detection & Authorization (Only when NOT in PO Creation Success View)
 $paying_existing_po = false;
 $existing_po_data = null;
 $po_load_error = null;
 
-if ((!empty($_GET['po_id']) || !empty($_GET['payment_id'])) && empty($_GET['po_success']) && empty($_SESSION['pos_po_success'])) {
-    $target_po_param = trim(!empty($_GET['po_id']) ? $_GET['po_id'] : $_GET['payment_id']);
+$target_po_param = !empty($_GET['po_id']) ? trim($_GET['po_id']) : (!empty($_GET['payment_id']) ? trim($_GET['payment_id']) : (!empty($_POST['paying_po_id']) ? trim($_POST['paying_po_id']) : ''));
+
+if (empty($target_settle_param) && !empty($target_po_param) && empty($_GET['po_success']) && empty($_SESSION['pos_po_success'])) {
     try {
         $stmt_po_check = $pdo->prepare("SELECT * FROM tbl_payment WHERE (payment_id = ? OR txnid = ? OR id = ?) AND supplier_id = ? LIMIT 1");
         $stmt_po_check->execute([$target_po_param, $target_po_param, is_numeric($target_po_param) ? (int)$target_po_param : 0, $supplier_id]);
@@ -673,11 +809,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 $has_pending_discount = true;
                 $disc_status = $dr ? $dr['status'] : 'PENDING';
             } elseif (in_array($dr['status'], ['APPROVED', 'APPROVED_MODIFIED'])) {
-                $disc_pct = floatval($dr['approved_discount_percent']);
-                $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                $disc_amt = isset($dr['discount_amount']) ? floatval($dr['discount_amount']) : 0.00;
+                if ($disc_amt <= 0 && !empty($item['discount_amount'])) {
+                    $disc_amt = floatval($item['discount_amount']);
+                }
+                if ($disc_amt <= 0 && !empty($dr['approved_discount_percent']) && floatval($dr['approved_discount_percent']) > 0) {
+                    $disc_pct = floatval($dr['approved_discount_percent']);
+                    $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                }
+                $disc_amt = min($disc_amt, $line_gross);
                 $total_discount_savings += $disc_amt;
                 $disc_status = $dr['status'];
             }
+        } elseif (!empty($item['discount_amount']) && floatval($item['discount_amount']) > 0 && isset($item['discount_status']) && in_array($item['discount_status'], ['APPROVED', 'APPROVED_MODIFIED'])) {
+            $disc_amt = min(floatval($item['discount_amount']), $line_gross);
+            $total_discount_savings += $disc_amt;
+            $disc_status = $item['discount_status'];
         }
 
         $line_net = max(0, $line_gross - $disc_amt);
@@ -758,14 +905,216 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
             $pos_success_receipt = $_SESSION['pos_last_receipt'];
         }
     } else {
-        $paying_po_id = isset($_POST['paying_po_id']) ? trim($_POST['paying_po_id']) : '';
-        if (empty($paying_po_id) && !empty($_GET['po_id'])) {
-            $paying_po_id = trim($_GET['po_id']);
-        } elseif (empty($paying_po_id) && !empty($_GET['payment_id'])) {
-            $paying_po_id = trim($_GET['payment_id']);
+        $is_settle_action = (!empty($_POST['is_credit_settlement']) || !empty($_GET['settle_credit']));
+        $settle_target_id = $is_settle_action ? (!empty($_POST['settle_payment_id']) ? trim($_POST['settle_payment_id']) : (!empty($_GET['payment_id']) ? trim($_GET['payment_id']) : (!empty($_GET['po_id']) ? trim($_GET['po_id']) : ''))) : '';
+
+        $paying_po_id = '';
+        if (!$is_settle_action) {
+            $paying_po_id = isset($_POST['paying_po_id']) ? trim($_POST['paying_po_id']) : '';
+            if (empty($paying_po_id) && !empty($_GET['po_id'])) {
+                $paying_po_id = trim($_GET['po_id']);
+            } elseif (empty($paying_po_id) && !empty($_GET['payment_id'])) {
+                $paying_po_id = trim($_GET['payment_id']);
+            }
         }
 
-        if (!empty($paying_po_id)) {
+        if ($is_settle_action && !empty($settle_target_id)) {
+            // -------------------------------------------------------------
+            // CREDIT ACCOUNT SETTLEMENT PROCESSING
+            // -------------------------------------------------------------
+            $stmt_cs_pay = $pdo->prepare("SELECT * FROM tbl_payment WHERE (payment_id = ? OR txnid = ?) AND supplier_id = ? LIMIT 1");
+            $stmt_cs_pay->execute([$settle_target_id, $settle_target_id, $supplier_id]);
+            $cs_order = $stmt_cs_pay->fetch(PDO::FETCH_ASSOC);
+
+            if (!$cs_order) {
+                $pos_order_error = "Credit Account (" . htmlspecialchars($settle_target_id) . ") not found or unauthorized.";
+            } elseif (strtolower($cs_order['payment_status'] ?? '') === 'paid') {
+                if (!empty($_SESSION['pos_last_receipt']) && (($_SESSION['pos_last_receipt']['payment_id'] ?? '') === $settle_target_id)) {
+                    $pos_success_receipt = $_SESSION['pos_last_receipt'];
+                } else {
+                    $pos_order_error = "This Credit Account has already been fully settled and paid.";
+                }
+            } else {
+                // Calculate authoritative balance
+                $stmt_items_sum = $pdo->prepare("SELECT COALESCE(SUM(NULLIF(regexp_replace(quantity, '[^0-9.]', '', 'g'), '')::numeric * NULLIF(regexp_replace(unit_price, '[^0-9.-]', '', 'g'), '')::numeric), 0) as items_subtotal FROM tbl_order WHERE payment_id = ? AND supplier_id = ?");
+                $stmt_items_sum->execute([$cs_order['payment_id'], $supplier_id]);
+                $sum_row = $stmt_items_sum->fetch(PDO::FETCH_ASSOC);
+                $items_total = floatval($sum_row['items_subtotal'] ?? 0);
+                $invoice_grand_total = parse_invoice_total($cs_order, $items_total);
+                $current_paid = floatval($cs_order['paid_amount'] ?? 0);
+                $current_balance = max(0, $invoice_grand_total - $current_paid);
+
+                // Get settlement payment amount
+                $submitted_cart_raw = isset($_POST['cart_items']) ? $_POST['cart_items'] : '';
+                $submitted_cart = is_string($submitted_cart_raw) ? json_decode($submitted_cart_raw, true) : (is_array($submitted_cart_raw) ? $submitted_cart_raw : []);
+                
+                $settle_pay_amount = $current_balance;
+                if (!empty($submitted_cart) && is_array($submitted_cart)) {
+                    foreach ($submitted_cart as $sc_item) {
+                        if (($sc_item['item_type'] ?? '') === 'CREDIT_SETTLEMENT') {
+                            $sc_p = floatval($sc_item['price'] ?? 0);
+                            if ($sc_p > 0) {
+                                $settle_pay_amount = min($current_balance, $sc_p);
+                            }
+                            break;
+                        }
+                    }
+                }
+                if (isset($_POST['settle_amount']) && is_numeric($_POST['settle_amount'])) {
+                    $post_sa = floatval($_POST['settle_amount']);
+                    if ($post_sa > 0) {
+                        $settle_pay_amount = min($current_balance, $post_sa);
+                    }
+                }
+
+                // Tender & method
+                $payment_method_raw = isset($_POST['payment_method']) ? trim($_POST['payment_method']) : 'Cash (OTC)';
+                $payment_reference = isset($_POST['payment_reference']) ? trim($_POST['payment_reference']) : '';
+                $amount_tendered = isset($_POST['amount_tendered']) ? floatval($_POST['amount_tendered']) : 0.0;
+
+                $is_physical_cash = (stripos($payment_method_raw, 'Cash') !== false && stripos($payment_method_raw, 'gcash') === false && stripos($payment_method_raw, 'maya') === false);
+
+                if ($is_physical_cash && $settle_pay_amount > 0 && round($amount_tendered, 2) < round($settle_pay_amount, 2)) {
+                    $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the settlement amount (₱" . number_format($settle_pay_amount, 2) . ").";
+                } else {
+                    if (!$is_physical_cash && $amount_tendered <= 0) {
+                        $amount_tendered = $settle_pay_amount;
+                    }
+                    $change_amount = max(0.0, $amount_tendered - $settle_pay_amount);
+                    $new_paid_total = $current_paid + $settle_pay_amount;
+                    $new_balance = max(0, $invoice_grand_total - $new_paid_total);
+                    $new_status = ($new_balance <= 0.009) ? 'Paid' : 'On Credit';
+
+                    $credit_ref_code = !empty($cs_order['card_number']) ? $cs_order['card_number'] : ($cs_order['credit_ref_no'] ?? '');
+                    if (empty($credit_ref_code) && preg_match('/Credit Ref\s*(?:#|No|Number)?[:\s]+([A-Z0-9-]+)/i', $cs_order['bank_transaction_info'] ?? '', $m_cr)) {
+                        $credit_ref_code = trim($m_cr[1]);
+                    }
+
+                    $current_cashier_name = !empty($_SESSION['supplier_user']['full_name']) ? $_SESSION['supplier_user']['full_name'] : (!empty($_SESSION['supplier_user']['username']) ? $_SESSION['supplier_user']['username'] : 'Cashier');
+                    $current_cashier_id = isset($_SESSION['supplier_user']['id']) ? (int)$_SESSION['supplier_user']['id'] : null;
+
+                    $tx_append = "\n[POS Register Settlement: ₱" . number_format($settle_pay_amount, 2) . " via " . $payment_method_raw . (!empty($payment_reference) ? " (Ref: $payment_reference)" : "") . " by " . $current_cashier_name . " on " . date('Y-m-d H:i') . " | Remaining: ₱" . number_format($new_balance, 2) . "]";
+                    $updated_tx_info = ($cs_order['bank_transaction_info'] ?? '') . $tx_append;
+
+                    ensure_credit_schema($pdo);
+
+                    $pdo->beginTransaction();
+                    try {
+                        // Update tbl_payment
+                        $stmt_up_pay = $pdo->prepare("
+                            UPDATE tbl_payment SET
+                                paid_amount = ?,
+                                payment_status = ?,
+                                bank_transaction_info = ?,
+                                cashier_id = COALESCE(?, cashier_id),
+                                cashier_name = ?
+                            WHERE id = ? AND supplier_id = ?
+                        ");
+                        $stmt_up_pay->execute([
+                            number_format($new_paid_total, 2, '.', ''),
+                            $new_status,
+                            $updated_tx_info,
+                            $current_cashier_id,
+                            $current_cashier_name,
+                            $cs_order['id'],
+                            $supplier_id
+                        ]);
+
+                        // Insert into tbl_credit_payments ledger
+                        $stmt_ins_cp = $pdo->prepare("
+                            INSERT INTO tbl_credit_payments (
+                                payment_id, supplier_id, payment_date, amount_paid, payment_method,
+                                reference_no, remaining_balance, cashier_name, notes
+                            ) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
+                        ");
+                        $stmt_ins_cp->execute([
+                            $cs_order['payment_id'],
+                            $supplier_id,
+                            $settle_pay_amount,
+                            $payment_method_raw,
+                            $payment_reference,
+                            $new_balance,
+                            $current_cashier_name,
+                            'Settled via POS Cash Register'
+                        ]);
+
+                        $pdo->commit();
+
+                        // Prepare Receipt Data for UI and Thermal Printer
+                        $validated_settle_items = [
+                            [
+                                'id' => 0,
+                                'name' => 'Credit Settlement: ' . ($cs_order['txnid'] ?: $cs_order['payment_id']),
+                                'base_name' => 'Credit Account Settlement',
+                                'qty' => 1,
+                                'price' => $settle_pay_amount,
+                                'discount_amount' => 0,
+                                'discount_percent' => 0,
+                                'line_net' => $settle_pay_amount,
+                                'item_type' => 'CREDIT_SETTLEMENT',
+                                'product_details' => 'Invoice: ' . ($cs_order['txnid'] ?: $cs_order['payment_id']) . (!empty($credit_ref_code) ? ' | Credit Ref: ' . $credit_ref_code : '') . ' | Bal Due: ₱' . number_format($new_balance, 2)
+                            ]
+                        ];
+
+                        $pos_success_receipt = [
+                            'payment_id' => $cs_order['payment_id'],
+                            'txnid' => $cs_order['txnid'] ?: $cs_order['payment_id'],
+                            'receipt_type' => 'SETTLEMENT',
+                            'is_settlement' => true,
+                            'payment_date' => date('Y-m-d H:i:s'),
+                            'payment_method' => $payment_method_raw,
+                            'payment_reference' => $payment_reference,
+                            'reference_no' => $payment_reference,
+                            'credit_reference_no' => $credit_ref_code,
+                            'credit_ref_no' => $credit_ref_code,
+                            'payment_status' => $new_status,
+                            'customer_name' => $cs_order['customer_name'] ?: 'Valued Customer',
+                            'customer_phone' => $cs_order['customer_phone'] ?? '',
+                            'customer_email' => $cs_order['customer_email'] ?? '',
+                            'customer_address' => $cs_order['customer_address'] ?? 'Walk-in counter account',
+                            'items' => $validated_settle_items,
+                            'gross_subtotal' => $settle_pay_amount,
+                            'total_discount_savings' => 0.0,
+                            'subtotal' => $settle_pay_amount,
+                            'delivery_cost' => 0.0,
+                            'base_grand_total' => $settle_pay_amount,
+                            'invoice_total' => $invoice_grand_total,
+                            'grand_total' => $settle_pay_amount,
+                            'amount_paid_now' => $settle_pay_amount,
+                            'amount_paid' => $settle_pay_amount,
+                            'total_paid' => $new_paid_total,
+                            'new_paid_total' => $new_paid_total,
+                            'remaining_balance' => $new_balance,
+                            'credit_balance' => $new_balance,
+                            'amount_tendered' => $amount_tendered,
+                            'change_amount' => $change_amount,
+                            'supplier_name' => $supplier_info['supplier_name'],
+                            'supplier_address' => $supplier_info['supplier_address'],
+                            'supplier_phone' => $supplier_info['supplier_phone'],
+                            'cashier_name' => $current_cashier_name,
+                            'notes' => 'Settled via POS Cash Register'
+                        ];
+
+                        // Idempotency token update & receipt cache
+                        if (!empty($submitted_token)) {
+                            $_SESSION['pos_last_processed_token'] = $submitted_token;
+                        }
+                        $_SESSION['pos_last_receipt'] = $pos_success_receipt;
+                        $_SESSION['pos_checkout_token'] = bin2hex(random_bytes(16));
+
+                        // Clear temporary session carts
+                        unset($_SESSION['pos_cart']);
+                        unset($_SESSION['supplier_checkout_cart']);
+
+                    } catch (Exception $e) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        $pos_order_error = "Settlement transaction error: " . $e->getMessage();
+                    }
+                }
+            }
+        } elseif (!empty($paying_po_id)) {
             // -------------------------------------------------------------
             // EXISTING PURCHASE ORDER PAYMENT PROCESSING
             // -------------------------------------------------------------
@@ -987,7 +1336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
             } else {
                 $grand_total = $base_grand_total;
                 $is_physical_cash = (stripos($payment_method_raw, 'Cash') !== false && stripos($payment_method_raw, 'gcash') === false && stripos($payment_method_raw, 'maya') === false);
-                if ($is_physical_cash && $grand_total > 0 && $amount_tendered < $grand_total) {
+                if ($is_physical_cash && $grand_total > 0 && round($amount_tendered, 2) < round($grand_total, 2)) {
                     $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
                 } else {
                     if (!$is_physical_cash && $amount_tendered <= 0) {
@@ -1406,11 +1755,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                         $has_pending_discount = true;
                         $disc_status = $dr ? $dr['status'] : 'PENDING';
                     } elseif (in_array($dr['status'], ['APPROVED', 'APPROVED_MODIFIED'])) {
-                        $disc_pct = floatval($dr['approved_discount_percent']);
-                        $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                        $disc_amt = isset($dr['discount_amount']) ? floatval($dr['discount_amount']) : 0.00;
+                        if ($disc_amt <= 0 && !empty($item['discount_amount'])) {
+                            $disc_amt = floatval($item['discount_amount']);
+                        }
+                        if ($disc_amt <= 0 && !empty($dr['approved_discount_percent']) && floatval($dr['approved_discount_percent']) > 0) {
+                            $disc_pct = floatval($dr['approved_discount_percent']);
+                            $disc_amt = round($line_gross * ($disc_pct / 100), 2);
+                        }
+                        $disc_amt = min($disc_amt, $line_gross);
                         $total_discount_savings += $disc_amt;
                         $disc_status = $dr['status'];
                     }
+                } elseif (!empty($item['discount_amount']) && floatval($item['discount_amount']) > 0 && isset($item['discount_status']) && in_array($item['discount_status'], ['APPROVED', 'APPROVED_MODIFIED'])) {
+                    $disc_amt = min(floatval($item['discount_amount']), $line_gross);
+                    $total_discount_savings += $disc_amt;
+                    $disc_status = $item['discount_status'];
                 }
 
                 $line_net = max(0, $line_gross - $disc_amt);
@@ -1455,7 +1815,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                 } else {
                     $grand_total = $base_grand_total;
                     $is_physical_cash = (stripos($payment_method_raw, 'Cash') !== false && stripos($payment_method_raw, 'gcash') === false && stripos($payment_method_raw, 'maya') === false);
-                    if ($is_physical_cash && $grand_total > 0 && $amount_tendered < $grand_total) {
+                    if ($is_physical_cash && $grand_total > 0 && round($amount_tendered, 2) < round($grand_total, 2)) {
                         $pos_order_error = "Payment failed: Amount tendered (₱" . number_format($amount_tendered, 2) . ") is less than the total amount due (₱" . number_format($grand_total, 2) . ").";
                     } else {
                         if (!$is_physical_cash && $amount_tendered <= 0) {
@@ -1742,7 +2102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                         $p_name = trim($item['name']);
                         $p_details = isset($item['product_details']) ? trim($item['product_details']) : '';
                         if (!empty($item['discount_amount']) && $item['discount_amount'] > 0) {
-                            $p_details .= ($p_details ? ' | ' : '') . 'Discount: -₱' . number_format($item['discount_amount'], 2) . ' (' . number_format($item['discount_percent'], 1) . '%)';
+                            $p_details .= ($p_details ? ' | ' : '') . 'Discount: -₱' . number_format($item['discount_amount'], 2);
                         }
                         $so_ref = !empty($item['special_order_reference']) ? trim($item['special_order_reference']) : ('SO-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)));
                         $p_size = $p_details ? (strlen($p_details) > 95 ? substr($p_details, 0, 95) . '...' : $p_details) : 'Special Order';
@@ -1760,9 +2120,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             item_type,
                             special_order_reference,
                             product_details,
+                            discount_percent,
+                            discount_amount,
+                            discount_request_id,
                             capital_price,
                             markup_amount
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
@@ -1775,6 +2138,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             $item_type,
                             $so_ref,
                             $p_details,
+                            floatval($item['discount_percent'] ?? 0),
+                            floatval($item['discount_amount'] ?? 0),
+                            !empty($item['discount_request_id']) ? $item['discount_request_id'] : null,
                             isset($item['capital_price']) ? floatval($item['capital_price']) : round($p_effective_unit_price / 1.20, 2),
                             isset($item['markup_amount']) ? floatval($item['markup_amount']) : max(0, round($p_effective_unit_price - round($p_effective_unit_price / 1.20, 2), 2))
                         ));
@@ -1785,7 +2151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                         $p_color = isset($item['color']) ? $item['color'] : '';
                         $p_details = '';
                         if (!empty($item['discount_amount']) && $item['discount_amount'] > 0) {
-                            $p_details = 'Discount: -₱' . number_format($item['discount_amount'], 2) . ' (' . number_format($item['discount_percent'], 1) . '%)';
+                            $p_details = 'Discount: -₱' . number_format($item['discount_amount'], 2);
                         }
                         if (!empty($item['batch_rollover_active'])) {
                             $ro_note = sprintf(
@@ -1813,9 +2179,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             item_type,
                             special_order_reference,
                             product_details,
+                            discount_percent,
+                            discount_amount,
+                            discount_request_id,
                             capital_price,
                             markup_amount
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                         $statement_o->execute(array(
                             $p_id,
                             $p_name,
@@ -1828,6 +2197,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
                             'STANDARD',
                             '',
                             $p_details,
+                            floatval($item['discount_percent'] ?? 0),
+                            floatval($item['discount_amount'] ?? 0),
+                            !empty($item['discount_request_id']) ? $item['discount_request_id'] : null,
                             isset($item['capital_price']) ? floatval($item['capital_price']) : round($p_effective_unit_price / 1.20, 2),
                             isset($item['markup_amount']) ? floatval($item['markup_amount']) : max(0, round($p_effective_unit_price - round($p_effective_unit_price / 1.20, 2), 2))
                         ));
@@ -1934,7 +2306,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pos_action']) && $_PO
 
 // Active POS Cart & Customer Context Persistence
 $active_pos_cart = [];
-if (!empty($_SESSION['pos_cart']) && empty($pos_po_success_data) && empty($pos_success_receipt)) {
+if (!empty($pos_order_error)) {
+    // If payment or submission failed, keep the entire order and cart items so the cashier never loses their work!
+    if (!empty($validated_items) && is_array($validated_items)) {
+        $active_pos_cart = $validated_items;
+    } elseif (!empty($cart_items) && is_array($cart_items)) {
+        $active_pos_cart = $cart_items;
+    } elseif (!empty($submitted_cart) && is_array($submitted_cart)) {
+        $active_pos_cart = $submitted_cart;
+    } elseif (!empty($po_cart) && is_array($po_cart)) {
+        $active_pos_cart = $po_cart;
+    } elseif (!empty($_SESSION['pos_cart'])) {
+        $active_pos_cart = $_SESSION['pos_cart'];
+    }
+    $_SESSION['pos_cart'] = array_values($active_pos_cart);
+} elseif (!empty($_SESSION['pos_cart']) && empty($pos_po_success_data) && empty($pos_success_receipt)) {
     $active_pos_cart = $_SESSION['pos_cart'];
 } elseif (!empty($_SESSION['supplier_checkout_cart']['items']) && empty($pos_po_success_data) && empty($pos_success_receipt)) {
     $active_pos_cart = $_SESSION['supplier_checkout_cart']['items'];
@@ -1988,11 +2374,11 @@ if (!empty($active_pos_cart)) {
             if (!isset($pi['base_name']) || empty($pi['base_name'])) {
                 $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Return Credit';
             }
-        } elseif ($p_type === 'SPECIAL_ORDER') {
+        } elseif ($p_type === 'SPECIAL_ORDER' || $p_type === 'CREDIT_SETTLEMENT') {
             $pi['price'] = max(0, floatval($pi['price']));
             $pi['stock'] = 999999;
             if (!isset($pi['base_name']) || empty($pi['base_name'])) {
-                $pi['base_name'] = isset($pi['name']) ? $pi['name'] : 'Product';
+                $pi['base_name'] = isset($pi['name']) ? $pi['name'] : ($p_type === 'CREDIT_SETTLEMENT' ? 'Credit Settlement' : 'Product');
             }
         } else {
             $pi['price'] = max(0, floatval($pi['price']));
@@ -2049,7 +2435,7 @@ if (!empty($active_pos_cart)) {
 
 // Read saved customer & fulfillment info from session if present
 $saved_checkout = !empty($_SESSION['supplier_checkout_cart']) ? $_SESSION['supplier_checkout_cart'] : null;
-$saved_cust = !empty($saved_checkout['customer']) ? $saved_cust['customer'] : null;
+$saved_cust = !empty($saved_checkout['customer']) ? $saved_checkout['customer'] : null;
 $saved_fulfillment = !empty($saved_checkout['fulfillment']) ? $saved_checkout['fulfillment'] : null;
 $saved_payment_method = !empty($saved_checkout['payment_method']) ? $saved_checkout['payment_method'] : 'Cash (OTC)';
 
@@ -2058,162 +2444,66 @@ $saved_customer_id = !empty($saved_cust['customer_id']) ? (int)$saved_cust['cust
 $saved_customer_name = (!empty($saved_cust['customer_name']) && $saved_cust['customer_name'] !== 'Walk-in Customer') ? $saved_cust['customer_name'] : '';
 $saved_customer_phone = !empty($saved_cust['customer_phone']) ? $saved_cust['customer_phone'] : '';
 $saved_customer_email = (!empty($saved_cust['customer_email']) && $saved_cust['customer_email'] !== 'walkin@pos.local') ? $saved_cust['customer_email'] : '';
+$saved_customer_address = !empty($saved_cust['customer_address']) ? $saved_cust['customer_address'] : '';
 $saved_is_location = !empty($saved_cust['is_location_active']);
 $saved_brgy_id = !empty($saved_cust['location_brgy_id']) ? (int)$saved_cust['location_brgy_id'] : 0;
+$saved_payment_reference = !empty($saved_checkout['payment_reference']) ? $saved_checkout['payment_reference'] : '';
+$saved_amount_tendered = !empty($saved_checkout['amount_tendered']) ? floatval($saved_checkout['amount_tendered']) : 0.00;
 
-// Fetch Active Products for Supplier with Category Details
-$statement_prod = $pdo->prepare("SELECT p.*, ec.ecat_name, mc.mcat_name, tc.tcat_name 
-    FROM tbl_product p 
-    LEFT JOIN tbl_end_category ec ON p.ecat_id = ec.ecat_id 
-    LEFT JOIN tbl_mid_category mc ON ec.mcat_id = mc.mcat_id
-    LEFT JOIN tbl_top_category tc ON mc.tcat_id = tc.tcat_id
+// If an error occurred on POST submission, restore all submitted values directly from $_POST
+if (!empty($pos_order_error) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['customer_type'])) $saved_customer_type = $_POST['customer_type'];
+    if (isset($_POST['registered_cust_id'])) $saved_customer_id = (int)$_POST['registered_cust_id'];
+    if (isset($_POST['walkin_name'])) $saved_customer_name = trim($_POST['walkin_name']);
+    if (isset($_POST['walkin_phone'])) $saved_customer_phone = trim($_POST['walkin_phone']);
+    if (isset($_POST['walkin_email'])) $saved_customer_email = trim($_POST['walkin_email']);
+    if (isset($_POST['walkin_address'])) $saved_customer_address = trim($_POST['walkin_address']);
+    if (isset($_POST['is_location_delivery'])) $saved_is_location = ($_POST['is_location_delivery'] == '1');
+    if (isset($_POST['location_brgy_id'])) $saved_brgy_id = (int)$_POST['location_brgy_id'];
+    if (isset($_POST['payment_method'])) $saved_payment_method = trim($_POST['payment_method']);
+    if (isset($_POST['payment_reference'])) $saved_payment_reference = trim($_POST['payment_reference']);
+    if (isset($_POST['amount_tendered'])) $saved_amount_tendered = floatval($_POST['amount_tendered']);
+
+    $_SESSION['supplier_checkout_cart'] = [
+        'supplier_id' => $supplier_id,
+        'customer' => [
+            'customer_type' => $saved_customer_type,
+            'customer_id' => $saved_customer_id,
+            'customer_name' => $saved_customer_name,
+            'customer_email' => $saved_customer_email,
+            'customer_phone' => $saved_customer_phone,
+            'customer_address' => $saved_customer_address,
+            'is_location_active' => $saved_is_location,
+            'location_brgy_id' => $saved_brgy_id
+        ],
+        'fulfillment' => [
+            'delivery_type' => $saved_is_location ? 'delivery' : 'pickup',
+            'delivery_cost' => isset($_POST['delivery_cost']) ? floatval($_POST['delivery_cost']) : 0.00
+        ],
+        'payment_method' => $saved_payment_method,
+        'payment_reference' => $saved_payment_reference,
+        'amount_tendered' => $saved_amount_tendered,
+        'items' => $active_pos_cart
+    ];
+}
+
+// Fetch Active Categories for Category Filter Dropdown (On-demand search mode)
+$statement_cats = $pdo->prepare("SELECT DISTINCT ec.ecat_id, ec.ecat_name 
+    FROM tbl_end_category ec 
+    JOIN tbl_product p ON p.ecat_id = ec.ecat_id 
     WHERE p.supplier_id = ? AND p.p_is_active = 1 
-    ORDER BY ec.ecat_name ASC, p.p_name ASC");
-$statement_prod->execute(array($supplier_id));
-$raw_products = $statement_prod->fetchAll(PDO::FETCH_ASSOC);
+    ORDER BY ec.ecat_name ASC");
+$statement_cats->execute(array($supplier_id));
+$pos_categories = $statement_cats->fetchAll(PDO::FETCH_ASSOC);
 
-// Group Products by End Level Category (tbl_end_category)
+// Empty initial product array so table is hidden and 0 inventory rows are rendered on initial page load / refresh
+$raw_products = array();
 $grouped_products = array();
 $categories = array();
 $parent_departments = array();
 $mid_categories_list = array();
 $categories_with_parent = array();
-$total_inventory_items = count($raw_products);
-
-foreach ($raw_products as $prod) {
-    $has_ecat = (!empty($prod['ecat_id']) && intval($prod['ecat_id']) > 0 && !empty($prod['ecat_name']));
-    $ecat_name = $has_ecat ? trim($prod['ecat_name']) : 'Uncategorized';
-    $parent_dept = !empty($prod['tcat_name']) ? trim($prod['tcat_name']) : (!empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Hardware');
-    $mcat_name = !empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Sub-System';
-    
-    // Grouping key: Relational End Level Category ID (ecat_id) creates 1 single card per category
-    if ($has_ecat) {
-        $group_key = 'ecat_' . intval($prod['ecat_id']);
-        $card_title = $ecat_name;
-    } else {
-        $parsed_spec = parseConstructionProductDetails($prod['p_name']);
-        $base_name = !empty($parsed_spec['base_name']) ? $parsed_spec['base_name'] : $prod['p_name'];
-        $group_key = 'uncat_' . strtolower(preg_replace('/[^a-z0-9]/', '', $base_name));
-        $card_title = $base_name;
-    }
-
-    if (!in_array($ecat_name, $categories)) {
-        $categories[] = $ecat_name;
-    }
-    
-    // Parent departments tracking
-    if (!isset($parent_departments[$parent_dept])) {
-        $parent_departments[$parent_dept] = array(
-            'count' => 0,
-            'mid_cats' => array()
-        );
-    }
-    
-    // Mid categories tracking
-    $mid_key = $parent_dept . '___' . $mcat_name;
-    if (!isset($mid_categories_list[$mid_key])) {
-        $mid_categories_list[$mid_key] = array(
-            'name' => $mcat_name,
-            'dept' => $parent_dept,
-            'count' => 0
-        );
-    }
-
-    if (!in_array($ecat_name, $categories_with_parent)) {
-        $categories_with_parent[] = array('name' => $ecat_name, 'dept' => $parent_dept, 'mcat' => $mcat_name);
-    }
-
-    $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
-    $clean_new_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_new_price'] ?? 0)));
-    $clean_capital_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_capital_price'] ?? 0)));
-    $clean_markup = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_markup'] ?? 0)));
-    $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
-    $clean_new_qty = isset($prod['p_new_qty']) && $prod['p_new_qty'] !== '' ? max(0, intval(preg_replace('/[^0-9]/', '', strval($prod['p_new_qty'])))) : 0;
-    $effective_orderable_stock = ($clean_new_qty > 0) ? ($clean_stock + $clean_new_qty) : $clean_stock;
-
-    $img_src = (!empty($prod['p_featured_photo']) && file_exists('../assets/uploads/'.$prod['p_featured_photo'])) 
-        ? '../assets/uploads/'.$prod['p_featured_photo'] 
-        : '../assets/uploads/photo-6.jpg';
-
-    $parsed_spec = parseConstructionProductDetails($prod['p_name']);
-    $spec_label = $parsed_spec['spec_label'];
-    
-    // If spec_label is default 'Standard' or empty, derive clean variant specification label
-    if (empty($spec_label) || $spec_label === 'Standard') {
-        $stripped = trim(preg_replace('/^' . preg_quote($card_title, '/') . '[\s\-\:\,]*/i', '', $prod['p_name']));
-        $spec_label = !empty($stripped) ? $stripped : $prod['p_name'];
-    }
-
-    $variant_item = array(
-        'id' => intval($prod['p_id']),
-        'sku' => !empty($prod['p_sku']) ? $prod['p_sku'] : ('SKU-' . str_pad($prod['p_id'], 5, '0', STR_PAD_LEFT)),
-        'name' => $prod['p_name'],
-        'base_name' => $card_title,
-        'spec_label' => $spec_label,
-        'size' => $parsed_spec['size'],
-        'thickness' => $parsed_spec['thickness'],
-        'diameter' => $parsed_spec['diameter'],
-        'color' => $parsed_spec['color'],
-        'material' => $parsed_spec['material'],
-        'weight_pack' => $parsed_spec['weight_pack'],
-        'voltage' => $parsed_spec['voltage'],
-        'power' => $parsed_spec['power'],
-        'rated_current' => $parsed_spec['rated_current'],
-        'length' => $parsed_spec['length'],
-        'price' => $clean_price,
-        'orig_price' => $clean_price,
-        'new_price' => $clean_new_price,
-        'capital_price' => $clean_capital_price,
-        'markup' => $clean_markup,
-        'stock' => $effective_orderable_stock,
-        'orig_stock' => $clean_stock,
-        'new_qty' => $clean_new_qty,
-        'photo' => $img_src,
-        'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic'
-    );
-
-    if (!isset($grouped_products[$group_key])) {
-        $parent_departments[$parent_dept]['count']++;
-        $mid_categories_list[$mid_key]['count']++;
-        $parent_departments[$parent_dept]['mid_cats'][$mcat_name] = true;
-
-        $grouped_products[$group_key] = array(
-            'group_key' => $group_key,
-            'base_name' => $card_title,
-            'ecat_id' => $prod['ecat_id'],
-            'ecat_name' => $ecat_name,
-            'mcat_name' => $mcat_name,
-            'tcat_name' => $parent_dept,
-            'brand' => !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic',
-            'brands' => array(!empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic'),
-            'photo' => $img_src,
-            'min_price' => $clean_price,
-            'max_price' => $clean_price,
-            'total_stock' => $effective_orderable_stock,
-            'variants' => array($variant_item)
-        );
-    } else {
-        $grouped_products[$group_key]['variants'][] = $variant_item;
-        $grouped_products[$group_key]['total_stock'] += $effective_orderable_stock;
-        if ($clean_price < $grouped_products[$group_key]['min_price']) {
-            $grouped_products[$group_key]['min_price'] = $clean_price;
-        }
-        if ($clean_price > $grouped_products[$group_key]['max_price']) {
-            $grouped_products[$group_key]['max_price'] = $clean_price;
-        }
-        // If current group photo is placeholder but variant has real image, use it
-        if (strpos($grouped_products[$group_key]['photo'], 'photo-6.jpg') !== false && strpos($img_src, 'photo-6.jpg') === false) {
-            $grouped_products[$group_key]['photo'] = $img_src;
-        }
-        $b = !empty($prod['p_brand']) ? $prod['p_brand'] : 'Generic';
-        if (!in_array($b, $grouped_products[$group_key]['brands'])) {
-            $grouped_products[$group_key]['brands'][] = $b;
-        }
-        if (count($grouped_products[$group_key]['brands']) > 1) {
-            $grouped_products[$group_key]['brand'] = 'Multi-Brand';
-        }
-    }
-}
+$total_inventory_items = 0;
 
 // Fetch Registered Customers
 $statement_cust = $pdo->prepare("SELECT cust_id, cust_name, cust_email, cust_phone, cust_address FROM tbl_customer ORDER BY cust_name ASC");
@@ -2825,6 +3115,105 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
     font-weight: 800 !important;
     text-decoration: none !important;
 }
+.pos-product-item.pos-item-focused .pos-product-card {
+    outline: 3px solid #2563eb !important;
+    outline-offset: 1px;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25), 0 8px 20px rgba(37, 99, 235, 0.2) !important;
+    background-color: #eff6ff !important;
+}
+.pos-product-item.pos-item-focused.pos-list-row td {
+    background-color: #dbeafe !important;
+    outline: 2px solid #2563eb !important;
+}
+
+/* POS Direct Search Feedback & Action Bar (Best Practice POS Architecture) */
+.pos-search-feedback-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #eff6ff;
+    border: 1.5px solid #93c5fd;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.08);
+    animation: posSearchFadeIn 0.15s ease-out;
+}
+@keyframes posSearchFadeIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.pos-search-feedback-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.pos-search-feedback-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.pos-search-kbd-hint kbd {
+    background: #e2e8f0;
+    color: #334155;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 10px;
+    border: 1px solid #cbd5e1;
+}
+.pos-search-result-card .pos-product-card {
+    border: 2px solid #3b82f6 !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.14) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pos-search-result-card:hover .pos-product-card,
+.pos-search-result-card.pos-item-focused .pos-product-card {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.22) !important;
+    border-color: #1d4ed8 !important;
+    background-color: #f8faff !important;
+}
+.pos-search-result-row {
+    background-color: #f8fafc !important;
+    border-left: 3px solid #2563eb !important;
+    transition: background-color 0.15s ease;
+}
+.pos-search-result-row:hover,
+.pos-search-result-row.pos-item-focused {
+    background-color: #eff6ff !important;
+}
+/* Hide default duplicate DataTables filter & length dropdown since custom toolbar is used */
+#example1_wrapper > .row:first-child .dataTables_filter,
+#example1_wrapper > .row:first-child .dataTables_length,
+#example1_length {
+    display: none !important;
+}
+/* Enhanced POS Search Input (Wider, Taller, Simple & Elegant) */
+.pos-main-search-input {
+    height: 42px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+    transition: all 0.2s ease !important;
+}
+.pos-main-search-input:hover {
+    border-color: #94a3b8 !important;
+}
+.pos-main-search-input:focus {
+    border-color: #2563eb !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+    outline: none !important;
+}
+.pos-main-search-input::placeholder {
+    color: #94a3b8 !important;
+    font-weight: 400 !important;
+}
 </style>
 
 <section class="content-header">
@@ -2887,349 +3276,97 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
             <div class="box box-primary" style="border-radius: 8px;">
                 <div class="box-body">
                     
-                    <!-- Search and Filters Toolbar -->
-                    <div class="row" style="margin-bottom: 12px;">
-                        <div class="col-md-5 col-sm-6 col-xs-12" style="margin-bottom: 6px;">
-                            <div class="input-group">
-                                <span class="input-group-addon" style="font-size: 15px; background-color: #f8fafc; border-color: #cbd5e1;"><i class="fa fa-search text-primary"></i></span>
-                                <input type="search" 
-                                       id="posSearchInput" 
-                                       name="pos_catalog_search_term" 
-                                       class="form-control input-lg" 
-                                       style="height: 42px; font-size: 14px; font-weight: 500;" 
-                                       placeholder="Search product by name, brand, spec, or SKU... (F2)" 
-                                       autocomplete="off" 
-                                       autocorrect="off" 
-                                       autocapitalize="off" 
-                                       spellcheck="false" 
-                                       data-lpignore="true" 
-                                       data-form-type="other"
-                                       oninput="filterPOSProducts()"
-                                       onkeyup="filterPOSProducts()"
-                                       onkeydown="if(event.key === 'Enter') handlePOSSearchEnter(event);">
-                                <span class="input-group-btn">
-                                    <button class="btn btn-default input-lg" type="button" onclick="clearPOSSearch()" style="height: 42px;" title="Clear Search (Esc)"><i class="fa fa-times text-muted"></i></button>
-                                </span>
+                    <!-- Top Action Toolbar & Category Filter -->
+                    <div class="row" style="margin-bottom: 14px; align-items: center;">
+                        <div class="col-md-7 col-sm-6 col-xs-12" style="margin-bottom: 6px;">
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <div style="position: relative; flex: 1; min-width: 260px; max-width: 440px;">
+                                    <i class="fa fa-search" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 14px; pointer-events: none; z-index: 2;"></i>
+                                    <input type="search" id="posSearchInput" class="form-control input-sm pos-main-search-input" placeholder="Search products by name, SKU, or barcode (F2)..." autocomplete="off" style="font-weight: 500; height: 42px; width: 100%; padding: 8px 48px 8px 38px; font-size: 14px; border: 1.5px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); transition: border-color 0.2s, box-shadow 0.2s;">
+                                    <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: 1px solid #cbd5e1; color: #64748b; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; pointer-events: none; font-family: monospace;" title="Press F2 to focus search">F2</span>
+                                </div>
+                                <div style="min-width: 170px; max-width: 220px;">
+                                    <select id="posCategoryFilterSelect" class="form-control input-sm" style="height: 42px; font-size: 13px; font-weight: 600; border: 1.5px solid #cbd5e1; border-radius: 6px; color: #334155;">
+                                        <option value="0">All Categories</option>
+                                        <?php foreach ($pos_categories as $c): ?>
+                                            <option value="<?php echo (int)$c['ecat_id']; ?>"><?php echo htmlspecialchars($c['ecat_name']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-7 col-sm-6 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-primary input-lg" onclick="openHeldOrdersModal()" id="posHeldOrdersBtn" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #4f46e5; border-color: #4338ca; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(79,70,229,0.25); display: inline-flex; align-items: center; gap: 5px;" title="View & Resume Held / Parked Orders">
+                        <div class="col-md-5 col-sm-6 col-xs-12 text-right" style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openHeldOrdersModal()" id="posHeldOrdersBtn" style="font-size: 12px; font-weight: 800; background-color: #4f46e5; border-color: #4338ca; color: #fff; padding: 6px 12px; border-radius: 5px; height: 38px; display: inline-flex; align-items: center; gap: 5px;" title="View & Resume Held / Parked Orders">
                                 <i class="fa fa-pause-circle"></i> <span>Held Orders</span> <span class="badge" id="posHeldCountBadge" style="background:#fff; color:#4f46e5; font-weight:800; font-size:11px; margin-left:2px;"><?php echo $held_pos_count; ?></span>
                             </button>
-                            <a href="product-add.php" class="btn btn-primary btn-sm" style="height: 38px; font-size: 12.5px; font-weight: 800; padding: 6px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Add New Product">
+                            <a href="product-add.php" class="btn btn-primary btn-sm" style="font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 5px; height: 38px; display: inline-flex; align-items: center; gap: 4px;" title="Add New Product">
                                 <i class="fa fa-plus"></i> New Product
                             </a>
-                            <button type="button" class="btn btn-danger input-lg" onclick="openReturnModal()" style="height: 38px; font-size: 12.5px; font-weight: 800; background-color: #dc2626; border-color: #b91c1c; color: #fff; padding: 6px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(220,38,38,0.25); display: inline-flex; align-items: center; gap: 4px;" title="Search completed orders and process item returns & refunds">
+                            <button type="button" class="btn btn-danger btn-sm" onclick="openReturnModal()" style="font-size: 12px; font-weight: 800; background-color: #dc2626; border-color: #b91c1c; color: #fff; padding: 6px 12px; border-radius: 5px; height: 38px; display: inline-flex; align-items: center; gap: 4px;" title="Search completed orders and process item returns & refunds">
                                 <i class="fa fa-undo"></i> RETURN ITEM(s)
                             </button>
-                            <span class="text-muted" style="font-size: 12px; font-weight: 700; white-space: nowrap;">
-                                <strong id="productCount" style="color: #0f172a; font-size: 13px;"><?php echo count($grouped_products); ?></strong> items
-                            </span>
                         </div>
                     </div>
 
-                    <!-- Hierarchical 2-Tier Category Navigation (Dedicated Collapsible Accordion Header with Persistent Memory) -->
-                    <?php if (!empty($parent_departments)): ?>
-                    <div class="pos-category-accordion-wrapper" id="posCategoryAccordion">
-                        <!-- Dedicated Accordion Toggle Bar -->
-                        <div class="pos-cat-toggle-bar" onclick="togglePOSCategories()">
-                            <div class="pos-cat-toggle-left" style="display: flex; align-items: center; gap: 8px;">
-                                <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; background: #e0f2fe; color: #0284c7; font-size: 11px;">
-                                    <i class="fa fa-sitemap"></i>
-                                </span>
-                                <span style="font-weight: 800; font-size: 13px; color: #1e293b;">Category Filters</span>
-                                <span id="posActiveFilterBreadcrumb" class="label label-info" style="font-size: 11px; font-weight: 700; background-color: #0284c7; border-radius: 4px; padding: 2px 8px;">
-                                    Top Categories &bull; All in Selected
-                                </span>
-                            </div>
-                            <button type="button" class="btn btn-xs btn-default pos-cat-toggle-btn" id="posCatToggleBtn" style="font-weight: 700; font-size: 11px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Toggle category panel">
-                                <i class="fa fa-chevron-up" id="posCatToggleIcon"></i> <span id="posCatToggleText">Collapse</span>
-                            </button>
-                        </div>
-
-                        <!-- Collapsible Body (Tier 1 + Tier 2) -->
-                        <div class="pos-cat-collapsible-body" id="posCatCollapsibleBody">
-                            <!-- Tier 1: Main Department Tabs (Single-Row Horizontal Carousel with Left/Right Nav Chevrons) -->
-                            <div class="pos-dept-carousel-wrapper">
-                                <button type="button" class="pos-dept-nav-btn" id="posDeptNavPrev" onclick="scrollDeptCarousel(-260)" title="Scroll Left" aria-label="Scroll Left" style="margin-right: 4px;">
-                                    <i class="fa fa-chevron-left"></i>
-                                </button>
-                                <div class="pos-dept-tabs-bar" id="posDeptTabsBar" onscroll="updateDeptNavState()">
-                                    <button type="button" class="pos-dept-tab active" data-dept="all" onclick="filterDepartment('all', this)">
-                                        <i class="fa fa-th-large"></i> Top Categories (<?php echo count($grouped_products); ?>)
-                                    </button>
-                                    <?php foreach ($parent_departments as $dept_name => $dept_info): ?>
-                                        <button type="button" class="pos-dept-tab" data-dept="<?php echo htmlspecialchars($dept_name); ?>" onclick="filterDepartment('<?php echo htmlspecialchars(addslashes($dept_name)); ?>', this)">
-                                            <i class="fa fa-folder-open-o"></i> <?php echo htmlspecialchars($dept_name); ?> <span class="badge" style="background:#e2e8f0; color:#334155; margin-left:3px;"><?php echo is_array($dept_info) ? $dept_info['count'] : count($dept_info); ?></span>
-                                        </button>
-                                    <?php endforeach; ?>
-                                </div>
-                                <button type="button" class="pos-dept-nav-btn" id="posDeptNavNext" onclick="scrollDeptCarousel(260)" title="Scroll Right" aria-label="Scroll Right" style="margin-left: 4px;">
-                                    <i class="fa fa-chevron-right"></i>
-                                </button>
-                            </div>
-
-                            <!-- Tier 2: Sub-Category Pills (Mid Categories: 2-3 Clean Rows/Single Row) -->
-                            <div class="pos-category-filter-box" id="posCategoryFilterBox">
-                                <button type="button" class="pos-cat-pill active" data-dept="all" data-cat="all" onclick="filterCategory('all', this)">
-                                    <i class="fa fa-th-list"></i> <span class="pos-all-label">All in Selected</span>
-                                </button>
-                                <?php foreach ($mid_categories_list as $item): ?>
-                                    <button type="button" class="pos-cat-pill" 
-                                            data-dept="<?php echo htmlspecialchars($item['dept']); ?>" 
-                                            data-cat="<?php echo htmlspecialchars($item['name']); ?>" 
-                                            data-mcat="<?php echo htmlspecialchars($item['name']); ?>" 
-                                            onclick="filterCategory('<?php echo htmlspecialchars(addslashes($item['name'])); ?>', this)">
-                                        <?php echo htmlspecialchars($item['name']); ?> <span class="badge" style="background:#f1f5f9; color:#475569; font-size:10.5px; margin-left:3px; font-weight:700;"><?php echo $item['count']; ?></span>
-                                    </button>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <!-- VIEW 1: Products Grid (Visual Cards) -->
-                    <div id="posProductGrid">
-                        <?php if (count($grouped_products) > 0): ?>
-                            <?php 
-                            if (!function_exists('get_pos_product_search_index')) {
-                                function get_pos_product_search_index($group) {
-                                    $search_terms = array(
-                                        $group['base_name'],
-                                        $group['brand'],
-                                        $group['ecat_name'],
-                                        $group['mcat_name'],
-                                        $group['tcat_name']
-                                    );
-                                    foreach ($group['variants'] as $v) {
-                                        $search_terms[] = $v['name'];
-                                        $search_terms[] = $v['sku'];
-                                        $search_terms[] = $v['spec_label'];
-                                        if (!empty($v['size'])) $search_terms[] = $v['size'];
-                                        if (!empty($v['thickness'])) $search_terms[] = $v['thickness'];
-                                        if (!empty($v['diameter'])) $search_terms[] = $v['diameter'];
-                                        if (!empty($v['color'])) $search_terms[] = $v['color'];
-                                        if (!empty($v['material'])) $search_terms[] = $v['material'];
-                                        if (!empty($v['weight_pack'])) $search_terms[] = $v['weight_pack'];
-                                        if (!empty($v['voltage'])) $search_terms[] = $v['voltage'];
-                                        if (!empty($v['power'])) $search_terms[] = $v['power'];
-                                    }
-                                    
-                                    $combined = strtolower(implode(' ', array_filter($search_terms)));
-                                    
-                                    // Dimension variations: 2x3 -> 2 x 3, 2 x 3 -> 2x3
-                                    if (preg_match_all('/\b(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\b/i', $combined, $matches, PREG_SET_ORDER)) {
-                                        foreach ($matches as $m) {
-                                            $search_terms[] = $m[1] . 'x' . $m[2];
-                                            $search_terms[] = $m[1] . ' x ' . $m[2];
-                                            $search_terms[] = $m[1] . '" x ' . $m[2] . '"';
-                                            $search_terms[] = $m[1] . 'in x ' . $m[2] . 'in';
-                                        }
-                                    }
-                                    
-                                    // Units: 40kg -> 40 kg, 10mm -> 10 mm
-                                    if (preg_match_all('/\b(\d+(?:\.\d+)?)\s*(kg|mm|cm|m|in|pcs|pc|ft|gal|ltr|l|w|v|hp)\b/i', $combined, $matches, PREG_SET_ORDER)) {
-                                        foreach ($matches as $m) {
-                                            $search_terms[] = $m[1] . $m[2];
-                                            $search_terms[] = $m[1] . ' ' . $m[2];
-                                        }
-                                    }
-                                    
-                                    // Fractions
-                                    if (strpos($combined, '1/2') !== false) { $search_terms[] = '0.5'; $search_terms[] = '1/2"'; $search_terms[] = '1/2 in'; }
-                                    if (strpos($combined, '1/4') !== false) { $search_terms[] = '0.25'; $search_terms[] = '1/4"'; $search_terms[] = '1/4 in'; }
-                                    if (strpos($combined, '3/4') !== false) { $search_terms[] = '0.75'; $search_terms[] = '3/4"'; $search_terms[] = '3/4 in'; }
-                                    if (strpos($combined, '3/8') !== false) { $search_terms[] = '0.375'; $search_terms[] = '3/8"'; $search_terms[] = '3/8 in'; }
-                                    if (strpos($combined, '5/16') !== false) { $search_terms[] = '0.3125'; $search_terms[] = '5/16"'; $search_terms[] = '5/16 in'; }
-                                    
-                                    // Construction Trade Synonyms & Aliases
-                                    if (strpos($combined, 'galvanized') !== false || strpos($combined, 'corrugated') !== false) {
-                                        $search_terms[] = 'gi'; $search_terms[] = 'g.i.'; $search_terms[] = 'yero';
-                                    }
-                                    if (strpos($combined, 'hollow block') !== false) {
-                                        $search_terms[] = 'chb'; $search_terms[] = 'block';
-                                    }
-                                    if (strpos($combined, 'deformed') !== false || strpos($combined, 'steel bar') !== false || strpos($combined, 'rebar') !== false) {
-                                        $search_terms[] = 'rsb'; $search_terms[] = 'deformed'; $search_terms[] = 'rebar'; $search_terms[] = 'bakal';
-                                    }
-                                    if (strpos($combined, 'wire nail') !== false || strpos($combined, 'common nail') !== false) {
-                                        $search_terms[] = 'cwn'; $search_terms[] = 'pako'; $search_terms[] = 'nail';
-                                    }
-                                    if (strpos($combined, 'pvc') !== false) {
-                                        $search_terms[] = 'tubo'; $search_terms[] = 'sanitary'; $search_terms[] = 'neltex'; $search_terms[] = 'polyvinyl';
-                                    }
-                                    if (strpos($combined, 'ppr') !== false) {
-                                        $search_terms[] = 'green pipe'; $search_terms[] = 'polypropylene';
-                                    }
-                                    if (strpos($combined, 'purlin') !== false) {
-                                        $search_terms[] = 'c-purlin'; $search_terms[] = 'c channel'; $search_terms[] = 'c-channel';
-                                    }
-                                    if (strpos($combined, 'plywood') !== false) {
-                                        $search_terms[] = 'ply'; $search_terms[] = 'marine'; $search_terms[] = 'kahoy';
-                                    }
-                                    if (strpos($combined, 'wire') !== false || strpos($combined, 'cable') !== false) {
-                                        $search_terms[] = 'thhn'; $search_terms[] = 'thwn'; $search_terms[] = 'kuryente';
-                                    }
-                                    if (strpos($combined, 'cement') !== false) {
-                                        $search_terms[] = 'semento'; $search_terms[] = 'portland'; $search_terms[] = 'pozolan';
-                                    }
-                                    if (strpos($combined, 'paint') !== false) {
-                                        $search_terms[] = 'pintura'; $search_terms[] = 'boysen'; $search_terms[] = 'davies';
-                                    }
-                                    if (strpos($combined, 'sandpaper') !== false || strpos($combined, 'sand paper') !== false || strpos($combined, 'abrasive') !== false || strpos($combined, 'lija') !== false) {
-                                        $search_terms[] = 'lija'; $search_terms[] = 'sandpaper'; $search_terms[] = 'sand paper'; $search_terms[] = 'abrasive'; $search_terms[] = 'waterproof';
-                                    }
-
-                                    return strtolower(implode(' ', array_unique($search_terms)));
-                                }
-                            }
-                            ?>
-                            <?php foreach ($grouped_products as $group_key => $group): 
-                                $is_out_of_stock = ($group['total_stock'] <= 0);
-                                $variant_count = count($group['variants']);
-                                $group_dept = !empty($group['tcat_name']) ? $group['tcat_name'] : (!empty($group['mcat_name']) ? $group['mcat_name'] : 'General Hardware');
-                                $search_index = get_pos_product_search_index($group);
-                            ?>
-                            <div class="pos-product-item" 
-                                 data-name="<?php echo htmlspecialchars($search_index, ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-base-name="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-brand="<?php echo htmlspecialchars($group['brand'], ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-category="<?php echo htmlspecialchars($group['ecat_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-mcat="<?php echo htmlspecialchars($group['mcat_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-dept="<?php echo htmlspecialchars($group_dept, ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-stock="<?php echo (int)$group['total_stock']; ?>"
-                                 data-group='<?php echo htmlspecialchars(json_encode($group), ENT_QUOTES, 'UTF-8'); ?>'
-                                 onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
-                                
-                                <div class="pos-product-card <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>">
-                                    <!-- Stock Badge -->
-                                    <span class="label pos-stock-badge <?php echo $is_out_of_stock ? 'label-danger' : ($group['total_stock'] < 10 ? 'label-warning' : 'label-success'); ?>">
-                                        <?php echo $is_out_of_stock ? 'Out of Stock' : $group['total_stock'] . ' in stock'; ?>
-                                    </span>
-                                    
-                                    <!-- Product Image -->
-                                    <div class="pos-product-img" style="background-image: url('<?php echo htmlspecialchars($group['photo']); ?>');"></div>
-                                    
-                                    <!-- Parent Product Info -->
-                                    <div class="pos-parent-info">
-                                        <div class="pos-parent-name" data-orig-title="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>" title="<?php echo htmlspecialchars($group['base_name']); ?>">
-                                            <?php echo htmlspecialchars($group['base_name']); ?>
-                                        </div>
-                                        
-                                        <!-- Variant Indicator Badge -->
-                                        <?php if ($variant_count > 1): ?>
-                                            <span class="pos-variant-count-badge">
-                                                <i class="fa fa-th-list"></i> <?php echo $variant_count; ?> Variants / Sizes
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="pos-variant-count-badge single">
-                                                <i class="fa fa-cube"></i> <?php echo htmlspecialchars($group['variants'][0]['spec_label']); ?>
-                                            </span>
-                                        <?php endif; ?>
-                                    </div>
-
-                                    <!-- Price Range & Action -->
-                                    <div class="pos-product-footer">
-                                        <div class="pos-price-val">
-                                            <?php if ($group['min_price'] == $group['max_price']): ?>
-                                                &#8369;<?php echo number_format($group['min_price'], 2); ?>
-                                            <?php else: ?>
-                                                &#8369;<?php echo number_format($group['min_price'], 2); ?> - &#8369;<?php echo number_format($group['max_price'], 2); ?>
-                                            <?php endif; ?>
-                                        </div>
-                                        <button type="button" class="btn btn-primary btn-xs pos-card-add-btn">
-                                            <i class="fa fa-plus-circle"></i> <?php echo ($variant_count > 1) ? 'Select' : '+ Add'; ?>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <div class="col-md-12 text-center" style="padding: 40px 20px;">
-                                <i class="fa fa-cubes fa-3x" style="color: #cbd5e1;"></i>
-                                <p class="text-muted" style="margin-top: 10px;">No active products found in your inventory. <a href="product-add.php">Add products</a></p>
-                            </div>
-                        <?php endif; ?>
+                    <!-- Initial State (Hidden by default when searching, shown on page load and refresh) -->
+                    <div id="posSearchInitialState" style="padding: 45px 20px; text-align: center; color: #64748b; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; margin-top: 10px;">
+                        <div style="font-size: 34px; color: #94a3b8; margin-bottom: 10px;"><i class="fa fa-search"></i></div>
+                        <div style="font-size: 15px; font-weight: 700; color: #1e293b;">Catalog Ready for Search</div>
+                        <div style="font-size: 13px; color: #64748b; margin-top: 5px;">Type a product name, SKU, or scan a barcode in the search box above to display items.</div>
+                        <div style="margin-top: 12px;"><span class="badge" style="background: #ffffff; color: #475569; border: 1px solid #cbd5e1; font-weight: 600; padding: 5px 10px; font-size: 11.5px;">Shortcut: Press F2</span></div>
                     </div>
 
-                    <!-- VIEW 2: High-Density Cashier List / Table View -->
-                    <div id="posProductListContainer" class="pos-product-list-container" style="display: none;">
-                        <div class="table-responsive" style="max-height: 560px; overflow-y: auto; margin-bottom: 0;">
-                            <table class="table table-hover pos-product-list-table" style="margin-bottom: 0;">
-                                <thead style="background: #f8fafc; border-bottom: 2px solid #cbd5e1; position: sticky; top: 0; z-index: 5;">
-                                    <tr>
-                                        <th style="width: 48px; text-align: center;">Photo</th>
-                                        <th>Product Name &amp; Specifications</th>
-                                        <th style="width: 140px;">Category</th>
-                                        <th style="width: 110px;">SKU / Brand</th>
-                                        <th style="width: 90px; text-align: center;">Stock</th>
-                                        <th style="width: 115px; text-align: right;">Unit Price</th>
-                                        <th style="width: 90px; text-align: center;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (count($grouped_products) > 0): ?>
-                                        <?php foreach ($grouped_products as $group_key => $group): 
-                                            $is_out_of_stock = ($group['total_stock'] <= 0);
-                                            $variant_count = count($group['variants']);
-                                            $group_dept = !empty($group['tcat_name']) ? $group['tcat_name'] : (!empty($group['mcat_name']) ? $group['mcat_name'] : 'General Hardware');
-                                            $search_index = get_pos_product_search_index($group);
-                                        ?>
-                                        <tr class="pos-product-item pos-list-row <?php echo $is_out_of_stock ? 'out-of-stock' : ''; ?>"
-                                            data-name="<?php echo htmlspecialchars($search_index, ENT_QUOTES, 'UTF-8'); ?>"
-                                            data-base-name="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                            data-brand="<?php echo htmlspecialchars($group['brand'], ENT_QUOTES, 'UTF-8'); ?>"
-                                            data-category="<?php echo htmlspecialchars($group['ecat_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                            data-mcat="<?php echo htmlspecialchars($group['mcat_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                            data-dept="<?php echo htmlspecialchars($group_dept, ENT_QUOTES, 'UTF-8'); ?>"
-                                            data-stock="<?php echo (int)$group['total_stock']; ?>"
-                                            data-group='<?php echo htmlspecialchars(json_encode($group), ENT_QUOTES, 'UTF-8'); ?>'
-                                            onclick="<?php echo $is_out_of_stock ? 'void(0);' : 'handleGroupCardClick(this);'; ?>">
-                                            <td style="text-align: center; vertical-align: middle; padding: 6px;">
-                                                <div style="width: 36px; height: 36px; background-image: url('<?php echo htmlspecialchars($group['photo']); ?>'); background-size: contain; background-repeat: no-repeat; background-position: center; border-radius: 4px; border: 1px solid #e2e8f0; background-color: #fff; margin: 0 auto;"></div>
-                                            </td>
-                                            <td style="vertical-align: middle; padding: 6px 8px;">
-                                                <strong class="pos-list-row-title" data-orig-title="<?php echo htmlspecialchars($group['base_name'], ENT_QUOTES, 'UTF-8'); ?>" style="color: #0f172a; font-size: 13px; display: block;"><?php echo htmlspecialchars($group['base_name']); ?></strong>
-                                                <?php if ($variant_count > 1): ?>
-                                                    <span class="pos-variant-count-badge" style="font-size: 10px; margin-top: 2px;">
-                                                        <i class="fa fa-th-list"></i> <?php echo $variant_count; ?> Variants / Sizes
-                                                    </span>
-                                                <?php else: ?>
-                                                    <span style="font-size: 11.5px; color: #64748b;"><?php echo htmlspecialchars($group['variants'][0]['spec_label']); ?></span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td style="vertical-align: middle; padding: 6px 8px; font-size: 11.5px; color: #475569;">
-                                                <span class="label label-default" style="background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; font-size: 10.5px;"><?php echo htmlspecialchars($group['ecat_name']); ?></span>
-                                            </td>
-                                            <td style="vertical-align: middle; padding: 6px 8px; font-size: 11.5px; color: #64748b; font-family: monospace;">
-                                                <div><strong><?php echo htmlspecialchars($group['brand']); ?></strong></div>
-                                                <div style="font-size: 10.5px; color: #94a3b8;"><?php echo htmlspecialchars($group['variants'][0]['sku'] ?? ''); ?></div>
-                                            </td>
-                                            <td style="vertical-align: middle; padding: 6px 8px; text-align: center;">
-                                                <span class="label <?php echo $is_out_of_stock ? 'label-danger' : ($group['total_stock'] < 10 ? 'label-warning' : 'label-success'); ?>" style="font-size: 11px; padding: 3px 6px;">
-                                                    <?php echo $is_out_of_stock ? 'Out of Stock' : $group['total_stock']; ?>
-                                                </span>
-                                            </td>
-                                            <td style="vertical-align: middle; padding: 6px 8px; text-align: right; font-weight: 800; font-size: 13.5px; color: #1d4ed8;">
-                                                <?php if ($group['min_price'] == $group['max_price']): ?>
-                                                    &#8369;<?php echo number_format($group['min_price'], 2); ?>
-                                                <?php else: ?>
-                                                    &#8369;<?php echo number_format($group['min_price'], 2); ?>+
-                                                <?php endif; ?>
-                                            </td>
-                                            <td style="vertical-align: middle; padding: 6px 8px; text-align: center;">
-                                                <button type="button" class="btn btn-primary btn-xs" style="font-weight: 700; border-radius: 4px; padding: 3px 8px; font-size: 11px;">
-                                                    <i class="fa fa-plus-circle"></i> <?php echo ($variant_count > 1) ? 'Select' : '+ Add'; ?>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                    <!-- Loading State (Shown during active searches) -->
+                    <div id="posSearchLoading" style="display: none; padding: 45px 20px; text-align: center; color: #2563eb; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; margin-top: 10px;">
+                        <div style="font-size: 32px; color: #2563eb; margin-bottom: 10px;"><i class="fa fa-spinner fa-spin"></i></div>
+                        <div style="font-size: 14.5px; font-weight: 700; color: #1e293b;">Searching inventory...</div>
+                        <div style="font-size: 12.5px; color: #64748b; margin-top: 4px;">Matching exact barcodes, SKUs, and names with PostgreSQL...</div>
                     </div>
 
+                    <!-- No Results State (Shown when search returns 0 matches) -->
+                    <div id="posSearchNoResults" style="display: none; padding: 35px 20px; text-align: center; color: #64748b; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; margin-top: 10px;">
+                        <div style="font-size: 30px; color: #f59e0b; margin-bottom: 8px;"><i class="fa fa-exclamation-circle"></i></div>
+                        <div id="posSearchNoResultsTitle" style="font-size: 14.5px; font-weight: 700; color: #92400e;">No products found</div>
+                        <div id="posSearchNoResultsMsg" style="font-size: 12.5px; color: #78350f; margin-top: 4px;">Check for spelling, try another keyword, or use Custom Order.</div>
+                    </div>
+
+                    <!-- Error State (Shown on network or server error) -->
+                    <div id="posSearchError" style="display: none; padding: 35px 20px; text-align: center; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; margin-top: 10px;">
+                        <div style="font-size: 28px; color: #dc2626; margin-bottom: 8px;"><i class="fa fa-warning"></i></div>
+                        <div style="font-size: 14px; font-weight: 700; color: #991b1b;">Search Request Failed</div>
+                        <div id="posSearchErrorMsg" style="font-size: 12.5px; color: #b91c1c; margin-top: 4px; margin-bottom: 12px;">Could not retrieve search results.</div>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="retryPOSSearch()" style="font-weight: 700; padding: 4px 12px; font-size: 11.5px; border-radius: 4px;">
+                            <i class="fa fa-refresh"></i> Retry Search
+                        </button>
+                    </div>
+
+                    <!-- Results Table Container (Hidden by default on initial page load & browser refresh) -->
+                    <div id="posProductTableContainer" class="table-responsive" style="display: none; margin-top: 10px;">
+                        <div id="posSearchResultsHeader" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-bottom: none; border-radius: 6px 6px 0 0; font-size: 12px;">
+                            <div>
+                                <span class="text-primary" style="font-weight: 700;"><i class="fa fa-check-circle text-success"></i> <span id="posSearchResultsCount">0</span> matches</span> <span class="text-muted">(max 5 ranked by relevance)</span>
+                            </div>
+                            <div style="font-size: 11px; color: #64748b;">
+                                Press <kbd style="background:#e2e8f0; color:#1e293b; padding:1px 4px; border-radius:3px;">Enter</kbd> to jump to + Add button
+                            </div>
+                        </div>
+                        <table id="posProductTable" class="table table-bordered table-hover table-striped pos-product-table" style="width: 100%; margin-bottom: 0;">
+                            <thead class="thead-dark" style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                <tr>
+                                    <th width="25" style="text-align: center;">#</th>
+                                    <th width="44" style="text-align: center;">Photo</th>
+                                    <th>Product Name &amp; Specifications</th>
+                                    <th width="125">Category</th>
+                                    <th width="90" style="text-align: center;">Stock</th>
+                                    <th width="95" style="text-align: right;">Unit Price</th>
+                                    <th width="75" style="text-align: center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="posProductTableBody">
+                                <!-- Dynamically populated via Fetch API -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3245,6 +3382,10 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             <span class="badge" style="background: #f59e0b; color: #000; font-size: 13px; font-family: monospace, Consolas, sans-serif; font-weight: 800; padding: 4px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
                                 <i class="fa fa-file-text-o"></i> PO: <?php echo htmlspecialchars($existing_po_data['payment_id'] ?? $existing_po_data['txnid']); ?>
                             </span>
+                        <?php elseif (!empty($is_credit_settlement) && !empty($credit_settle_data)): ?>
+                            <span class="badge" style="background: #0284c7; color: #fff; font-size: 13px; font-family: monospace, Consolas, sans-serif; font-weight: 800; padding: 4px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                                <i class="fa fa-handshake-o"></i> SETTLE: <?php echo htmlspecialchars($credit_settle_data['payment_id'] ?? $credit_settle_data['txnid']); ?>
+                            </span>
                         <?php endif; ?>
                     </h4>
                     <div style="display: flex; align-items: center; gap: 6px;">
@@ -3257,6 +3398,16 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                         <button type="button" class="btn btn-default btn-xs text-danger" onclick="clearCart()"><i class="fa fa-trash"></i> Clear</button>
                     </div>
                 </div>
+
+                <?php if (!empty($is_credit_settlement) && !empty($credit_settle_data)): ?>
+                <div class="alert alert-info" style="margin-bottom: 12px; padding: 10px 14px; font-size: 12.5px; border-radius: 6px; border-left: 4px solid #0284c7; display: flex; justify-content: space-between; align-items: center; background: #f0f9ff; color: #0369a1;">
+                    <div>
+                        <strong style="color: #0284c7;"><i class="fa fa-handshake-o"></i> Credit Account Settlement:</strong> <span style="font-family: monospace; font-weight: bold;"><?php echo htmlspecialchars($credit_settle_data['payment_id'] ?? $credit_settle_data['txnid']); ?></span><?php if (!empty($credit_ref_no)): ?> &bull; Ref: <strong><?php echo htmlspecialchars($credit_ref_no); ?></strong><?php endif; ?><br>
+                        <span style="font-size: 11.5px; color: #075985;">Customer: <strong><?php echo htmlspecialchars($credit_settle_data['customer_name'] ?: 'Walk-in Customer'); ?></strong> &bull; Total: <strong>₱<?php echo number_format($cs_invoice_total, 2); ?></strong> &bull; Paid to Date: <strong>₱<?php echo number_format($cs_paid_amount, 2); ?></strong> &bull; Outstanding Balance: <strong style="color: #dc2626; font-size: 13px;">₱<?php echo number_format($cs_balance_due, 2); ?></strong></span>
+                    </div>
+                    <a href="on-credit.php" class="btn btn-xs btn-default" style="font-weight: 700; border-color: #cbd5e1;" title="Return to Accounts Receivable Ledger"><i class="fa fa-arrow-left"></i> Ledger</a>
+                </div>
+                <?php endif; ?>
 
                 <?php if (!empty($paying_existing_po) && !empty($existing_po_data)): ?>
                 <div class="alert alert-warning" style="margin-bottom: 12px; padding: 9px 12px; font-size: 12.5px; border-radius: 6px; border-left: 4px solid #f59e0b; display: flex; justify-content: space-between; align-items: center; background: #fffbeb; color: #92400e;">
@@ -3274,10 +3425,22 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                 </div>
                 <?php endif; ?>
 
-                <form id="posCheckoutForm" method="POST" action="pos.php<?php echo (!empty($paying_existing_po) && !empty($existing_po_data)) ? ('?po_id=' . urlencode($existing_po_data['payment_id'] ?? $existing_po_data['txnid'])) : ''; ?>" onsubmit="return validatePOSForm()">
+                <form id="posCheckoutForm" method="POST" action="pos.php<?php 
+                    if (!empty($is_credit_settlement) && !empty($credit_settle_data)) {
+                        echo '?settle_credit=1&payment_id=' . urlencode($credit_settle_data['payment_id'] ?? $credit_settle_data['txnid']);
+                    } elseif (!empty($paying_existing_po) && !empty($existing_po_data)) {
+                        echo '?po_id=' . urlencode($existing_po_data['payment_id'] ?? $existing_po_data['txnid']);
+                    }
+                ?>" onsubmit="return validatePOSForm()">
                     <input type="hidden" name="pos_action" value="complete_sale">
                     <input type="hidden" name="pos_checkout_token" value="<?php echo htmlspecialchars($_SESSION['pos_checkout_token'] ?? ''); ?>">
                     <input type="hidden" id="cartItemsInput" name="cart_items" value="<?php echo htmlspecialchars(json_encode(array_values($active_pos_cart))); ?>">
+                    <?php if (!empty($is_credit_settlement) && !empty($credit_settle_data)): ?>
+                        <input type="hidden" name="is_credit_settlement" value="1">
+                        <input type="hidden" name="settle_payment_id" value="<?php echo htmlspecialchars($credit_settle_data['payment_id'] ?? $credit_settle_data['txnid']); ?>">
+                        <input type="hidden" name="settle_amount" value="<?php echo htmlspecialchars($cs_settle_amount); ?>">
+                        <input type="hidden" name="settle_balance_due" value="<?php echo htmlspecialchars($cs_balance_due); ?>">
+                    <?php endif; ?>
                     <?php if (!empty($paying_existing_po) && !empty($existing_po_data)): ?>
                         <input type="hidden" name="paying_po_id" id="posPayingPoIdInput" value="<?php echo htmlspecialchars($existing_po_data['payment_id'] ?? $existing_po_data['txnid']); ?>">
                     <?php endif; ?>
@@ -3370,6 +3533,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                     <?php foreach ($active_pos_cart as $item): 
                                         $isSpecialOrder = (isset($item['item_type']) && $item['item_type'] === 'SPECIAL_ORDER');
                                         $isReturnCredit = (isset($item['item_type']) && $item['item_type'] === 'RETURN_CREDIT');
+                                        $isCreditSettlement = (isset($item['item_type']) && $item['item_type'] === 'CREDIT_SETTLEMENT');
                                         $grossLineTotal = floatval($item['price']) * intval($item['qty']);
                                         $itemId = $item['id'];
                                         $itemIdEsc = htmlspecialchars(json_encode($itemId));
@@ -3391,14 +3555,14 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                             if (!empty($item['diameter'])) $specsArr[] = '<span style="color: #047857; font-weight: 700; font-size: 11px;">' . htmlspecialchars($item['diameter']) . '</span>';
                                             if (!empty($item['color'])) $specsArr[] = '<span class="pos-color-badge pos-color-' . strtolower(htmlspecialchars($item['color'])) . '">' . htmlspecialchars($item['color']) . '</span>';
                                         }
-                                        if (empty($specsArr) && !empty($item['product_details']) && !$isSpecialOrder && !$isReturnCredit) {
+                                        if (empty($specsArr) && !empty($item['product_details']) && !$isSpecialOrder && !$isReturnCredit && !$isCreditSettlement) {
                                             $specsArr[] = '<span style="color: #64748b; font-size: 11px;">' . htmlspecialchars($item['product_details']) . '</span>';
                                         }
                                         $refOrSku = $isSpecialOrder
                                             ? (!empty($item['special_order_reference']) ? 'Ref: ' . htmlspecialchars($item['special_order_reference']) . ' | ' : '')
                                             : (!empty($item['sku']) ? 'SKU: ' . htmlspecialchars($item['sku']) . ' | ' : '');
                                     ?>
-                                        <tr <?php echo $isReturnCredit ? 'style="background-color: #fef2f2;"' : ($isSpecialOrder ? 'style="background-color: #fffbeb;"' : ''); ?>>
+                                        <tr <?php echo $isReturnCredit ? 'style="background-color: #fef2f2;"' : ($isCreditSettlement ? 'style="background-color: #f0f9ff;"' : ($isSpecialOrder ? 'style="background-color: #fffbeb;"' : '')); ?>>
                                             <td style="padding: 8px 4px;">
                                                 <?php if ($isReturnCredit): ?>
                                                     <span class="label label-danger" style="background-color: #dc2626; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;">
@@ -3406,6 +3570,15 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                                     </span>
                                                     <?php if (!empty($item['product_details'])): ?>
                                                         <div style="font-size: 11px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">
+                                                            <?php echo htmlspecialchars($item['product_details']); ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                <?php elseif ($isCreditSettlement): ?>
+                                                    <span class="label label-info" style="background-color: #0284c7; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;">
+                                                        <i class="fa fa-handshake-o"></i> CREDIT SETTLEMENT
+                                                    </span>
+                                                    <?php if (!empty($item['product_details'])): ?>
+                                                        <div style="font-size: 11px; color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">
                                                             <?php echo htmlspecialchars($item['product_details']); ?>
                                                         </div>
                                                     <?php endif; ?>
@@ -3431,21 +3604,27 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                                 <?php if ($dStatus === 'APPROVED' || $dStatus === 'APPROVED_MODIFIED' || $dAmt > 0): ?>
                                                     <div style="margin-top: 4px;">
                                                         <span class="label label-success" style="background: #10b981; font-size: 10px; font-weight: 700; padding: 2px 6px;">
-                                                            <i class="fa fa-check-circle"></i> Discount -&#8369;<?php echo number_format($dAmt, 2); ?> (<?php echo number_format($dPct, 1); ?>%)
+                                                            <i class="fa fa-check-circle"></i> Discount -&#8369;<?php echo number_format($dAmt, 2); ?> Approved
                                                         </span>
                                                     </div>
                                                 <?php endif; ?>
                                             </td>
                                             <td style="padding: 8px 4px; text-align: center;">
-                                                <div class="btn-group" style="display: inline-flex; align-items: center;">
-                                                    <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(<?php echo $itemIdEsc; ?>, <?php echo $item['qty'] - 1; ?>)">-</button>
-                                                    <span style="display: inline-block; width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: #0f172a;"><?php echo $item['qty']; ?></span>
-                                                    <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(<?php echo $itemIdEsc; ?>, <?php echo $item['qty'] + 1; ?>)">+</button>
-                                                </div>
+                                                <?php if ($isCreditSettlement): ?>
+                                                    <span style="display: inline-block; font-weight: 800; font-size: 13px; color: #0284c7;">1 txn</span>
+                                                <?php else: ?>
+                                                    <div class="btn-group" style="display: inline-flex; align-items: center;">
+                                                        <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(<?php echo $itemIdEsc; ?>, <?php echo $item['qty'] - 1; ?>)">-</button>
+                                                        <span style="display: inline-block; width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: #0f172a;"><?php echo $item['qty']; ?></span>
+                                                        <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(<?php echo $itemIdEsc; ?>, <?php echo $item['qty'] + 1; ?>)">+</button>
+                                                    </div>
+                                                <?php endif; ?>
                                             </td>
                                             <td style="padding: 8px 4px; text-align: right;">
                                                 <?php if ($isReturnCredit): ?>
                                                     <span style="font-weight: 800; font-size: 15px; color: #dc2626;">-&#8369;<?php echo number_format(abs($grossLineTotal), 2); ?></span>
+                                                <?php elseif ($isCreditSettlement): ?>
+                                                    <span style="font-weight: 800; font-size: 15px; color: #0284c7;">&#8369;<?php echo number_format($grossLineTotal, 2); ?></span>
                                                 <?php elseif ($dAmt > 0): ?>
                                                     <span style="text-decoration: line-through; color: #94a3b8; font-size: 11px; display: block;">&#8369;<?php echo number_format($grossLineTotal, 2); ?></span>
                                                     <span style="font-weight: 800; font-size: 15px; color: #047857;">&#8369;<?php echo number_format($netLine, 2); ?></span>
@@ -3556,7 +3735,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                     <div style="margin-bottom: 18px;">
                         <div class="form-group" style="margin-bottom: 12px;">
                             <label style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Payment Method:</label>
-                            <select name="payment_method" id="posPaymentMethod" class="form-control input-lg" style="height: 42px; font-size: 15px; font-weight: 600;" onchange="handlePaymentMethodChange()">
+                            <select name="payment_method" id="posPaymentMethod" class="form-control input-lg" style="height: 42px; font-size: 15px; font-weight: 600;" onchange="handlePaymentMethodChange(true)">
                                 <option value="Cash (OTC)" <?php echo ($saved_payment_method === 'Cash (OTC)') ? 'selected' : ''; ?>>💵 Cash (Over the Counter)</option>
                                 <option value="GCash / Maya" <?php echo ($saved_payment_method === 'GCash / Maya') ? 'selected' : ''; ?>>📱 GCash / Maya E-Wallet</option>
                                 <option value="Debit/Credit Card" <?php echo ($saved_payment_method === 'Debit/Credit Card') ? 'selected' : ''; ?>>💳 Debit / Credit Card</option>
@@ -3572,141 +3751,43 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                             </label>
                             <div class="input-group">
                                 <span class="input-group-addon" style="background: #f8fafc; font-weight: 700; color: #64748b;"><i class="fa fa-id-card-o"></i></span>
-                                <input type="text" id="posPaymentReference" name="payment_reference" class="form-control input-lg" style="height: 42px; font-size: 14px; font-weight: 600; border-color: #cbd5e1;" placeholder="Enter reference number or check number">
+                                <input type="text" id="posPaymentReference" name="payment_reference" value="<?php echo htmlspecialchars($saved_payment_reference); ?>" class="form-control input-lg" style="height: 42px; font-size: 14px; font-weight: 600; border-color: #cbd5e1;" placeholder="Enter reference number or check number">
                             </div>
                         </div>
 
-                        <!-- Check / Terms Duration & Upfront Presets Section -->
-                        <div id="posTermsSection" style="display: none; background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <label style="font-size: 13px; font-weight: 800; color: #92400e; margin: 0;">
-                                    <i class="fa fa-calendar-check-o"></i> Credit Terms:
+                        <!-- Check / Terms Duration & Upfront Presets Summary Widget (Click to open Modal) -->
+                        <div id="posTermsSection" style="display: none; background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <label style="font-size: 13px; font-weight: 800; color: #92400e; margin: 0; display: inline-flex; align-items: center; gap: 5px;">
+                                    <i class="fa fa-calendar-check-o"></i> Credit Terms Active:
                                 </label>
-                                <span id="posTermsDueDateBadge" class="badge" style="background: #d97706; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px;">
-                                    15 Days
-                                </span>
+                                <button type="button" class="btn btn-warning btn-xs" onclick="openCreditTermsModal()" style="font-weight: 800; font-size: 11px; padding: 3px 8px; background: #d97706; border-color: #b45309; color: #fff; border-radius: 4px;" title="Click to adjust duration, surcharge or upfront payment">
+                                    <i class="fa fa-sliders"></i> Edit Terms &amp; Markup
+                                </button>
                             </div>
                             
-                            <!-- 1-Click Term Presets (15 | 21 | 30 Days) -->
-                            <div class="btn-group btn-group-justified" style="margin-bottom: 10px;">
-                                <div class="btn-group" role="group">
-                                    <button type="button" class="btn btn-default pos-term-btn active" id="termBtn15" onclick="setPaymentTerms(15)" style="font-weight: 800; font-size: 13px; background: #d97706; color: #fff; border-color: #b45309;">
+                            <!-- Compact Terms & Surcharge Badges -->
+                            <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 10px; font-size: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <span id="posTermsDueDateBadge" class="badge" style="background: #d97706; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px;">
                                         15 Days
-                                    </button>
+                                    </span>
+                                    <span id="posCreditMarkupSummaryBadge" style="font-weight: 700; color: #059669; font-size: 11.5px;">
+                                        No Surcharge
+                                    </span>
                                 </div>
-                                <div class="btn-group" role="group">
-                                    <button type="button" class="btn btn-default pos-term-btn" id="termBtn21" onclick="setPaymentTerms(21)" style="font-weight: 800; font-size: 13px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">
-                                        21 Days
-                                    </button>
-                                </div>
-                                <div class="btn-group" role="group">
-                                    <button type="button" class="btn btn-default pos-term-btn" id="termBtn30" onclick="setPaymentTerms(30)" style="font-weight: 800; font-size: 13px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">
-                                        30 Days
-                                    </button>
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #fde68a; padding-top: 4px; margin-top: 4px;">
+                                    <span style="color: #64748b; font-size: 11px;">Balance on Credit:</span>
+                                    <strong id="posCreditBalanceSidebarDisplay" style="color: #dc2626; font-size: 13.5px; font-weight: 800;">₱0.00</strong>
                                 </div>
                             </div>
+
+                            <!-- Essential Hidden Inputs for Backend Checkout Submission (Preserved directly in posCheckoutForm) -->
                             <input type="hidden" name="payment_term_days" id="posPaymentTermDays" value="15">
-
-                            <!-- Credit Mark Up / Financing Surcharge Section -->
-                            <div style="margin-bottom: 10px; border-top: 1px dashed #fde68a; padding-top: 8px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                    <label style="font-size: 12.5px; font-weight: 700; color: #92400e; margin: 0;">
-                                        <i class="fa fa-percent"></i> Credit Mark Up / Surcharge:
-                                    </label>
-                                    <!-- Mode Switcher: % Percentage vs ₱ Fixed Amount -->
-                                    <div class="btn-group btn-group-xs" role="group" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                        <button type="button" class="btn btn-default btn-xs" id="creditMarkupModePct" onclick="setCreditMarkupMode('percent')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">% Percent</button>
-                                        <button type="button" class="btn btn-default btn-xs active" id="creditMarkupModeFixed" onclick="setCreditMarkupMode('fixed')" style="font-weight: 700; font-size: 11px; padding: 2px 8px; background: #d97706; color: #ffffff; border-color: #b45309;">₱ Fixed</button>
-                                    </div>
-                                </div>
-
-                                <!-- Quick Preset Buttons (0%, 3%, 5%, 8%, 10%) -->
-                                <div id="creditMarkupPctPresets" class="btn-group btn-group-justified" style="margin-bottom: 6px; display: none;">
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn active" id="markupPreset0" onclick="setCreditMarkupPreset(0)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #d97706; color: #fff; border-color: #b45309;">0%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset3" onclick="setCreditMarkupPreset(3)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">3%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset5" onclick="setCreditMarkupPreset(5)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">5%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset8" onclick="setCreditMarkupPreset(8)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">8%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset10" onclick="setCreditMarkupPreset(10)" style="font-weight: 700; font-size: 11.5px; height: 28px; background: #fff; color: #78350f; border-color: #cbd5e1;">10%</button>
-                                    </div>
-                                </div>
-
-                                <!-- Custom Markup Input Group -->
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-addon" id="creditMarkupAddon" style="background: #fef3c7; color: #92400e; font-weight: 800; font-size: 12px; border-color: #fde68a;">
-                                        <i class="fa fa-tag"></i> Surcharge (₱)
-                                    </span>
-                                    <input type="number" step="1.00" min="0" id="posCreditMarkupInput" name="credit_markup_rate" class="form-control input-sm" placeholder="0.00" value="0.00" oninput="onCreditMarkupInputChange()" style="font-weight: 800; color: #92400e; border-color: #fde68a; height: 32px; font-size: 13px;">
-                                    <span class="input-group-addon" id="creditMarkupCalculatedBadge" style="background: #fffbeb; color: #94a3b8; font-weight: 700; font-size: 11.5px; border-color: #fde68a;">
-                                        +₱0.00 Added
-                                    </span>
-                                </div>
-
-                                <!-- Hidden values for backend submission -->
-                                <input type="hidden" name="credit_markup_type" id="posCreditMarkupType" value="fixed">
-                                <input type="hidden" name="credit_markup_amount" id="posCreditMarkupAmount" value="0.00">
-                            </div>
-
-                            <!-- Upfront Downpayment Presets (0%, 25%, 50%, 100%) -->
-                            <div style="margin-bottom: 10px; border-top: 1px dashed #fde68a; padding-top: 8px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                    <label style="font-size: 12px; font-weight: 700; color: #92400e; margin: 0;">
-                                        <i class="fa fa-hand-holding-usd"></i> Upfront Downpayment (Initial Payment):
-                                    </label>
-                                    <span style="font-size: 11px; color: #78350f; font-weight: 600;">% of Grand Total</span>
-                                </div>
-                                <div class="btn-group btn-group-justified">
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn0" onclick="setUpfrontPreset(0)" style="font-weight: 800; font-size: 12px; height: 32px; background: #d97706; color: #fff; border-color: #b45309;">0%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn25" onclick="setUpfrontPreset(25)" style="font-weight: 800; font-size: 12px; height: 32px; background: #fff; color: #78350f; border-color: #cbd5e1;">25%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn50" onclick="setUpfrontPreset(50)" style="font-weight: 800; font-size: 12px; height: 32px; background: #fff; color: #78350f; border-color: #cbd5e1;">50%</button>
-                                    </div>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-default btn-xs" id="upfrontBtn100" onclick="setUpfrontPreset(100)" style="font-weight: 800; font-size: 12px; height: 32px; background: #fff; color: #78350f; border-color: #cbd5e1;">100% (Exact)</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Live Real-Time Credit Breakdown -->
-                            <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px; font-size: 12.5px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #1e3a8a; font-family: monospace; font-size: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
-                                    <span style="color: #64748b; font-family: sans-serif; font-weight: 600;"><i class="fa fa-tag"></i> Credit Ref #:</span>
-                                    <strong id="posCreditRefDisplay"><?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?></strong>
-                                    <input type="hidden" name="credit_reference_no" id="posCreditRefInput" value="<?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?>">
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #64748b;">
-                                    <span>Base Cart Total:</span>
-                                    <strong style="color: #334155;" id="posCreditBaseTotalDisplay">₱0.00</strong>
-                                </div>
-                                <div id="posCreditMarkupRow" style="display: none; justify-content: space-between; margin-bottom: 3px; color: #d97706;">
-                                    <span id="posCreditMarkupRowLabel">Credit Mark Up (+0%):</span>
-                                    <strong id="posCreditMarkupDisplay">+₱0.00</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569; font-weight: 700;">
-                                    <span>Adjusted Grand Total:</span>
-                                    <strong style="color: #0f172a;" id="posCreditGrandTotalDisplay">₱0.00</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #059669;">
-                                    <span>Upfront Paid Now:</span>
-                                    <strong id="posCreditUpfrontDisplay">₱0.00</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px dashed #e2e8f0; padding-top: 6px; margin-top: 4px;">
-                                    <span style="color: #dc2626;">Balance on Credit:</span>
-                                    <span style="font-size: 14.5px; color: #dc2626;" id="posCreditBalanceDisplay">₱0.00</span>
-                                </div>
-                            </div>
+                            <input type="hidden" name="credit_markup_rate" id="posCreditMarkupRateHidden" value="0.00">
+                            <input type="hidden" name="credit_markup_type" id="posCreditMarkupType" value="fixed">
+                            <input type="hidden" name="credit_markup_amount" id="posCreditMarkupAmount" value="0.00">
+                            <input type="hidden" name="credit_reference_no" id="posCreditRefInput" value="<?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?>">
                         </div>
 
                         <!-- Amount Paid / Tendered Section -->
@@ -3715,7 +3796,7 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
                                 <label id="posAmountPaidLabel" style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Amount Tendered (Cash Received):</label>
                                 <div class="input-group">
                                     <span class="input-group-addon" style="font-size: 20px; font-weight: bold;">&#8369;</span>
-                                    <input type="number" step="any" id="posAmountTendered" name="amount_tendered" class="form-control input-lg" placeholder="0.00" onkeyup="updatePOSCalculations(); updateCreditCalculations();" style="font-size: 22px; font-weight: 900; height: 48px; color: #0f172a;">
+                                    <input type="number" step="any" id="posAmountTendered" name="amount_tendered" value="<?php echo ($saved_amount_tendered > 0) ? htmlspecialchars(number_format($saved_amount_tendered, 2, '.', '')) : ''; ?>" class="form-control input-lg" placeholder="0.00" onkeyup="updatePOSCalculations(); updateCreditCalculations();" style="font-size: 22px; font-weight: 900; height: 48px; color: #0f172a;">
                                 </div>
                             </div>
 
@@ -3758,6 +3839,167 @@ $default_shipping_rate = (float)($statement_all->fetchColumn() ?: 0);
 
     </div>
 </section>
+
+<!-- Interactive Check / Credit Terms & Financing Setup Modal -->
+<div class="modal fade" id="posCreditTermsModal" tabindex="-1" role="dialog" aria-labelledby="posCreditTermsModalLabel" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog" role="document" style="max-width: 530px; width: 95%; margin: 30px auto;">
+        <div class="modal-content" style="border-radius: 12px; overflow: hidden; box-shadow: 0 15px 35px rgba(0,0,0,0.35); border: none;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #b45309, #d97706); color: #fff; padding: 14px 18px;">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="color: #fff; opacity: 0.9; font-size: 24px;">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 class="modal-title" id="posCreditTermsModalLabel" style="font-weight: 800; display: flex; align-items: center; gap: 8px; font-size: 16.5px; margin: 0;">
+                    <i class="fa fa-calendar-check-o"></i> Credit Terms &amp; Financing Setup
+                </h4>
+                <div style="font-size: 12px; color: #fef3c7; margin-top: 4px;">
+                    Configure credit term duration, financing surcharge, and initial downpayment
+                </div>
+            </div>
+            
+            <div class="modal-body" style="padding: 18px 20px; background: #fffcf4;">
+                <!-- Credit Ref # & Dynamic Due Date Banner -->
+                <div style="background: #ffffff; border: 1.5px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">
+                            <i class="fa fa-tag text-primary"></i> Credit Reference:
+                        </div>
+                        <div style="font-size: 14px; font-weight: 800; color: #1e3a8a; font-family: monospace;" id="posCreditRefDisplay">
+                            <?php echo 'CR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)); ?>
+                        </div>
+                    </div>
+                    <span id="posTermsModalDueDateBadge" class="badge" style="background: #d97706; color: #fff; font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 5px;">
+                        15 Days
+                    </span>
+                </div>
+
+                <!-- 1-Click Term Presets (15 | 21 | 30 Days) -->
+                <div style="margin-bottom: 14px;">
+                    <label style="font-size: 13px; font-weight: 800; color: #92400e; margin-bottom: 6px; display: block;">
+                        <i class="fa fa-calendar-check-o"></i> 1. Repayment Terms Duration:
+                    </label>
+                    <div class="btn-group btn-group-justified">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default pos-term-btn active" id="termBtn15" onclick="setPaymentTerms(15)" style="font-weight: 800; font-size: 13px; height: 38px; background: #d97706; color: #fff; border-color: #b45309;">
+                                15 Days
+                            </button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default pos-term-btn" id="termBtn21" onclick="setPaymentTerms(21)" style="font-weight: 800; font-size: 13px; height: 38px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">
+                                21 Days
+                            </button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default pos-term-btn" id="termBtn30" onclick="setPaymentTerms(30)" style="font-weight: 800; font-size: 13px; height: 38px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">
+                                30 Days
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Credit Mark Up / Financing Surcharge Section -->
+                <div style="margin-bottom: 14px; border-top: 1px dashed #fde68a; padding-top: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label style="font-size: 13px; font-weight: 800; color: #92400e; margin: 0;">
+                            <i class="fa fa-percent"></i> 2. Credit Mark Up / Financing Surcharge:
+                        </label>
+                        <!-- Mode Switcher: % Percentage vs ₱ Fixed Amount -->
+                        <div class="btn-group btn-group-xs" role="group" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <button type="button" class="btn btn-default btn-xs" id="creditMarkupModePct" onclick="setCreditMarkupMode('percent')" style="font-weight: 700; font-size: 11px; padding: 3px 9px; background: #ffffff; color: #78350f; border-color: #cbd5e1;">% Percent</button>
+                            <button type="button" class="btn btn-default btn-xs active" id="creditMarkupModeFixed" onclick="setCreditMarkupMode('fixed')" style="font-weight: 700; font-size: 11px; padding: 3px 9px; background: #d97706; color: #ffffff; border-color: #b45309;">₱ Fixed</button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Preset Buttons (0%, 3%, 5%, 8%, 10%) -->
+                    <div id="creditMarkupPctPresets" class="btn-group btn-group-justified" style="margin-bottom: 8px; display: none;">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default btn-xs credit-markup-btn active" id="markupPreset0" onclick="setCreditMarkupPreset(0)" style="font-weight: 700; font-size: 11.5px; height: 30px; background: #d97706; color: #fff; border-color: #b45309;">0%</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset3" onclick="setCreditMarkupPreset(3)" style="font-weight: 700; font-size: 11.5px; height: 30px; background: #fff; color: #78350f; border-color: #cbd5e1;">3%</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset5" onclick="setCreditMarkupPreset(5)" style="font-weight: 700; font-size: 11.5px; height: 30px; background: #fff; color: #78350f; border-color: #cbd5e1;">5%</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset8" onclick="setCreditMarkupPreset(8)" style="font-weight: 700; font-size: 11.5px; height: 30px; background: #fff; color: #78350f; border-color: #cbd5e1;">8%</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default btn-xs credit-markup-btn" id="markupPreset10" onclick="setCreditMarkupPreset(10)" style="font-weight: 700; font-size: 11.5px; height: 30px; background: #fff; color: #78350f; border-color: #cbd5e1;">10%</button>
+                        </div>
+                    </div>
+
+                    <!-- Custom Markup Input Group -->
+                    <div class="input-group">
+                        <span class="input-group-addon" id="creditMarkupAddon" style="background: #fef3c7; color: #92400e; font-weight: 800; font-size: 12.5px; border-color: #fde68a;">
+                            <i class="fa fa-tag"></i> Surcharge (₱)
+                        </span>
+                        <input type="number" step="1.00" min="0" id="posCreditMarkupInput" class="form-control" placeholder="0.00" value="0.00" oninput="onCreditMarkupInputChange()" style="font-weight: 800; color: #92400e; border-color: #fde68a; height: 38px; font-size: 14px;">
+                        <span class="input-group-addon" id="creditMarkupCalculatedBadge" style="background: #fffbeb; color: #94a3b8; font-weight: 700; font-size: 12px; border-color: #fde68a;">
+                            +₱0.00 Added
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Upfront Downpayment Presets (0%, 25%, 50%, 100%) -->
+                <div style="margin-bottom: 14px; border-top: 1px dashed #fde68a; padding-top: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label style="font-size: 13px; font-weight: 800; color: #92400e; margin: 0;">
+                            <i class="fa fa-hand-holding-usd"></i> 3. Upfront Downpayment (Initial Payment):
+                        </label>
+                        <span style="font-size: 11px; color: #78350f; font-weight: 600;">% of Grand Total</span>
+                    </div>
+                    <div class="btn-group btn-group-justified">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default" id="upfrontBtn0" onclick="setUpfrontPreset(0)" style="font-weight: 800; font-size: 12px; height: 34px; background: #d97706; color: #fff; border-color: #b45309;">0% (Full Credit)</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default" id="upfrontBtn25" onclick="setUpfrontPreset(25)" style="font-weight: 800; font-size: 12px; height: 34px; background: #fff; color: #78350f; border-color: #cbd5e1;">25%</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default" id="upfrontBtn50" onclick="setUpfrontPreset(50)" style="font-weight: 800; font-size: 12px; height: 34px; background: #fff; color: #78350f; border-color: #cbd5e1;">50%</button>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-default" id="upfrontBtn100" onclick="setUpfrontPreset(100)" style="font-weight: 800; font-size: 12px; height: 34px; background: #fff; color: #78350f; border-color: #cbd5e1;">100% (Exact)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Real-Time Credit Breakdown -->
+                <div style="background: #ffffff; border: 1.5px solid #fde68a; border-radius: 8px; padding: 12px 14px; font-size: 13px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #64748b;">
+                        <span>Base Cart Total:</span>
+                        <strong style="color: #334155;" id="posCreditBaseTotalDisplay">₱0.00</strong>
+                    </div>
+                    <div id="posCreditMarkupRow" style="display: none; justify-content: space-between; margin-bottom: 5px; color: #d97706;">
+                        <span id="posCreditMarkupRowLabel">Credit Mark Up (+0%):</span>
+                        <strong id="posCreditMarkupDisplay">+₱0.00</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #475569; font-weight: 700;">
+                        <span>Adjusted Grand Total:</span>
+                        <strong style="color: #0f172a;" id="posCreditGrandTotalDisplay">₱0.00</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #059669;">
+                        <span>Upfront Paid Now:</span>
+                        <strong id="posCreditUpfrontDisplay">₱0.00</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1.5px dashed #e2e8f0; padding-top: 8px; margin-top: 6px;">
+                        <span style="color: #dc2626; font-size: 13.5px;">Balance on Credit:</span>
+                        <span style="font-size: 16px; color: #dc2626;" id="posCreditBalanceDisplay">₱0.00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer" style="background: #fefce8; border-top: 1.5px solid #fde68a; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 700;">
+                    Close
+                </button>
+                <button type="button" class="btn btn-warning" onclick="applyAndCloseCreditTermsModal()" style="font-weight: 800; background: #d97706; border-color: #b45309; color: #fff; padding: 8px 18px; font-size: 13.5px;">
+                    <i class="fa fa-check-circle"></i> Apply &amp; Confirm Terms
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Interactive Product / Variant Selection Modal -->
 <div class="modal fade" id="posVariantModal" tabindex="-1" role="dialog" aria-labelledby="posVariantModalLabel" aria-hidden="true">
@@ -4826,21 +5068,24 @@ if (window.history && window.history.replaceState) {
                         <tbody>
                             <?php foreach ($pos_success_receipt['items'] as $idx => $item): 
                                 $is_ret_credit = (($item['item_type'] ?? '') === 'RETURN_CREDIT');
+                                $is_credit_settle = (($item['item_type'] ?? '') === 'CREDIT_SETTLEMENT');
                                 $item_qty = intval($item['qty']);
                                 $item_price = floatval($item['price']);
                                 $item_gross = $item_price * $item_qty;
                                 $item_disc = floatval($item['discount_amount'] ?? 0);
                                 $item_net = floatval($item['line_net'] ?? ($item_gross - $item_disc));
                             ?>
-                            <tr <?php echo $is_ret_credit ? 'style="background-color: #fef2f2;"' : ''; ?>>
+                            <tr <?php echo $is_ret_credit ? 'style="background-color: #fef2f2;"' : ($is_credit_settle ? 'style="background-color: #f0f9ff;"' : ''); ?>>
                                 <td style="text-align: center; color: #64748b;"><?php echo ($idx + 1); ?></td>
                                 <td>
                                     <?php if ($is_ret_credit): ?>
                                         <span class="label label-danger" style="background-color: #dc2626; font-size: 10px; font-weight: 800; padding: 1px 5px; margin-right: 4px;"><i class="fa fa-undo"></i> RETURN CREDIT</span>
+                                    <?php elseif ($is_credit_settle): ?>
+                                        <span class="label label-info" style="background-color: #0284c7; font-size: 10px; font-weight: 800; padding: 1px 5px; margin-right: 4px;"><i class="fa fa-handshake-o"></i> CREDIT SETTLEMENT</span>
                                     <?php endif; ?>
                                     <span style="font-weight: 700; color: #0f172a;"><?php echo htmlspecialchars($item['name']); ?></span>
                                     <?php if (!empty($item['product_details'])): ?>
-                                        <div class="badge" style="background: <?php echo $is_ret_credit ? '#fee2e2; color: #991b1b' : '#e2e8f0; color: #334155'; ?>; font-size: 11px; margin-top: 2px; white-space: normal; text-align: left;"><?php echo htmlspecialchars($item['product_details']); ?></div>
+                                        <div class="badge" style="background: <?php echo $is_ret_credit ? '#fee2e2; color: #991b1b' : ($is_credit_settle ? '#e0f2fe; color: #0369a1' : '#e2e8f0; color: #334155'); ?>; font-size: 11px; margin-top: 2px; white-space: normal; text-align: left;"><?php echo htmlspecialchars($item['product_details']); ?></div>
                                     <?php endif; ?>
                                 </td>
                                 <td style="text-align: center; font-weight: 900; font-size: 14px; color: #000000; -webkit-print-color-adjust: exact;"><strong style="font-weight: 900; color: #000000;"><?php echo $item_qty; ?></strong></td>
@@ -4937,8 +5182,13 @@ if (window.history && window.history.replaceState) {
                     <div style="text-align: center;">
                         <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #000; line-height: 1.2;"><?php echo htmlspecialchars(strtoupper($pos_success_receipt['supplier_name'] ?? 'SAM & INRI CONSTRUCTION SUPPLY')); ?></div>
                         <div style="font-size: 10pt; margin-top: 2px; color: #000;">Tel: <?php echo !empty($pos_success_receipt['supplier_phone']) ? htmlspecialchars($pos_success_receipt['supplier_phone']) : '09612735733'; ?></div>
-                        <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">P.O.  RECEIPT</div>
-                        <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;"><?php echo $is_credit_sale ? '(ON CREDIT)' : '(PAID)'; ?></div>
+                        <?php if (!empty($pos_success_receipt['is_settlement'])): ?>
+                            <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">COLLECTION RECEIPT</div>
+                            <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #000;">(PAYMENT SETTLEMENT)</div>
+                        <?php else: ?>
+                            <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; margin-top: 2px; color: #000;">P.O.  RECEIPT</div>
+                            <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #000;"><?php echo $is_credit_sale ? '(ON CREDIT)' : '(PAID)'; ?></div>
+                        <?php endif; ?>
                     </div>
                     <div style="text-align: center; letter-spacing: -0.5px; font-weight: bold; margin-top: 3px; margin-bottom: 4px; overflow: hidden; white-space: nowrap;">================================</div>
 
@@ -5488,9 +5738,9 @@ if (window.history && window.history.replaceState) {
                 </div>
 
                 <!-- Store Discount Policy Guidelines -->
-                <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 11.5px; color: #334155; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 11.5px; color: #334155; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; align-items: center;">
                     <div>
-                        <i class="fa fa-info-circle text-primary"></i> <strong>Normal Max:</strong> <span id="discModalNormalMaxLabel">10.00%</span> | <strong>Absolute Max:</strong> <span id="discModalAbsoluteMaxLabel">20.00%</span>
+                        <i class="fa fa-info-circle text-primary"></i> <strong>Discount Policy:</strong> Amount-based deduction (₱)
                     </div>
                     <div>
                         <strong>Approver:</strong> <span id="discModalRequiredApproverLabel" class="text-primary font-weight-bold">Supervisor or Admin</span>
@@ -5510,16 +5760,12 @@ if (window.history && window.history.replaceState) {
                         <input type="number" step="0.01" min="0" id="discModalAmountInput" class="form-control input-lg" style="height: 46px; font-size: 20px; font-weight: 900; color: #0f172a;" placeholder="0.00" oninput="calcDiscountModalPreview()">
                     </div>
                     <div style="font-size: 11.5px; color: #64748b; margin-top: 4px;">
-                        Enter fixed peso discount amount. Equivalent percentage and tier are computed automatically.
+                        Enter fixed peso discount amount.
                     </div>
                 </div>
 
                 <!-- Live Computed Breakdown Box -->
                 <div style="background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 12.5px; color: #1e40af; font-weight: 700;">Equivalent Percentage:</span>
-                        <strong style="font-size: 15px; color: #1e3a8a;" id="discModalPctDisplay">0.00%</strong>
-                    </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 12.5px; color: #1e40af; font-weight: 700;">Total Customer Savings:</span>
                         <strong style="font-size: 15px; color: #16a34a;">-&#8369;<span id="discModalSavingsDisplay">0.00</span></strong>
@@ -5591,10 +5837,7 @@ if (window.history && window.history.replaceState) {
 
             </div>
 
-            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
-                <a href="discount-approvals.php" class="btn btn-link" style="color: #2563eb; font-weight: 600; padding-left: 0;">
-                    <i class="fa fa-external-link"></i> Open Full Approvals & Audit History
-                </a>
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; align-items: center;">
                 <button type="button" class="btn btn-default" data-dismiss="modal" style="font-weight: 600;">Close</button>
             </div>
 
@@ -5605,6 +5848,8 @@ if (window.history && window.history.replaceState) {
 <script>
 let cart = <?php echo (!empty($active_pos_cart) && empty($pos_po_success_data)) ? json_encode(array_values($active_pos_cart), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '[]'; ?>;
 const isPayingExistingPO = <?php echo !empty($paying_existing_po) ? 'true' : 'false'; ?>;
+const isCreditSettlementMode = <?php echo !empty($is_credit_settlement) ? 'true' : 'false'; ?>;
+const creditSettlementMaxBalance = <?php echo !empty($cs_balance_due) ? floatval($cs_balance_due) : 0; ?>;
 let currentModalGroup = null;
 let currentSelectedVariant = null;
 let currentSORef = '';
@@ -5967,6 +6212,7 @@ function submitVariantToCart() {
     const qty = parseInt(document.getElementById('vModalQtyInput').value) || 1;
     
     addVariantToCart(currentSelectedVariant, qty);
+    clearPOSSearch();
     $('#posVariantModal').modal('hide');
 }
 
@@ -6115,9 +6361,9 @@ function updateCartQty(itemId, newQty) {
             }
         }
 
-        // If item has an active discount, update amount proportionally based on discount_percent
-        if (item.discount_percent && item.discount_percent > 0) {
-            item.discount_amount = round2((item.discount_percent / 100) * (item.price * item.qty));
+        // If item has an active discount (amount-based), keep amount fixed and capped at gross line total without percentage conversion
+        if (item.discount_amount && item.discount_amount > 0) {
+            item.discount_amount = Math.min(item.discount_amount, item.price * item.qty);
         }
 
         renderCart();
@@ -6148,10 +6394,31 @@ function clearCart() {
     }
 }
 
+function promptAdjustSettlementAmount() {
+    const item = cart.find(i => i.item_type === 'CREDIT_SETTLEMENT');
+    if (!item) return;
+    const currentAmt = parseFloat(item.price) || 0;
+    const maxAmt = (typeof creditSettlementMaxBalance !== 'undefined' && creditSettlementMaxBalance > 0) ? creditSettlementMaxBalance : currentAmt;
+    const val = prompt('Enter settlement payment amount (₱):\n(Max balance due: ₱' + maxAmt.toFixed(2) + ')', currentAmt.toFixed(2));
+    if (val === null) return;
+    const parsed = parseFloat(val);
+    if (isNaN(parsed) || parsed <= 0) {
+        alert('Invalid payment amount. Must be greater than 0.00.');
+        return;
+    }
+    if (parsed > (maxAmt + 0.01)) {
+        alert('Amount cannot exceed outstanding balance of ₱' + maxAmt.toFixed(2));
+        return;
+    }
+    item.price = parsed;
+    item.orig_price = parsed;
+    renderCart();
+}
+
 function renderCart() {
     const tbody = document.getElementById('posCartTableBody');
     const completeBtn = document.getElementById('posCompleteBtn');
-    const proceedBtn = document.getElementById('posProceedCheckoutBtn');
+    const proceedBtn = document.getElementById('posProceedPayBtn');
     const cartItemsInput = document.getElementById('cartItemsInput');
 
     if (cart.length === 0) {
@@ -6166,7 +6433,7 @@ function renderCart() {
         if (proceedBtn) {
             proceedBtn.classList.add('disabled');
             proceedBtn.style.pointerEvents = 'none';
-            proceedBtn.style.opacity = '0.65';
+            proceedBtn.style.opacity = '0.5';
         }
         cartItemsInput.value = '[]';
     } else {
@@ -6175,6 +6442,7 @@ function renderCart() {
             evaluateItemBatchRollover(item);
             const isSpecialOrder = (item.item_type === 'SPECIAL_ORDER');
             const isReturnCredit = (item.item_type === 'RETURN_CREDIT');
+            const isCreditSettlement = (item.item_type === 'CREDIT_SETTLEMENT');
             const isRollover = !!item.batch_rollover_active;
             const grossLineTotal = item.price * item.qty;
             const itemIdStr = typeof item.id === 'string' ? `'${item.id}'` : item.id;
@@ -6186,6 +6454,11 @@ function renderCart() {
                 itemBadge = `<span class="label label-danger" style="background-color: #dc2626; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;"><i class="fa fa-undo"></i> RETURN CREDIT</span>`;
                 if (item.product_details) {
                     detailsHtml = `<div style="font-size: 11px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.product_details)}</div>`;
+                }
+            } else if (isCreditSettlement) {
+                itemBadge = `<span class="label label-info" style="background-color: #0284c7; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;"><i class="fa fa-handshake-o"></i> CREDIT SETTLEMENT</span>`;
+                if (item.product_details) {
+                    detailsHtml = `<div style="font-size: 11px; color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; padding: 3px 6px; border-radius: 4px; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.product_details)}</div>`;
                 }
             } else if (isSpecialOrder) {
                 itemBadge = `<span class="label label-warning" style="background-color: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px; text-transform: uppercase; margin-bottom: 2px; display: inline-block;"><i class="fa fa-star"></i> SPECIAL ORDER</span>`;
@@ -6234,11 +6507,20 @@ function renderCart() {
 
             if (isReturnCredit) {
                 linePriceHtml = `<span style="font-weight: 800; font-size: 15px; color: #dc2626;">-&#8369;${Math.abs(grossLineTotal).toFixed(2)}</span>`;
+            } else if (isCreditSettlement) {
+                linePriceHtml = `
+                    <span style="font-weight: 800; font-size: 15px; color: #0284c7;">&#8369;${grossLineTotal.toFixed(2)}</span>
+                    <div style="margin-top: 2px;">
+                        <button type="button" class="btn btn-default btn-xs" onclick="promptAdjustSettlementAmount()" style="font-size: 10px; font-weight: 700; color: #0284c7; padding: 1px 6px; border-radius: 3px; background: #f0f9ff; border: 1px solid #bae6fd;" title="Change settlement payment amount">
+                            <i class="fa fa-pencil"></i> Edit ₱
+                        </button>
+                    </div>
+                `;
             } else if (dStatus === 'PENDING') {
                 discountSectionHtml = `
                     <div style="margin-top: 4px;">
                         <span class="label label-warning" style="background: #f59e0b; font-size: 10px; font-weight: 700; padding: 2px 6px;">
-                            <i class="fa fa-clock-o"></i> ₱${dAmt.toFixed(2)} (${dPct.toFixed(1)}%) Pending Approval
+                            <i class="fa fa-clock-o"></i> ₱${dAmt.toFixed(2)} Pending Approval
                         </span>
                         <a href="javascript:void(0)" onclick="cancelItemDiscount(${itemIdStr})" class="text-danger" style="font-weight: bold; font-size: 13px; margin-left: 4px; text-decoration: none;" title="Cancel discount request">&times;</a>
                     </div>
@@ -6251,7 +6533,7 @@ function renderCart() {
                 discountSectionHtml = `
                     <div style="margin-top: 4px;">
                         <span class="label label-warning" style="background: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px;">
-                            <i class="fa fa-shield"></i> Special ₱${dAmt.toFixed(2)} (${dPct.toFixed(1)}%) Escalated
+                            <i class="fa fa-shield"></i> Special ₱${dAmt.toFixed(2)} Escalated
                         </span>
                         <a href="javascript:void(0)" onclick="cancelItemDiscount(${itemIdStr})" class="text-danger" style="font-weight: bold; font-size: 13px; margin-left: 4px; text-decoration: none;" title="Cancel discount request">&times;</a>
                     </div>
@@ -6265,7 +6547,7 @@ function renderCart() {
                 discountSectionHtml = `
                     <div style="margin-top: 4px;">
                         <span class="label label-success" style="background: #10b981; font-size: 10px; font-weight: 700; padding: 2px 6px;">
-                            <i class="fa fa-check-circle"></i> Discount -₱${dAmt.toFixed(2)} (${dPct.toFixed(1)}%) Approved
+                            <i class="fa fa-check-circle"></i> Discount -₱${dAmt.toFixed(2)} Approved
                         </span>
                         <a href="javascript:void(0)" onclick="cancelItemDiscount(${itemIdStr})" class="text-danger" style="font-weight: bold; font-size: 13px; margin-left: 4px; text-decoration: none;" title="Remove discount">&times;</a>
                     </div>
@@ -6299,7 +6581,7 @@ function renderCart() {
             }
 
             html += `
-                <tr ${isReturnCredit ? 'style="background-color: #fef2f2;"' : ((isSpecialOrder || isRollover) ? 'style="background-color: #fffbeb;"' : '')}>
+                <tr ${isReturnCredit ? 'style="background-color: #fef2f2;"' : (isCreditSettlement ? 'style="background-color: #f0f9ff;"' : ((isSpecialOrder || isRollover) ? 'style="background-color: #fffbeb;"' : ''))}>
                     <td style="padding: 8px 4px;">
                         ${itemBadge}
                         <strong style="color: #0f172a; font-size: 13px; display: block; line-height: 1.3;">${escapeHtml(item.base_name || item.name)}</strong>
@@ -6310,11 +6592,14 @@ function renderCart() {
                         ${discountSectionHtml}
                     </td>
                     <td style="padding: 8px 4px; text-align: center;">
-                        <div class="btn-group" style="display: inline-flex; align-items: center;">
-                            <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${itemIdStr}, ${item.qty - 1})">-</button>
-                            <span style="display: inline-block; width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: #0f172a;">${item.qty}</span>
-                            <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${itemIdStr}, ${item.qty + 1})">+</button>
-                        </div>
+                        ${isCreditSettlement 
+                            ? `<span style="display: inline-block; font-weight: 800; font-size: 13px; color: #0284c7;">1 txn</span>`
+                            : `<div class="btn-group" style="display: inline-flex; align-items: center;">
+                                <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${itemIdStr}, ${item.qty - 1})">-</button>
+                                <span style="display: inline-block; width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: #0f172a;">${item.qty}</span>
+                                <button type="button" class="btn btn-default pos-qty-btn" onclick="updateCartQty(${itemIdStr}, ${item.qty + 1})">+</button>
+                            </div>`
+                        }
                     </td>
                     <td style="padding: 8px 4px; text-align: right;">
                         ${linePriceHtml}
@@ -6356,7 +6641,7 @@ function updatePOSCalculations() {
         grossSubtotal += itemGross;
 
         if (item.discount_status === 'APPROVED' || item.discount_status === 'APPROVED_MODIFIED') {
-            const discAmt = item.discount_amount !== undefined ? item.discount_amount : (itemGross * (item.discount_percent / 100));
+            const discAmt = (item.discount_amount !== undefined && item.discount_amount !== null) ? parseFloat(item.discount_amount) : 0;
             totalDiscountSavings += discAmt;
         } else if (item.discount_status === 'PENDING' || item.discount_status === 'ESCALATED') {
             hasPendingDiscounts = true;
@@ -6678,11 +6963,10 @@ function openDiscountModal(itemId) {
     document.getElementById('discModalGrossDisplay').innerText = gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     // Policy labels
-    const normMaxAmt = gross * (storeDiscountConfig.normalMax / 100);
-    const absMaxAmt = gross * (storeDiscountConfig.absoluteMax / 100);
-    document.getElementById('discModalNormalMaxLabel').innerText = `${storeDiscountConfig.normalMax.toFixed(2)}% (₱${normMaxAmt.toFixed(2)})`;
-    document.getElementById('discModalAbsoluteMaxLabel').innerText = `${storeDiscountConfig.absoluteMax.toFixed(2)}% (₱${absMaxAmt.toFixed(2)})`;
-    document.getElementById('discModalRequiredApproverLabel').innerText = getRequiredApproverText(storeDiscountConfig.userRole);
+    const approverLabel = document.getElementById('discModalRequiredApproverLabel');
+    if (approverLabel) {
+        approverLabel.innerText = getRequiredApproverText(storeDiscountConfig.userRole);
+    }
 
     // Amount input prefill
     const input = document.getElementById('discModalAmountInput');
@@ -6729,67 +7013,46 @@ function calcDiscountModalPreview() {
     const gross = item.price * item.qty;
     const inputVal = document.getElementById('discModalAmountInput').value.trim();
     const amt = parseFloat(inputVal) || 0;
-    const pct = (gross > 0) ? (amt / gross) * 100 : 0;
     const net = Math.max(0, gross - amt);
 
-    document.getElementById('discModalPctDisplay').innerText = pct.toFixed(2) + '%';
-    document.getElementById('discModalSavingsDisplay').innerText = amt.toFixed(2);
-    document.getElementById('discModalNetDisplay').innerText = net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const savingsDisplay = document.getElementById('discModalSavingsDisplay');
+    if (savingsDisplay) savingsDisplay.innerText = amt.toFixed(2);
+    const netDisplay = document.getElementById('discModalNetDisplay');
+    if (netDisplay) netDisplay.innerText = net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const tierBox = document.getElementById('discModalTierBox');
     const submitBtn = document.getElementById('discModalSubmitBtn');
 
     if (!inputVal || amt <= 0) {
-        tierBox.style.display = 'none';
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = `<i class="fa fa-paper-plane"></i> Submit Discount Request`;
+        if (tierBox) tierBox.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i class="fa fa-paper-plane"></i> Submit Discount Request`;
+        }
         return;
     }
 
-    const normalMaxPct = storeDiscountConfig.normalMax;
-    const absoluteMaxPct = storeDiscountConfig.absoluteMax;
-    const normalMaxAmt = round2(gross * (normalMaxPct / 100));
-    const absoluteMaxAmt = round2(gross * (absoluteMaxPct / 100));
-
     if (amt >= gross) {
-        tierBox.style.display = 'block';
-        tierBox.style.background = '#fef2f2';
-        tierBox.style.border = '1px solid #fecaca';
-        tierBox.style.color = '#b91c1c';
-        tierBox.innerHTML = `<i class="fa fa-ban"></i> <strong>PROHIBITED:</strong> Discount (₱${amt.toFixed(2)}) cannot equal or exceed item gross total (₱${gross.toFixed(2)}).`;
-        submitBtn.disabled = true;
-    } else if (pct > absoluteMaxPct + 0.0001 || amt > absoluteMaxAmt + 0.005) {
-        tierBox.style.display = 'block';
-        tierBox.style.background = '#fef2f2';
-        tierBox.style.border = '1px solid #fecaca';
-        tierBox.style.color = '#b91c1c';
-        tierBox.innerHTML = `<i class="fa fa-ban"></i> <strong>DISCOUNT PROHIBITED:</strong> ₱${amt.toFixed(2)} (${pct.toFixed(2)}%) exceeds the absolute maximum allowed (${absoluteMaxPct.toFixed(2)}% / ₱${absoluteMaxAmt.toFixed(2)}).`;
-        submitBtn.disabled = true;
-    } else if (pct > normalMaxPct + 0.0001 || amt > normalMaxAmt + 0.005) {
-        if (!storeDiscountConfig.specialEnabled) {
+        if (tierBox) {
             tierBox.style.display = 'block';
             tierBox.style.background = '#fef2f2';
             tierBox.style.border = '1px solid #fecaca';
             tierBox.style.color = '#b91c1c';
-            tierBox.innerHTML = `<i class="fa fa-ban"></i> <strong>SPECIAL DISCOUNT DISABLED:</strong> Discounts exceeding ${normalMaxPct.toFixed(2)}% (₱${normalMaxAmt.toFixed(2)}) are disabled.`;
-            submitBtn.disabled = true;
-        } else {
-            tierBox.style.display = 'block';
-            tierBox.style.background = '#fffbeb';
-            tierBox.style.border = '1px solid #fde68a';
-            tierBox.style.color = '#b45309';
-            tierBox.innerHTML = `<i class="fa fa-shield"></i> <strong>SPECIAL DISCOUNT (${pct.toFixed(2)}%):</strong> Exceeds normal max (₱${normalMaxAmt.toFixed(2)}). Requires escalated approval from ${getRequiredApproverText(storeDiscountConfig.userRole)}.`;
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = `<i class="fa fa-shield"></i> Submit Special Request (₱${amt.toFixed(2)})`;
+            tierBox.innerHTML = `<i class="fa fa-ban"></i> <strong>PROHIBITED:</strong> Discount (₱${amt.toFixed(2)}) cannot equal or exceed item gross total (₱${gross.toFixed(2)}).`;
         }
+        if (submitBtn) submitBtn.disabled = true;
     } else {
-        tierBox.style.display = 'block';
-        tierBox.style.background = '#f0fdf4';
-        tierBox.style.border = '1px solid #bbf7d0';
-        tierBox.style.color = '#15803d';
-        tierBox.innerHTML = `<i class="fa fa-check-circle"></i> <strong>NORMAL DISCOUNT (${pct.toFixed(2)}%):</strong> Within normal limit (≤ ${normalMaxPct.toFixed(2)}%). Request will be submitted for approval.`;
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = `<i class="fa fa-paper-plane"></i> Submit Request (₱${amt.toFixed(2)})`;
+        if (tierBox) {
+            tierBox.style.display = 'block';
+            tierBox.style.background = '#f0fdf4';
+            tierBox.style.border = '1px solid #bbf7d0';
+            tierBox.style.color = '#15803d';
+            tierBox.innerHTML = `<i class="fa fa-check-circle"></i> <strong>DISCOUNT AMOUNT:</strong> ₱${amt.toFixed(2)} requested deduction. Request will be submitted for approval.`;
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<i class="fa fa-paper-plane"></i> Submit Request (₱${amt.toFixed(2)})`;
+        }
     }
 }
 
@@ -6835,7 +7098,15 @@ function submitDiscountRequest() {
         cache: 'no-store',
         body: formData
     })
-    .then(res => res.json())
+    .then(async res => {
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('Non-JSON response from server:', text);
+            return { status: 'error', message: text || 'Server returned an invalid response.' };
+        }
+    })
     .then(data => {
         submitBtn.disabled = false;
         submitBtn.innerHTML = `<i class="fa fa-paper-plane"></i> Submit Discount Request`;
@@ -6843,8 +7114,7 @@ function submitDiscountRequest() {
         if (data.status === 'success') {
             item.discount_request_id = data.request_id;
             item.discount_amount = parseFloat(data.discount_amount);
-            item.discount_percent = parseFloat(data.requested_discount_percent);
-            item.discount_status = data.discount_status; // 'PENDING', 'ESCALATED', or 'APPROVED'
+            item.discount_status = data.discount_status; // 'PENDING' or 'APPROVED'
             item.approval_level = data.approval_level;
 
             $('#posDiscountModal').modal('hide');
@@ -6861,7 +7131,7 @@ function submitDiscountRequest() {
         submitBtn.disabled = false;
         submitBtn.innerHTML = `<i class="fa fa-paper-plane"></i> Submit Discount Request`;
         console.error('Discount request failed:', err);
-        showDiscModalAlert('danger', 'Network or server error while submitting discount request.');
+        showDiscModalAlert('danger', 'Network or server error while submitting discount request: ' + (err.message || ''));
     });
 }
 
@@ -6882,7 +7152,6 @@ function cancelItemDiscount(itemId) {
 
     delete item.discount_request_id;
     delete item.discount_amount;
-    delete item.discount_percent;
     delete item.discount_status;
     delete item.approval_level;
 
@@ -6910,10 +7179,8 @@ function pollDiscountStatuses() {
                             if (updated.status !== item.discount_status || (updated.discount_amount !== null && updated.discount_amount !== item.discount_amount)) {
                                 item.discount_status = updated.status;
                                 if (updated.status === 'APPROVED' || updated.status === 'APPROVED_MODIFIED') {
-                                    item.discount_percent = parseFloat(updated.approved_discount_percent);
                                     item.discount_amount = parseFloat(updated.discount_amount);
                                 } else if (updated.status === 'REJECTED') {
-                                    item.discount_percent = 0;
                                     item.discount_amount = 0;
                                 }
                                 changed = true;
@@ -7007,16 +7274,12 @@ function renderApprovalQueueList(requests) {
 
     let html = '';
     requests.forEach(r => {
-        const isEscalated = (r.status === 'ESCALATED' || r.approval_level === 'HIGHER_APPROVER');
         const origVal = parseFloat(r.original_item_value);
-        const reqAmt = parseFloat(r.discount_amount || (origVal * (parseFloat(r.requested_discount_percent) / 100)));
-        const reqPct = parseFloat(r.requested_discount_percent);
+        const reqAmt = parseFloat(r.discount_amount || 0);
         const canApprove = r.can_approve;
         const isSelf = r.is_self;
 
-        let statusBadge = isEscalated
-            ? `<span class="label label-warning" style="background: #d97706; font-size: 10px; font-weight: 800; padding: 2px 6px;"><i class="fa fa-shield"></i> SPECIAL ESCALATED</span>`
-            : `<span class="label label-warning" style="background: #f59e0b; font-size: 10px; font-weight: 800; padding: 2px 6px;"><i class="fa fa-clock-o"></i> PENDING NORMAL</span>`;
+        let statusBadge = `<span class="label label-warning" style="background: #f59e0b; font-size: 10px; font-weight: 800; padding: 2px 6px;"><i class="fa fa-clock-o"></i> PENDING APPROVAL</span>`;
 
         let actionHtml = '';
         if (canApprove) {
@@ -7025,7 +7288,7 @@ function renderApprovalQueueList(requests) {
                     <button type="button" class="btn btn-success btn-xs" onclick="approveQueueDiscount('${escapeHtml(r.request_id)}')" style="font-weight: 700; padding: 4px 10px; background: #16a34a; border-color: #15803d;">
                         <i class="fa fa-check"></i> Approve ₱${reqAmt.toFixed(2)}
                     </button>
-                    <button type="button" class="btn btn-warning btn-xs" onclick="modifyQueueDiscount('${escapeHtml(r.request_id)}', ${origVal}, ${reqPct}, ${reqAmt})" style="font-weight: 700; padding: 4px 10px; background: #d97706; border-color: #b45309; color: #fff;">
+                    <button type="button" class="btn btn-warning btn-xs" onclick="modifyQueueDiscount('${escapeHtml(r.request_id)}', ${origVal}, ${reqAmt})" style="font-weight: 700; padding: 4px 10px; background: #d97706; border-color: #b45309; color: #fff;">
                         <i class="fa fa-edit"></i> Modify ₱
                     </button>
                     <button type="button" class="btn btn-danger btn-xs" onclick="rejectQueueDiscount('${escapeHtml(r.request_id)}')" style="font-weight: 700; padding: 4px 10px;">
@@ -7062,7 +7325,7 @@ function renderApprovalQueueList(requests) {
                     </div>
                     <div style="text-align: right;">
                         <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700; display: block;">Requested Discount</span>
-                        <strong style="font-size: 16px; color: #2563eb;">₱${reqAmt.toFixed(2)} (${reqPct.toFixed(1)}%)</strong>
+                        <strong style="font-size: 16px; color: #2563eb;">₱${reqAmt.toFixed(2)}</strong>
                     </div>
                 </div>
 
@@ -7105,8 +7368,9 @@ function approveQueueDiscount(requestId) {
     });
 }
 
-function modifyQueueDiscount(requestId, origVal, currPct, currAmt) {
-    const input = prompt(`Enter MODIFIED discount amount in Philippine Pesos (₱):\n(Gross: ₱${origVal.toFixed(2)} | Current: ₱${currAmt.toFixed(2)} / ${currPct.toFixed(1)}%):`, currAmt.toFixed(2));
+function modifyQueueDiscount(requestId, origVal, currAmt) {
+    const effectiveAmt = (typeof currAmt === 'number' && !isNaN(currAmt)) ? currAmt : 0;
+    const input = prompt(`Enter MODIFIED discount amount in Philippine Pesos (₱):\n(Gross: ₱${origVal.toFixed(2)} | Current: ₱${effectiveAmt.toFixed(2)}):`, effectiveAmt.toFixed(2));
     if (input === null) return;
 
     const newAmt = parseFloat(input);
@@ -7199,7 +7463,7 @@ function getPOSGrandTotal() {
         const itemGross = item.price * item.qty;
         grossSubtotal += itemGross;
         if (item.discount_status === 'APPROVED' || item.discount_status === 'APPROVED_MODIFIED') {
-            const discAmt = item.discount_amount !== undefined ? item.discount_amount : (itemGross * (item.discount_percent / 100));
+            const discAmt = (item.discount_amount !== undefined && item.discount_amount !== null) ? parseFloat(item.discount_amount) : 0;
             totalDiscountSavings += discAmt;
         }
     });
@@ -7226,6 +7490,29 @@ function setCashPreset(amount) {
 }
 
 let posCreditMarkupMode = 'fixed'; // 'fixed' or 'percent'
+
+function openCreditTermsModal() {
+    const refInput = document.getElementById('posCreditRefInput');
+    const refDisplay = document.getElementById('posCreditRefDisplay');
+    if (refInput && refDisplay) {
+        refDisplay.innerText = refInput.value;
+    }
+    updateCreditCalculations();
+    if (typeof $ !== 'undefined' && $('#posCreditTermsModal').length) {
+        $('#posCreditTermsModal').modal('show');
+    }
+}
+
+function applyAndCloseCreditTermsModal() {
+    updateCreditCalculations();
+    if (typeof $ !== 'undefined' && $('#posCreditTermsModal').length) {
+        $('#posCreditTermsModal').modal('hide');
+    }
+    const amountInput = document.getElementById('posAmountTendered');
+    if (amountInput) {
+        amountInput.focus();
+    }
+}
 
 function setCreditMarkupMode(mode) {
     posCreditMarkupMode = (mode === 'fixed') ? 'fixed' : 'percent';
@@ -7288,6 +7575,10 @@ function setCreditMarkupPreset(val) {
     if (input) {
         input.value = parseFloat(val).toFixed(2);
     }
+    const rateHidden = document.getElementById('posCreditMarkupRateHidden');
+    if (rateHidden) {
+        rateHidden.value = parseFloat(val).toFixed(2);
+    }
     highlightCreditMarkupPreset(val);
     updateCreditCalculations();
 }
@@ -7315,6 +7606,10 @@ function highlightCreditMarkupPreset(val) {
 function onCreditMarkupInputChange() {
     const input = document.getElementById('posCreditMarkupInput');
     const val = parseFloat(input?.value) || 0;
+    const rateHidden = document.getElementById('posCreditMarkupRateHidden');
+    if (rateHidden) {
+        rateHidden.value = val.toFixed(2);
+    }
     if (posCreditMarkupMode === 'percent') {
         highlightCreditMarkupPreset(val);
     }
@@ -7370,15 +7665,18 @@ function updateCreditCalculations() {
     const markupAmt = getCreditMarkupAmount(baseTotal);
     const adjustedGrandTotal = baseTotal + markupAmt;
 
-    // Update hidden credit markup amount
+    // Update hidden credit markup amount and hidden rate
     const markupAmtInput = document.getElementById('posCreditMarkupAmount');
     if (markupAmtInput) markupAmtInput.value = markupAmt.toFixed(2);
 
-    // Update Markup Badge
+    const inputVal = parseFloat(document.getElementById('posCreditMarkupInput')?.value) || 0;
+    const rateHidden = document.getElementById('posCreditMarkupRateHidden');
+    if (rateHidden) rateHidden.value = inputVal.toFixed(2);
+
+    // Update Markup Badge in Modal
     const markupBadge = document.getElementById('creditMarkupCalculatedBadge');
     if (markupBadge) {
         if (markupAmt > 0) {
-            const inputVal = parseFloat(document.getElementById('posCreditMarkupInput')?.value) || 0;
             const rateStr = (posCreditMarkupMode === 'fixed') ? 'Fixed' : `${inputVal.toFixed(2)}%`;
             markupBadge.innerText = `+₱${markupAmt.toFixed(2)} (${rateStr})`;
             markupBadge.style.color = '#b45309';
@@ -7390,6 +7688,19 @@ function updateCreditCalculations() {
         }
     }
 
+    // Update Summary Badge in Sidebar Widget
+    const summaryBadge = document.getElementById('posCreditMarkupSummaryBadge');
+    if (summaryBadge) {
+        if (markupAmt > 0) {
+            const rateStr = (posCreditMarkupMode === 'fixed') ? 'Fixed' : `${inputVal.toFixed(2)}%`;
+            summaryBadge.innerText = `Surcharge: +₱${markupAmt.toFixed(2)} (${rateStr})`;
+            summaryBadge.style.color = '#b45309';
+        } else {
+            summaryBadge.innerText = 'No Surcharge';
+            summaryBadge.style.color = '#059669';
+        }
+    }
+
     // Update Real-time Credit Breakdown displays
     const baseEl = document.getElementById('posCreditBaseTotalDisplay');
     const markupRow = document.getElementById('posCreditMarkupRow');
@@ -7398,13 +7709,13 @@ function updateCreditCalculations() {
     const gtEl = document.getElementById('posCreditGrandTotalDisplay');
     const upEl = document.getElementById('posCreditUpfrontDisplay');
     const balEl = document.getElementById('posCreditBalanceDisplay');
+    const balSidebarEl = document.getElementById('posCreditBalanceSidebarDisplay');
 
     if (baseEl) baseEl.innerText = '₱' + baseTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     if (markupRow && markupDisplay) {
         if (markupAmt > 0) {
             markupRow.style.display = 'flex';
-            const inputVal = parseFloat(document.getElementById('posCreditMarkupInput')?.value) || 0;
             const rateLabel = (posCreditMarkupMode === 'fixed') ? 'Fixed' : `+${inputVal.toFixed(2)}%`;
             if (markupRowLabel) markupRowLabel.innerText = `Credit Mark Up (${rateLabel}):`;
             markupDisplay.innerText = '+₱' + markupAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -7426,6 +7737,10 @@ function updateCreditCalculations() {
         balEl.innerText = '₱' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         balEl.style.color = (balance > 0.009) ? '#dc2626' : '#059669';
     }
+    if (balSidebarEl) {
+        balSidebarEl.innerText = '₱' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        balSidebarEl.style.color = (balance > 0.009) ? '#dc2626' : '#059669';
+    }
 
     // Dynamic preset matching highlight
     let matchedPct = null;
@@ -7439,7 +7754,7 @@ function updateCreditCalculations() {
     }
     highlightUpfrontPreset(matchedPct);
 
-    // Dynamic due date badge
+    // Dynamic due date badge (both sidebar and modal)
     const curDays = parseInt(document.getElementById('posPaymentTermDays')?.value || 15, 10);
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + curDays);
@@ -7447,6 +7762,10 @@ function updateCreditCalculations() {
     const badge = document.getElementById('posTermsDueDateBadge');
     if (badge) {
         badge.innerText = `${curDays} Days • Due: ${formatted}`;
+    }
+    const modalBadge = document.getElementById('posTermsModalDueDateBadge');
+    if (modalBadge) {
+        modalBadge.innerText = `${curDays} Days • Due: ${formatted}`;
     }
 
     const completeBtn = document.getElementById('posCompleteBtn');
@@ -7493,7 +7812,7 @@ function setUpfrontPreset(type) {
     updateCreditCalculations();
 }
 
-function handlePaymentMethodChange() {
+function handlePaymentMethodChange(forceExact = false) {
     const methodSelect = document.getElementById('posPaymentMethod');
     if (!methodSelect) return;
     const method = methodSelect.value;
@@ -7505,6 +7824,7 @@ function handlePaymentMethodChange() {
     const amountLabel = document.getElementById('posAmountPaidLabel');
     const quickPresets = document.getElementById('posCashQuickPresets');
     const changeDueBox = document.getElementById('posChangeDueBox');
+    const tenderedInput = document.getElementById('posAmountTendered');
 
     const isCashMode = method === 'Cash (OTC)' || (method.indexOf('Cash') > -1 && method.indexOf('GCash') === -1);
     if (isCashMode) {
@@ -7516,7 +7836,12 @@ function handlePaymentMethodChange() {
         if (quickPresets) quickPresets.style.display = 'block';
         if (changeDueBox) changeDueBox.style.display = 'flex';
         if (refInput) refInput.required = false;
-        setExactAmount();
+
+        if (forceExact || !tenderedInput || !tenderedInput.value || parseFloat(tenderedInput.value) <= 0) {
+            setExactAmount();
+        } else {
+            updatePOSCalculations();
+        }
     } else if (method === 'Check / Terms') {
         // Check / Terms (Credit & Upfront Mode)
         if (cashSection) cashSection.style.display = 'block';
@@ -7533,14 +7858,18 @@ function handlePaymentMethodChange() {
         
         // If amount tendered is empty or equals total, set to 0% preset by default for credit
         const upfrontInput = document.getElementById('posAmountTendered');
-        if (upfrontInput && (!upfrontInput.value || parseFloat(upfrontInput.value) === getPOSGrandTotal())) {
+        if (forceExact || !upfrontInput || !upfrontInput.value || parseFloat(upfrontInput.value) === getPOSGrandTotal()) {
             setUpfrontPreset(0);
         } else {
             updateCreditCalculations();
         }
+
+        // Open Credit Terms modal so cashier can configure or verify terms only when explicitly switched
+        if (forceExact) {
+            openCreditTermsModal();
+        }
     } else {
         // Digital (GCash / Maya, Card, Bank Transfer)
-        setExactAmount();
         if (cashSection) cashSection.style.display = 'block';
         if (refSection) refSection.style.display = 'block';
         if (termsSection) termsSection.style.display = 'none';
@@ -7557,6 +7886,12 @@ function handlePaymentMethodChange() {
         } else if (method === 'Bank Transfer') {
             if (refLabel) refLabel.innerHTML = '<i class="fa fa-university text-primary"></i> Bank Transfer Confirmation No.:';
             if (refInput) refInput.placeholder = 'e.g. BDO / BPI Online Transfer Ref / Txn ID';
+        }
+
+        if (forceExact || !tenderedInput || !tenderedInput.value || parseFloat(tenderedInput.value) <= 0) {
+            setExactAmount();
+        } else {
+            updatePOSCalculations();
         }
     }
 }
@@ -7589,6 +7924,10 @@ function setPaymentTerms(days) {
     const badge = document.getElementById('posTermsDueDateBadge');
     if (badge) {
         badge.innerText = `${days} Days • Due: ${formatted}`;
+    }
+    const modalBadge = document.getElementById('posTermsModalDueDateBadge');
+    if (modalBadge) {
+        modalBadge.innerText = `${days} Days • Due: ${formatted}`;
     }
     updateCreditCalculations();
 }
@@ -7641,130 +7980,6 @@ function handleLocationChange() {
     updatePOSCalculations();
 }
 
-let currentActiveDept = 'all';
-let currentActiveCat = 'all';
-
-function togglePOSCategories() {
-    const wrapper = document.getElementById('posCategoryAccordion');
-    const icon = document.getElementById('posCatToggleIcon');
-    const text = document.getElementById('posCatToggleText');
-    if (!wrapper) return;
-
-    wrapper.classList.toggle('collapsed');
-    const isCollapsed = wrapper.classList.contains('collapsed');
-
-    if (isCollapsed) {
-        if (icon) icon.className = 'fa fa-chevron-down';
-        if (text) text.innerText = 'Expand';
-        try { localStorage.setItem('pos_categories_collapsed', '1'); } catch (e) {}
-    } else {
-        if (icon) icon.className = 'fa fa-chevron-up';
-        if (text) text.innerText = 'Collapse';
-        try { localStorage.setItem('pos_categories_collapsed', '0'); } catch (e) {}
-    }
-}
-
-function updateCategoryBreadcrumb() {
-    const badge = document.getElementById('posActiveFilterBreadcrumb');
-    if (!badge) return;
-    const deptText = (currentActiveDept === 'all') ? 'All Departments' : currentActiveDept;
-    const catText = (currentActiveCat === 'all') ? 'All Sub-Systems' : currentActiveCat;
-    badge.innerHTML = `${escapeHtml(deptText)} &bull; ${escapeHtml(catText)}`;
-}
-
-function scrollDeptCarousel(offset) {
-    const bar = document.getElementById('posDeptTabsBar');
-    if (bar) {
-        bar.scrollBy({ left: offset, behavior: 'smooth' });
-        setTimeout(updateDeptNavState, 280);
-    }
-}
-
-function updateDeptNavState() {
-    const bar = document.getElementById('posDeptTabsBar');
-    const prevBtn = document.getElementById('posDeptNavPrev');
-    const nextBtn = document.getElementById('posDeptNavNext');
-    if (!bar || !prevBtn || !nextBtn) return;
-
-    const maxScrollLeft = bar.scrollWidth - bar.clientWidth;
-    prevBtn.disabled = (bar.scrollLeft <= 2);
-    nextBtn.disabled = (bar.scrollLeft >= maxScrollLeft - 2);
-}
-
-function filterDepartment(deptName, btn) {
-    currentActiveDept = deptName || 'all';
-    currentActiveCat = 'all';
-
-    // Update active state on Department Tabs
-    document.querySelectorAll('.pos-dept-tab').forEach(t => t.classList.remove('active'));
-    if (btn) {
-        btn.classList.add('active');
-        try {
-            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        } catch(e) {}
-    }
-
-    // Show/Hide Mid-Category pills in Tier 2
-    document.querySelectorAll('.pos-cat-pill').forEach(pill => {
-        const pDept = pill.getAttribute('data-dept');
-        const pCat = pill.getAttribute('data-cat');
-
-        if (pCat === 'all') {
-            pill.style.display = '';
-            pill.classList.add('active');
-            const allLabel = pill.querySelector('.pos-all-label');
-            if (allLabel) {
-                allLabel.innerText = (currentActiveDept === 'all') ? 'All in Selected' : ('All in ' + currentActiveDept);
-            }
-        } else if (currentActiveDept === 'all' || pDept === currentActiveDept) {
-            pill.style.display = '';
-            pill.classList.remove('active');
-        } else {
-            pill.style.display = 'none';
-            pill.classList.remove('active');
-        }
-    });
-
-    updateCategoryBreadcrumb();
-    filterPOSProducts();
-    setTimeout(updateDeptNavState, 350);
-}
-
-function filterCategory(catName, btn) {
-    currentActiveCat = catName || 'all';
-    document.querySelectorAll('.pos-cat-pill').forEach(pill => pill.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-    updateCategoryBreadcrumb();
-    filterPOSProducts();
-}
-
-function setPOSViewMode(mode) {
-    const gridView = document.getElementById('posProductGrid');
-    const listView = document.getElementById('posProductListContainer');
-    const gridBtn = document.getElementById('posViewGridBtn');
-    const listBtn = document.getElementById('posViewListBtn');
-    const emptyMsg = document.getElementById('posProductGridEmptyMsg');
-
-    if (mode === 'list') {
-        if (listBtn) listBtn.classList.add('active');
-        if (gridBtn) gridBtn.classList.remove('active');
-        if (!emptyMsg || emptyMsg.style.display === 'none') {
-            if (gridView) gridView.style.display = 'none';
-            if (listView) listView.style.display = 'block';
-        }
-    } else {
-        if (gridBtn) gridBtn.classList.add('active');
-        if (listBtn) listBtn.classList.remove('active');
-        if (!emptyMsg || emptyMsg.style.display === 'none') {
-            if (listView) listView.style.display = 'none';
-            if (gridView) gridView.style.display = 'grid';
-        }
-    }
-    try {
-        localStorage.setItem('pos_product_view_mode', mode);
-    } catch(e) {}
-}
-
 function openSpecialOrderWithPrefill(namePrefill) {
     openSpecialOrderModal();
     const nameInput = document.getElementById('soProductName');
@@ -7777,363 +7992,326 @@ function openSpecialOrderWithPrefill(namePrefill) {
     }
 }
 
-function escapeRegex(string) {
-    return (string || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+<?php
+// Compile lightweight individual variants list in PHP for cart management
+$prebuilt_pos_variants = [];
+foreach ($raw_products as $prod) {
+    $clean_price = floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_current_price'])));
+    $clean_stock = intval(preg_replace('/[^0-9]/', '', strval($prod['p_qty'])));
+    $clean_new_qty = isset($prod['p_new_qty']) && $prod['p_new_qty'] !== '' ? max(0, intval(preg_replace('/[^0-9]/', '', strval($prod['p_new_qty'])))) : 0;
+    $effective_stock = ($clean_new_qty > 0) ? ($clean_stock + $clean_new_qty) : $clean_stock;
+    $clean_new_price = isset($prod['p_new_price']) && $prod['p_new_price'] !== '' ? floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_new_price']))) : 0;
+    $clean_old_price = isset($prod['p_old_price']) && $prod['p_old_price'] !== '' ? floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_old_price']))) : $clean_price;
+
+    $prebuilt_pos_variants[] = [
+        'id' => (int)$prod['p_id'],
+        'sku' => (string)(!empty($prod['p_sku']) ? trim($prod['p_sku']) : ('SKU-' . str_pad($prod['p_id'], 5, '0', STR_PAD_LEFT))),
+        'barcode' => (string)(!empty($prod['p_barcode']) ? trim($prod['p_barcode']) : ''),
+        'name' => (string)$prod['p_name'],
+        'base_name' => (string)$prod['p_name'],
+        'spec_label' => '',
+        'brand' => (string)($prod['p_brand'] ?? ''),
+        'ecat' => (string)(!empty($prod['ecat_name']) ? trim($prod['ecat_name']) : 'General'),
+        'mcat' => (string)(!empty($prod['mcat_name']) ? trim($prod['mcat_name']) : ''),
+        'dept' => (string)(!empty($prod['tcat_name']) ? trim($prod['tcat_name']) : (!empty($prod['mcat_name']) ? trim($prod['mcat_name']) : 'General Hardware')),
+        'price' => $clean_price,
+        'orig_price' => $clean_old_price,
+        'new_price' => $clean_new_price,
+        'capital_price' => floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_capital_price'] ?? 0))),
+        'markup' => floatval(preg_replace('/[^0-9.]/', '', strval($prod['p_markup'] ?? 0))),
+        'stock' => $effective_stock,
+        'orig_stock' => $clean_stock,
+        'new_qty' => $clean_new_qty,
+        'photo' => (!empty($prod['p_featured_photo']) && file_exists('../assets/uploads/'.$prod['p_featured_photo'])) ? ('../assets/uploads/'.$prod['p_featured_photo']) : '../assets/uploads/photo-6.jpg'
+    ];
 }
+?>
+window.posAllVariants = <?php echo json_encode($prebuilt_pos_variants, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
 
-const POS_HARDWARE_SYNONYMS = {
-    'gi': ['galvanized', 'corrugated', 'yero', 'gi sheet', 'gi pipe', 'gi wire'],
-    'g.i.': ['galvanized', 'corrugated', 'yero', 'gi sheet'],
-    'chb': ['hollow block', 'concrete hollow block', 'masonry block'],
-    'rsb': ['deformed', 'steel bar', 'rebar', 'bakal'],
-    'cwn': ['wire nail', 'common wire nail', 'pako', 'nail'],
-    'pvc': ['polyvinyl', 'tubo', 'neltex', 'emerald', 'sanitary pipe', 'blue pipe', 'orange pipe'],
-    'ppr': ['polypropylene', 'green pipe', 'fusion'],
-    'purlin': ['c channel', 'c-channel', 'c purlin', 'c-purlin', 'purlins'],
-    'c-purlin': ['c channel', 'c-channel', 'purlin', 'purlins'],
-    'ply': ['plywood', 'marine plywood', 'marine ply', 'ordinary plywood', 'kahoy'],
-    'thhn': ['electrical wire', 'stranded wire', 'building wire', 'kuryente'],
-    'thwn': ['electrical wire', 'stranded wire', 'building wire', 'kuryente'],
-    'cement': ['semento', 'portland', 'pozolan'],
-    'paint': ['pintura', 'boysen', 'davies'],
-    'sandpaper': ['lija', 'abrasive', 'silicon carbide', 'sand paper'],
-    'sand paper': ['lija', 'abrasive', 'sandpaper'],
-    'lija': ['sandpaper', 'abrasive', 'sand paper', 'waterproof']
-};
-
-function normalizeSearchString(str) {
-    if (!str) return '';
-    let s = str.toLowerCase();
-    s = s.replace(/(\d+(?:\.\d+)?)\s*["']?\s*x\s*["']?\s*(\d+(?:\.\d+)?)/gi, '$1x$2 $1 x $2');
-    s = s.replace(/(\d+(?:\.\d+)?)\s+(kg|mm|cm|m|in|pcs|pc|ft|gal|ltr|l|w|v|hp)\b/gi, '$1$2 $1 $2');
-    s = s.replace(/["']/g, '');
-    return s;
-}
-
-function isFuzzyMatch(token, word) {
-    if (!token || !word || token.length < 4 || word.length < 4) return false;
-    if (Math.abs(token.length - word.length) > 1) return false;
-    
-    let i = 0, j = 0, diffCount = 0;
-    while (i < token.length && j < word.length) {
-        if (token[i] !== word[j]) {
-            diffCount++;
-            if (diffCount > 1) return false;
-            if (token.length > word.length) i++;
-            else if (word.length > token.length) j++;
-            else { i++; j++; }
-        } else {
-            i++; j++;
-        }
+// Quick Floating Toast Notification for Fast POS Additions
+function showPOSToastNotification(msg) {
+    let toast = document.getElementById('posFastAddToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'posFastAddToast';
+        toast.style.cssText = 'position: fixed; bottom: 25px; right: 25px; background: #0f172a; color: #f8fafc; padding: 12px 20px; border-radius: 8px; font-weight: 700; font-size: 13.5px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); z-index: 99999; display: flex; align-items: center; gap: 10px; border: 1.5px solid #38bdf8; transition: opacity 0.25s ease, transform 0.25s ease; opacity: 0; transform: translateY(10px); pointer-events: none;';
+        document.body.appendChild(toast);
     }
-    return true;
+    toast.innerHTML = '<i class="fa fa-check-circle" style="color: #38bdf8; font-size: 16px;"></i> ' + escapeHtml(msg);
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    if (window.posToastTimer) clearTimeout(window.posToastTimer);
+    window.posToastTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+    }, 2500);
 }
 
-function calculatePOSMatchScore(tokens, baseName, brand, ecat, searchData) {
-    let totalScore = 0;
-    const baseNameLower = (baseName || '').toLowerCase();
-    const brandLower = (brand || '').toLowerCase();
-    const ecatLower = (ecat || '').toLowerCase();
-    const searchDataLower = (searchData || '').toLowerCase();
-    const searchDataNormalized = normalizeSearchString(searchDataLower);
-    const searchDataWords = searchDataLower.split(/[\s,;|\-]+/).filter(w => w.length > 0);
+// Add Variant to Cart from Table Action Button (Explicit Cashier Action Only)
+function addVariantToCartById(variantId) {
+    const allVariants = window.posAllVariants || [];
+    const variant = allVariants.find(v => v.id === variantId || String(v.id) === String(variantId));
+    if (!variant) return;
 
-    for (let i = 0; i < tokens.length; i++) {
-        const rawToken = tokens[i];
-        const token = rawToken.toLowerCase();
-        const tokenEscaped = escapeRegex(token);
-        const wordBoundaryRegex = new RegExp('\\b' + tokenEscaped, 'i');
-
-        let tokenScore = 0;
-
-        // 1. Direct Prefix: Product Title starts with token (e.g. "cem" -> "Cement...")
-        if (baseNameLower.startsWith(token)) {
-            tokenScore = Math.max(tokenScore, 100);
-        }
-        // 2. Word Boundary in Product Title: Any word in Title starts with token (e.g. "cem" -> "Holcim Cement")
-        else if (wordBoundaryRegex.test(baseNameLower)) {
-            tokenScore = Math.max(tokenScore, 85);
-        }
-        // 3. Brand starts with token or word in Brand starts with token (e.g. "cem" -> "CEMEX")
-        else if (brandLower.startsWith(token) || wordBoundaryRegex.test(brandLower)) {
-            tokenScore = Math.max(tokenScore, 75);
-        }
-        // 4. Category starts with token (e.g. "plu" -> "Plumbing")
-        else if (ecatLower.startsWith(token) || wordBoundaryRegex.test(ecatLower)) {
-            tokenScore = Math.max(tokenScore, 65);
-        }
-        // 5. SKU, size, or spec word-boundary prefix match anywhere in searchData
-        else if (wordBoundaryRegex.test(searchDataLower) || wordBoundaryRegex.test(searchDataNormalized)) {
-            tokenScore = Math.max(tokenScore, 50);
-        }
-        // 6. Substring match fallback anywhere in searchData or normalized dimensions
-        else if (searchDataLower.indexOf(token) !== -1 || searchDataNormalized.indexOf(token) !== -1) {
-            tokenScore = Math.max(tokenScore, 30);
-        }
-        // 7. Hardware Acronym / Trade Synonym match (e.g. "gi", "chb", "rsb", "cwn", "pvc", "ply")
-        else if (POS_HARDWARE_SYNONYMS[token]) {
-            const synList = POS_HARDWARE_SYNONYMS[token];
-            for (let s = 0; s < synList.length; s++) {
-                if (searchDataLower.indexOf(synList[s]) !== -1 || searchDataNormalized.indexOf(synList[s]) !== -1) {
-                    tokenScore = Math.max(tokenScore, 45);
-                    break;
-                }
-            }
-        }
-
-        // 8. 1-Character Typo / Fuzzy tolerance (if token >= 4 chars and no match yet)
-        if (tokenScore === 0 && token.length >= 4) {
-            for (let w = 0; w < searchDataWords.length; w++) {
-                if (isFuzzyMatch(token, searchDataWords[w])) {
-                    tokenScore = Math.max(tokenScore, 25);
-                    break;
-                }
-            }
-        }
-
-        // If after all checks this token still has 0 score -> reject this item
-        if (tokenScore === 0) {
-            return { matches: false, score: 0 };
-        }
-
-        totalScore += tokenScore;
-    }
-
-    return { matches: true, score: totalScore };
-}
-
-function highlightSearchTokens(element, origText, tokens) {
-    if (!tokens || tokens.length === 0) {
-        element.textContent = origText;
+    if (variant.stock <= 0) {
+        alert('This item is currently out of stock (' + variant.name + ').');
         return;
     }
-    const safeOrig = escapeHtml(origText);
-    const pattern = tokens.map(t => escapeRegex(escapeHtml(t))).filter(t => t.length > 0).join('|');
-    if (!pattern) {
-        element.textContent = origText;
-        return;
-    }
-    const regex = new RegExp('(' + pattern + ')', 'gi');
-    element.innerHTML = safeOrig.replace(regex, '<mark class="pos-search-hl">$1</mark>');
+
+    addVariantToCart(variant, 1);
+    const formattedPrice = '₱' + parseFloat(variant.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    showPOSToastNotification('Added 1x ' + variant.name + ' (' + formattedPrice + ') to cart');
+
+    // Clear search box upon adding item to terminal, returning catalog to initial state & refocusing search
+    clearPOSSearch();
 }
 
-function initializePOSSearchIndices() {
-    document.querySelectorAll('#posProductGrid .pos-product-item').forEach((item, idx) => {
-        if (!item.hasAttribute('data-orig-index')) {
-            item.setAttribute('data-orig-index', idx);
-        }
-        const titleEl = item.querySelector('.pos-parent-name');
-        if (titleEl && !titleEl.hasAttribute('data-orig-title')) {
-            titleEl.setAttribute('data-orig-title', titleEl.innerText.trim());
-        }
-    });
-
-    document.querySelectorAll('#posProductListContainer tbody .pos-product-item').forEach((item, idx) => {
-        if (!item.hasAttribute('data-orig-index')) {
-            item.setAttribute('data-orig-index', idx);
-        }
-        const titleEl = item.querySelector('.pos-list-row-title');
-        if (titleEl && !titleEl.hasAttribute('data-orig-title')) {
-            titleEl.setAttribute('data-orig-title', titleEl.innerText.trim());
-        }
-    });
+function addPOSSearchResultVariantToCart(variantId) {
+    addVariantToCartById(variantId);
 }
 
-function handlePOSSearchEnter(event) {
-    if (event) event.preventDefault();
-    const savedViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('pos_product_view_mode')) || 'grid';
-    const containerSelector = (savedViewMode === 'list') ? '#posProductListContainer' : '#posProductGrid';
-    const visibleItems = Array.from(document.querySelectorAll(containerSelector + ' .pos-product-item')).filter(el => el.style.display !== 'none');
-    if (visibleItems.length === 1) {
-        // Trigger click on the single matched item (fast-add / open variant modal)
-        visibleItems[0].click();
-    } else if (visibleItems.length > 1) {
-        const topScore = parseInt(visibleItems[0].getAttribute('data-search-score') || '0', 10);
-        if (topScore >= 100) {
-            visibleItems[0].click();
-        }
-    }
-}
-
-function filterPOSProducts() {
-    initializePOSSearchIndices();
-
-    const rawQuery = document.getElementById('posSearchInput')?.value.trim() || '';
-    const query = rawQuery.toLowerCase();
-    const tokens = query.length > 0 ? query.split(/\s+/).filter(t => t.length > 0) : [];
-    const isSearching = tokens.length > 0;
-    const inStockOnly = document.getElementById('posInStockToggle')?.checked || false;
-
-    const gridItems = Array.from(document.querySelectorAll('#posProductGrid .pos-product-item'));
-    const listItems = Array.from(document.querySelectorAll('#posProductListContainer tbody .pos-product-item'));
-
-    let matchingItemIds = new Set();
-    let visibleGridItems = [];
-    let visibleListItems = [];
-
-    // Helper for matching, scoring, and highlighting
-    function processItemList(items, isList) {
-        items.forEach(item => {
-            const searchData = (item.getAttribute('data-name') || '').toLowerCase();
-            const baseName = item.getAttribute('data-base-name') || '';
-            const brand = item.getAttribute('data-brand') || '';
-            const itemCat = item.getAttribute('data-category') || '';
-            const itemMcat = item.getAttribute('data-mcat') || '';
-            const itemDept = item.getAttribute('data-dept') || '';
-            const rawStock = parseInt(item.getAttribute('data-stock'), 10);
-            const stock = isNaN(rawStock) ? 999 : rawStock;
-
-            // In-stock check
-            if (inStockOnly && stock <= 0) {
-                item.style.display = 'none';
-                return;
-            }
-
-            // Category & Department filter check
-            let matchesDept = (currentActiveDept === 'all' || itemDept === currentActiveDept);
-            let matchesCat = (currentActiveCat === 'all' || itemMcat === currentActiveCat || itemCat === currentActiveCat);
-            if (!matchesDept || !matchesCat) {
-                item.style.display = 'none';
-                return;
-            }
-
-            // 3-to-5 char prefix & token scoring check
-            let score = 100;
-            if (isSearching) {
-                const matchResult = calculatePOSMatchScore(tokens, baseName, brand, itemCat, searchData);
-                if (!matchResult.matches) {
-                    item.style.display = 'none';
-                    return;
-                }
-                score = matchResult.score;
-            }
-
-            item.style.display = '';
-            item.setAttribute('data-search-score', score);
-
-            // Title Highlighting
-            const titleEl = isList ? item.querySelector('.pos-list-row-title') : item.querySelector('.pos-parent-name');
-            if (titleEl) {
-                const origTitle = titleEl.getAttribute('data-orig-title') || titleEl.innerText.trim();
-                if (isSearching && query.length >= 2) {
-                    highlightSearchTokens(titleEl, origTitle, tokens);
-                } else {
-                    titleEl.textContent = origTitle;
-                }
-            }
-
-            // Unique counting
-            const rawGroup = item.getAttribute('data-group');
-            if (rawGroup) {
-                try {
-                    const g = JSON.parse(rawGroup);
-                    matchingItemIds.add(g.base_name + '_' + (g.ecat_id || ''));
-                } catch(e) {
-                    matchingItemIds.add(item);
-                }
-            } else {
-                matchingItemIds.add(item);
-            }
-
-            const itemPayload = { 
-                el: item, 
-                score: score, 
-                origIndex: parseInt(item.getAttribute('data-orig-index') || '0', 10) 
-            };
-            if (isList) {
-                visibleListItems.push(itemPayload);
-            } else {
-                visibleGridItems.push(itemPayload);
-            }
-        });
-    }
-
-    processItemList(gridItems, false);
-    processItemList(listItems, true);
-
-    // Re-order DOM elements by score descending (or original index if not searching)
-    if (isSearching) {
-        const gridContainer = document.getElementById('posProductGrid');
-        if (gridContainer) {
-            visibleGridItems.sort((a, b) => (b.score - a.score) || (a.origIndex - b.origIndex));
-            visibleGridItems.forEach(itemObj => gridContainer.appendChild(itemObj.el));
-        }
-        const listTbody = document.querySelector('#posProductListContainer tbody');
-        if (listTbody) {
-            visibleListItems.sort((a, b) => (b.score - a.score) || (a.origIndex - b.origIndex));
-            visibleListItems.forEach(itemObj => listTbody.appendChild(itemObj.el));
-        }
-    } else {
-        // Restore original order
-        const gridContainer = document.getElementById('posProductGrid');
-        if (gridContainer) {
-            gridItems.sort((a, b) => parseInt(a.getAttribute('data-orig-index') || '0', 10) - parseInt(b.getAttribute('data-orig-index') || '0', 10));
-            gridItems.forEach(item => gridContainer.appendChild(item));
-        }
-        const listTbody = document.querySelector('#posProductListContainer tbody');
-        if (listTbody) {
-            listItems.sort((a, b) => parseInt(a.getAttribute('data-orig-index') || '0', 10) - parseInt(b.getAttribute('data-orig-index') || '0', 10));
-            listItems.forEach(item => listTbody.appendChild(item));
-        }
-    }
-
-    const visibleCount = matchingItemIds.size;
-    const productCountEl = document.getElementById('productCount');
-    if (productCountEl) productCountEl.innerText = visibleCount;
-
-    // Show friendly zero-match guidance
-    let emptyMsg = document.getElementById('posProductGridEmptyMsg');
-    const gridView = document.getElementById('posProductGrid');
-    const listView = document.getElementById('posProductListContainer');
-
-    if (visibleCount === 0) {
-        if (!emptyMsg) {
-            emptyMsg = document.createElement('div');
-            emptyMsg.id = 'posProductGridEmptyMsg';
-            emptyMsg.style.cssText = 'text-align: center; padding: 35px 20px; background: #ffffff; border: 1.5px dashed #cbd5e1; border-radius: 8px; margin: 10px 0; width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
-            const productBody = document.querySelector('.pos-product-body');
-            if (productBody) productBody.appendChild(emptyMsg);
-        }
-        emptyMsg.innerHTML = `
-            <div style="font-size: 26px; color: #94a3b8; margin-bottom: 6px;"><i class="fa fa-search"></i></div>
-            <div style="font-size: 14px; font-weight: 700; color: #334155;">No products found matching "<em>${escapeHtml(rawQuery)}</em>"</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Looking for a custom product, invoice, or return?</div>
-            <div style="margin-top: 14px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;">
-                ${rawQuery ? `
-                    <button type="button" class="btn btn-warning btn-sm" onclick="openSpecialOrderWithPrefill('${escapeHtml(rawQuery).replace(/'/g, "\\'")}')" style="font-weight: 700; background-color: #d97706; border-color: #b45309; color: #fff;">
-                        <i class="fa fa-plus-circle"></i> + Custom Order "${escapeHtml(rawQuery.length > 20 ? rawQuery.substring(0, 20) + '...' : rawQuery)}"
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm" onclick="openReturnModal('${escapeHtml(rawQuery).replace(/'/g, "\\'")}')" style="font-weight: 700; background-color: #dc2626; border-color: #b91c1c;">
-                        <i class="fa fa-undo"></i> Search in Returns &amp; Refunds
-                    </button>
-                ` : ''}
-                <button type="button" class="btn btn-default btn-sm" onclick="clearPOSSearch()" style="font-weight: 700;">
-                    <i class="fa fa-times"></i> Reset Filters
-                </button>
-            </div>
-        `;
-        emptyMsg.style.display = 'block';
-        if (gridView) gridView.style.display = 'none';
-        if (listView) listView.style.display = 'none';
-    } else {
-        if (emptyMsg) {
-            emptyMsg.style.display = 'none';
-        }
-        const savedViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('pos_product_view_mode')) || 'grid';
-        if (savedViewMode === 'list') {
-            if (gridView) gridView.style.display = 'none';
-            if (listView) listView.style.display = 'block';
-        } else {
-            if (listView) listView.style.display = 'none';
-            if (gridView) gridView.style.display = 'grid';
-        }
-    }
-}
+// POS Product On-Demand Search State & Controller
+let posSearchController = null;
+let posSearchDebounceTimer = null;
+window.posLastSearchQuery = '';
+window.posLastSearchCatId = 0;
 
 function clearPOSSearch() {
-    const input = document.getElementById('posSearchInput');
-    if (input) input.value = '';
-    filterPOSProducts();
+    if (posSearchDebounceTimer) {
+        clearTimeout(posSearchDebounceTimer);
+        posSearchDebounceTimer = null;
+    }
+    if (posSearchController) {
+        posSearchController.abort();
+        posSearchController = null;
+    }
+    const searchInput = document.getElementById('posSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    const catSelect = document.getElementById('posCategoryFilterSelect');
+    if (catSelect) {
+        catSelect.value = '0';
+    }
+
+    // Reset UI state to initial
+    const initialEl = document.getElementById('posSearchInitialState');
+    const loadingEl = document.getElementById('posSearchLoading');
+    const noResultsEl = document.getElementById('posSearchNoResults');
+    const errorEl = document.getElementById('posSearchError');
+    const tableContainer = document.getElementById('posProductTableContainer');
+    const tableBody = document.getElementById('posProductTableBody');
+
+    if (initialEl) initialEl.style.display = 'block';
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (noResultsEl) noResultsEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'none';
+    if (tableBody) tableBody.innerHTML = '';
+
+    if (searchInput) {
+        searchInput.focus();
+    }
+}
+
+function retryPOSSearch() {
+    executePOSProductSearch(window.posLastSearchQuery, window.posLastSearchCatId);
+}
+
+function triggerPOSProductSearch(immediate = false) {
+    if (posSearchDebounceTimer) {
+        clearTimeout(posSearchDebounceTimer);
+        posSearchDebounceTimer = null;
+    }
+
+    const searchInput = document.getElementById('posSearchInput');
+    const catSelect = document.getElementById('posCategoryFilterSelect');
+    const query = searchInput ? searchInput.value.trim() : '';
+    const catId = catSelect ? (parseInt(catSelect.value, 10) || 0) : 0;
+
+    window.posLastSearchQuery = query;
+    window.posLastSearchCatId = catId;
+
+    // If both query and category filter are empty, revert immediately to initial state
+    if (query === '' && catId <= 0) {
+        clearPOSSearch();
+        return;
+    }
+
+    if (immediate) {
+        executePOSProductSearch(query, catId);
+    } else {
+        posSearchDebounceTimer = setTimeout(function() {
+            executePOSProductSearch(query, catId);
+        }, 220);
+    }
+}
+
+function executePOSProductSearch(query, catId) {
+    // 1. Abort previous in-flight search request to prevent stale race conditions
+    if (posSearchController) {
+        posSearchController.abort();
+        posSearchController = null;
+    }
+    posSearchController = new AbortController();
+
+    // 2. Clear stale results immediately
+    const tableBody = document.getElementById('posProductTableBody');
+    if (tableBody) {
+        tableBody.innerHTML = '';
+    }
+
+    // 3. Update UI states: show spinner, hide initial/no-results/error/table
+    const initialEl = document.getElementById('posSearchInitialState');
+    const loadingEl = document.getElementById('posSearchLoading');
+    const noResultsEl = document.getElementById('posSearchNoResults');
+    const errorEl = document.getElementById('posSearchError');
+    const tableContainer = document.getElementById('posProductTableContainer');
+
+    if (initialEl) initialEl.style.display = 'none';
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (noResultsEl) noResultsEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'none';
+
+    // 4. Send asynchronous Fetch request
+    const url = 'pos.php?pos_action=search_products&q=' + encodeURIComponent(query) + '&category_id=' + encodeURIComponent(catId);
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        },
+        signal: posSearchController.signal
+    })
+    .then(function(res) {
+        if (!res.ok) {
+            return res.json().then(function(errData) {
+                throw new Error(errData.message || ('Server error (HTTP ' + res.status + ')'));
+            }).catch(function() {
+                throw new Error('Server returned HTTP ' + res.status);
+            });
+        }
+        return res.json();
+    })
+    .then(function(data) {
+        if (loadingEl) loadingEl.style.display = 'none';
+
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Unable to retrieve products.');
+        }
+
+        const items = data.items || [];
+        if (items.length === 0) {
+            // No matches found
+            if (noResultsEl) {
+                const titleEl = document.getElementById('posSearchNoResultsTitle');
+                const msgEl = document.getElementById('posSearchNoResultsMsg');
+                if (titleEl) {
+                    titleEl.textContent = query.length > 0 ? ('No products found matching "' + query + '"') : 'No products found in this category';
+                }
+                if (msgEl) {
+                    msgEl.textContent = 'Check spelling, try another keyword, or use Custom Order.';
+                }
+                noResultsEl.style.display = 'block';
+            }
+            if (tableContainer) tableContainer.style.display = 'none';
+        } else {
+            // Render up to 5 items (replaces previous results)
+            renderPOSSearchResults(items);
+
+            const countEl = document.getElementById('posSearchResultsCount');
+            if (countEl) {
+                countEl.textContent = items.length;
+            }
+
+            // Merge into window.posAllVariants so addVariantToCartById finds the variant
+            if (!window.posAllVariants) {
+                window.posAllVariants = [];
+            }
+            items.forEach(function(item) {
+                const existingIdx = window.posAllVariants.findIndex(function(v) {
+                    return v.id === item.id || String(v.id) === String(item.id);
+                });
+                if (existingIdx >= 0) {
+                    window.posAllVariants[existingIdx] = item;
+                } else {
+                    window.posAllVariants.push(item);
+                }
+            });
+
+            if (tableContainer) tableContainer.style.display = 'block';
+        }
+    })
+    .catch(function(err) {
+        if (err.name === 'AbortError') {
+            // Search was superseded by a newer query, ignore safely
+            return;
+        }
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (tableContainer) tableContainer.style.display = 'none';
+        if (errorEl) {
+            const errorMsgEl = document.getElementById('posSearchErrorMsg');
+            if (errorMsgEl) {
+                errorMsgEl.textContent = err.message || 'Network or server error while searching catalog.';
+            }
+            errorEl.style.display = 'block';
+        }
+    });
+}
+
+function renderPOSSearchResults(items) {
+    const tbody = document.getElementById('posProductTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    items.forEach(function(item, idx) {
+        const tr = document.createElement('tr');
+        if (item.is_out_of_stock) {
+            tr.className = 'out-of-stock';
+        }
+        tr.id = 'pos-row-' + item.id;
+
+        const cleanPrice = parseFloat(item.price) || 0;
+        const formattedPrice = '₱' + cleanPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const stockBadge = item.is_out_of_stock
+            ? '<span class="label label-danger" style="font-size: 10.5px; padding: 3px 6px;">Out of Stock</span>'
+            : (item.stock < 10
+                ? '<span class="label label-warning" style="font-size: 10.5px; padding: 3px 6px; font-weight: 700;">' + item.stock + ' in stock</span>'
+                : '<span class="label label-success" style="font-size: 10.5px; padding: 3px 6px; font-weight: 700;">' + item.stock + ' in stock</span>');
+
+        const barcodeBadge = item.barcode
+            ? '<span class="label label-default" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:9.5px; margin-left:4px; font-family:monospace;"><i class="fa fa-barcode"></i> ' + escapeHtml(item.barcode) + '</span>'
+            : '';
+
+        const actionBtn = !item.is_out_of_stock
+            ? '<button type="button" class="btn btn-primary btn-xs pos-table-add-btn" onclick="addVariantToCartById(' + item.id + ')" style="font-weight: 700; padding: 3px 8px; font-size: 11px; border-radius: 4px; background: #2563eb; border-color: #1d4ed8;" title="Add to Cart"><i class="fa fa-cart-plus"></i> + Add</button>'
+            : '<button type="button" class="btn btn-default btn-xs disabled" disabled style="font-size: 10.5px; opacity: 0.6; padding: 3px 6px;">Out</button>';
+
+        tr.innerHTML = `
+            <td style="text-align: center; vertical-align: middle; font-size: 11.5px; color: #64748b;">${idx + 1}</td>
+            <td style="text-align: center; vertical-align: middle; padding: 4px;">
+                <img src="${escapeHtml(item.photo)}" alt="" style="width: 36px; height: 36px; object-fit: contain; border-radius: 4px; border: 1px solid #e2e8f0; background: #fff;">
+            </td>
+            <td style="vertical-align: middle;">
+                <strong style="color: #0f172a; font-size: 13px; display: block;">${escapeHtml(item.name)}</strong>
+                <span style="font-size: 11px; color: #64748b; font-family: monospace;">${escapeHtml(item.sku)}</span>${barcodeBadge}
+            </td>
+            <td style="vertical-align: middle; font-size: 11.5px; color: #475569;">
+                <span class="label label-default" style="background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; font-size: 10px;">${escapeHtml(item.ecat_name)}</span>
+                ${item.dept_name ? '<br><small class="text-muted" style="font-size: 9.5px;">' + escapeHtml(item.dept_name) + '</small>' : ''}
+            </td>
+            <td style="text-align: center; vertical-align: middle;">
+                ${stockBadge}
+            </td>
+            <td style="text-align: right; vertical-align: middle; font-weight: 800; font-size: 13.5px; color: #1d4ed8;">
+                ${formattedPrice}
+            </td>
+            <td style="text-align: center; vertical-align: middle;">
+                ${actionBtn}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
 let isPOSFormSubmitting = false;
@@ -8177,7 +8355,7 @@ function validatePOSForm() {
         const itemGross = item.price * item.qty;
         grossSubtotal += itemGross;
         if (item.discount_status === 'APPROVED' || item.discount_status === 'APPROVED_MODIFIED') {
-            const discAmt = item.discount_amount !== undefined ? item.discount_amount : (itemGross * (item.discount_percent / 100));
+            const discAmt = (item.discount_amount !== undefined && item.discount_amount !== null) ? parseFloat(item.discount_amount) : 0;
             totalDiscountSavings += discAmt;
         }
     });
@@ -8189,12 +8367,18 @@ function validatePOSForm() {
     const refundDue = (netPayable < 0) ? Math.abs(netPayable) : 0;
 
     const payMethod = document.getElementById('posPaymentMethod')?.value || 'Cash (OTC)';
-    const isPhysicalCashTender = payMethod === 'Cash (OTC)' || (payMethod.toLowerCase().includes('cash') && !payMethod.toLowerCase().includes('gcash'));
+    const isPhysicalCashTender = payMethod === 'Cash (OTC)' || (payMethod.toLowerCase().includes('cash') && !payMethod.toLowerCase().includes('gcash') && !payMethod.toLowerCase().includes('maya'));
     if (isPhysicalCashTender) {
         const tendered = parseFloat(document.getElementById('posAmountTendered')?.value) || 0;
-        if (grandTotal > 0 && tendered < grandTotal) {
-            alert('Amount tendered (₱' + tendered.toFixed(2) + ') is less than the Grand Total (₱' + grandTotal.toFixed(2) + '). Please enter sufficient cash.');
-            document.getElementById('posAmountTendered')?.focus();
+        const roundedGrandTotal = Math.round(grandTotal * 100) / 100;
+        const roundedTendered = Math.round(tendered * 100) / 100;
+        if (roundedGrandTotal > 0 && roundedTendered < roundedGrandTotal) {
+            alert('Payment failed: Amount tendered (₱' + roundedTendered.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ') is less than the total amount due (₱' + roundedGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '). Please enter sufficient cash.');
+            const tenderedInput = document.getElementById('posAmountTendered');
+            if (tenderedInput) {
+                tenderedInput.focus();
+                tenderedInput.select();
+            }
             return false;
         }
     }
@@ -10696,6 +10880,16 @@ function closeReturnSuccessModal() {
 }
 
 $(document).ready(function() {
+    isPOSFormSubmitting = false;
+    const overlay = document.getElementById('posSubmitProcessingOverlay');
+    if (overlay) overlay.style.display = 'none';
+    const completeBtn = document.getElementById('posCompleteBtn');
+    if (completeBtn && typeof cart !== 'undefined' && cart && cart.length > 0) {
+        completeBtn.disabled = false;
+        completeBtn.style.pointerEvents = 'auto';
+        completeBtn.style.opacity = '1';
+    }
+
     initPOSPrinterDetection();
     updatePOSPrinterBadge();
     syncModalPaperSizeSelects();
@@ -10704,51 +10898,37 @@ $(document).ready(function() {
     }
     toggleCustomerType();
     toggleLocationOption();
-    handlePaymentMethodChange();
+    handlePaymentMethodChange(false);
     updatePOSCalculations();
 
     // Ensure session receipt and URL are cleanly reset if modal is dismissed via ESC or backdrop click
     $('#posSuccessModal, #posPOSuccessModal').on('hidden.bs.modal', function() {
         closeReceiptModal();
     });
-    try {
-        if (localStorage.getItem('pos_categories_collapsed') === '1') {
-            const wrapper = document.getElementById('posCategoryAccordion');
-            if (wrapper) wrapper.classList.add('collapsed');
-            const icon = document.getElementById('posCatToggleIcon');
-            const text = document.getElementById('posCatToggleText');
-            if (icon) icon.className = 'fa fa-chevron-down';
-            if (text) text.innerText = 'Expand';
-        }
-    } catch (e) {}
+    // POS On-Demand Search & Filter Input Listeners
+    $(document).on('input keyup search', '#posSearchInput', function() {
+        triggerPOSProductSearch(false);
+    });
 
-    // Category Carousel Mousewheel & Resize Listeners
-    const deptBar = document.getElementById('posDeptTabsBar');
-    if (deptBar) {
-        deptBar.addEventListener('wheel', function(e) {
-            if (e.deltaY !== 0) {
-                e.preventDefault();
-                deptBar.scrollLeft += (e.deltaY * 1.5);
-                updateDeptNavState();
+    $(document).on('change', '#posCategoryFilterSelect', function() {
+        triggerPOSProductSearch(true);
+    });
+
+    // Enter in search input safely moves focus to the first visible + Add button (Never auto-adds to cart)
+    $(document).on('keydown', '#posSearchInput', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const firstBtn = $('#posProductTableBody tr:visible .pos-table-add-btn').first();
+            if (firstBtn.length) {
+                firstBtn.focus();
+            } else {
+                triggerPOSProductSearch(true);
             }
-        }, { passive: false });
-        window.addEventListener('resize', updateDeptNavState);
-        setTimeout(updateDeptNavState, 150);
-    }
-
-    // Sanitize search bar from stray browser email autofill
-    const posSearchBox = document.getElementById('posSearchInput');
-    if (posSearchBox) {
-        if (posSearchBox.value.includes('@') || posSearchBox.value.includes('.com') || posSearchBox.value.includes('.ph')) {
-            posSearchBox.value = '';
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            clearPOSSearch();
         }
-    }
-
-    // Restore saved product view mode (grid vs list)
-    try {
-        const savedViewMode = localStorage.getItem('pos_product_view_mode') || 'grid';
-        setPOSViewMode(savedViewMode);
-    } catch (e) {}
+    });
 
     // Global Keyboard Shortcuts (F2 / Ctrl+K focus search, F8 hold order, Esc clears search)
     $(document).on('keydown', function(e) {
@@ -10771,8 +10951,13 @@ $(document).ready(function() {
         }
     });
 
-    initializePOSSearchIndices();
-    filterPOSProducts();
+    // Autofocus search on page ready
+    setTimeout(function() {
+        const input = document.getElementById('posSearchInput');
+        if (input) {
+            input.focus();
+        }
+    }, 150);
 
     <?php if ($pos_po_success_data): ?>
     $('#posPOSuccessModal').modal({ backdrop: 'static', keyboard: false });
@@ -10820,9 +11005,8 @@ function openHoldOrderModal() {
         const q = parseInt(item.qty || 1);
         const p = parseFloat(item.price || 0);
         const discAmt = parseFloat(item.discount_amount || 0);
-        const discPct = parseFloat(item.discount_percent || 0);
         let lineGross = q * p;
-        let lineDisc = discAmt > 0 ? discAmt : (discPct > 0 ? (lineGross * (discPct / 100)) : 0);
+        let lineDisc = discAmt > 0 ? discAmt : 0;
         let lineNet = Math.max(0, lineGross - lineDisc);
 
         totalUnits += q;
@@ -11157,10 +11341,10 @@ function escapeHtml(text) {
 // Initial state execution for Payment Method & Terms
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-        handlePaymentMethodChange();
+        handlePaymentMethodChange(false);
     });
 } else {
-    handlePaymentMethodChange();
+    handlePaymentMethodChange(false);
 }
 </script>
 

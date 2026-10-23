@@ -8,6 +8,9 @@
 *.env
 !.env.example
 !.env*.example
+*.pem
+ssl/dev/
+!ssl/.gitkeep
 
 # Application Logs & Runtime Files
 *.log
